@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAV-AI Assistant</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --dark-color: #2c3e50;
+            --darker-color: #34495e;
+            --light-color: #ecf0f1;
+            --white-color: #ffffff;
+            --success-color: #2ecc71;
+            --warning-color: #f1c40f;
+            --danger-color: #e74c3c;
+            --text-color: #2c3e50;
+            --text-muted: #7f8c8d;
+            --border-radius: 10px;
+            --card-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--light-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header styling */
+        header {
+            background-color: var(--dark-color);
+            color: var(--white-color);
+            padding: 0.5rem 1rem;
+            height: 70px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: var(--danger-color); /* Default to red/disconnected */
+        }
+
+        /* Main layout */
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar styling */
+        .sidebar {
+            background-color: var(--darker-color);
+            width: 240px;
+            color: var(--white-color);
+            padding: 1rem;
+            overflow-y: auto;
+        }
+
+        .drone-selector {
+            background-color: var(--primary-color);
+            border-radius: 5px;
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            margin-bottom: 2rem;
+        }
+
+        .menu-item {
+            background-color: var(--dark-color);
+            border-radius: 5px;
+            padding: 0.75rem 1rem;
+            margin: 0.5rem 0;
+            cursor: pointer;
+            border: 2px solid var(--primary-color);
+        }
+
+        /* Main content area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            padding: 1rem;
+            gap: 1rem;
+        }
+
+        /* Dashboard styling */
+        .dashboard {
+            background-color: var(--white-color);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            box-shadow: var(--card-shadow);
+            width: 50%;
+            overflow-y: auto;
+        }
+
+        .dashboard-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .cards-row {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .card {
+            background-color: var(--white-color);
+            border-radius: var(--border-radius);
+            padding: 1rem;
+            box-shadow: var(--card-shadow);
+            flex:  1;
+            border: 1px solid #e0e0e0;
+        }
+
+        .card-title {
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .system-health {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .health-score {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            margin: 0.5rem 0;
+        }
+
+        .health-score svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .health-score-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: var(--danger-color);
+        }
+
+        .health-issues {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .flight-readiness {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .readiness-indicator {
+            background-color: var(--warning-color);
+            color: var(--white-color);
+            padding: 0.25rem 1rem;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            margin: 1rem 0;
+        }
+
+        .readiness-message {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            background-color: var(--light-color);
+            height: 25px;
+            border-radius: 5px;
+            margin: 1rem 0;
+        }
+
+        .status-indicator-bar {
+            width: 25px;
+            height: 25px;
+            border-radius: 5px 0 0 5px;
+        }
+
+        .status-text {
+            padding: 0 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .critical-text {
+            font-size: 0.75rem;
+            color: var(--danger-color);
+            font-weight: bold;
+        }
+
+        /* Motors grid */
+        .motors-grid {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin: 0.5rem 0;
+        }
+
+        .motor-card {
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            padding: 0.5rem;
+            flex: 1;
+            min-width: 85px;
+            max-width: 100px;
+            text-align: center;
+        }
+
+        .motor-title {
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .motor-gauge {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .motor-output {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+
+        .motor-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin: 0.25rem 0;
+        }
+
+        .motor-status {
+            font-size: 0.7rem;
+            color: var(--success-color);
+            font-weight: bold;
+        }
+
+        /* Table styling */
+        .subsystem-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .subsystem-table th {
+            background-color: var(--light-color);
+            padding: 0.5rem;
+            text-align: left;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: bold;
+        }
+
+        .subsystem-table td {
+            padding: 0.5rem;
+            font-size: 0.75rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .subsystem-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 10px;
+            color: var(--white-color);
+            font-size: 0.65rem;
+            font-weight: bold;
+            text-align: center;
+            min-width: 70px;
+        }
+
+        .status-critical {
+            background-color: var(--danger-color);
+        }
+
+        .status-warning {
+            background-color: var(--warning-color);
+        }
+
+        .status-ok {
+            background-color: var(--success-color);
+        }
+
+        /* Chat interface styling */
+        .chat-container {
+            background-color: var(--white-color);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            box-shadow: var(--card-shadow);
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            background-color: #f7f9fa;
+            border-radius: 5px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .message {
+            margin-bottom: 1rem;
+            max-width: 80%;
+        }
+
+        .user-message {
+            margin-left: auto;
+        }
+
+        .ai-message {
+            margin-right: auto;
+        }
+
+        .message-bubble {
+            padding: 0.75rem 1rem;
+            border-radius: 15px;
+            position: relative;
+            margin-bottom: 0.25rem;
+        }
+
+        .user-message .message-bubble {
+            background-color: #e8f5fe;
+            color: var(--text-color);
+            border-bottom-right-radius: 5px;
+        }
+
+        .ai-message .message-bubble {
+            background-color: #f0f2f5;
+            color: var(--text-color);
+            border-bottom-left-radius: 5px;
+        }
+
+        .message-time {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-align: right;
+        }
+
+        .message-text {
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+
+        .message-text strong {
+            font-weight: bold;
+        }
+
+        .message-list {
+            list-style-type: none;
+            padding-left: 1rem;
+        }
+
+        .message-list li {
+            position: relative;
+            padding-left: 0.75rem;
+            margin-bottom: 0.35rem;
+        }
+
+        .message-list li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+        }
+
+        .chat-input {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chat-input-field {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border-radius: 20px;
+            border: 1px solid #e0e0e0;
+            background-color: #f7f9fa;
+            font-size: 0.9rem;
+        }
+
+        .chat-input-field:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .send-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--white-color);
+            border: none;
+            cursor: pointer;
+        }
+
+        .send-button:hover {
+            background-color: #2980b9;
+        }
+        
+        /* Connection modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 400px;
+            max-width: 90%;
+        }
+        
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .modal-button {
+            padding: 8px 16px;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .cancel-button {
+            background-color: #e0e0e0;
+            color: #333;
+        }
+        
+        .connect-button {
+            background-color: var(--primary-color);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="logo">UAV-AI Assistant</div>
+        <div class="connection-status">
+            <span id="connectionText">Disconnected</span>
+            <div class="status-indicator" id="connectionIndicator"></div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="drone-selector" id="connectButton">
+                <span>Connect Drone</span>
+                <i class="fas fa-chevron-down"></i>
+            </div>
+            <div class="menu-item">System Overview</div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Dashboard -->
+            <div class="dashboard">
+                <h2 class="dashboard-title">System Overview</h2>
+                
+                <!-- Top Cards -->
+                <div class="cards-row">
+                    <!-- System Health Card -->
+                    <div class="card">
+                        <div class="card-title">SYSTEM HEALTH</div>
+                        <div class="system-health">
+                            <div class="health-score">
+                                <svg viewBox="0 0 36 36">
+                                    <path d="M18 2.0845
+                                        a 15.9155 15.9155 0 0 1 0 31.831
+                                        a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        fill="none"
+                                        stroke="#e0e0e0"
+                                        stroke-width="3"
+                                        stroke-dasharray="100, 100"/>
+                                    <path id="healthScoreArc" d="M18 2.0845
+                                        a 15.9155 15.9155 0 0 1 0 31.831
+                                        a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        fill="none"
+                                        stroke="#e74c3c"
+                                        stroke-width="3"
+                                        stroke-dasharray="68, 100"/>
+                                </svg>
+                                <div class="health-score-text" id="healthScoreText">--</div>
+                            </div>
+                            <div class="health-issues" id="healthIssues">-- CRITICAL ISSUES</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Flight Readiness Card -->
+                    <div class="card">
+                        <div class="card-title">FLIGHT READINESS</div>
+                        <div class="flight-readiness">
+                            <div class="readiness-indicator" id="readinessIndicator">--</div>
+                            <div class="readiness-message" id="readinessMessage">--</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Status Cards -->
+                <div class="cards-row">
+                    <!-- Battery Status Card -->
+                    <div class="card">
+                        <div class="card-title">BATTERY STATUS</div>
+                        <div class="status-bar">
+                            <div class="status-indicator-bar" id="batteryIndicator" style="background-color: var(--warning-color);"></div>
+                            <div class="status-text" id="batteryText">-- / -- Threshold</div>
+                        </div>
+                        <div class="critical-text" id="batteryStatus">--</div>
+                    </div>
+                    
+                    <!-- GPS Status Card -->
+                    <div class="card">
+                        <div class="card-title">GPS STATUS</div>
+                        <div class="status-bar">
+                            <div class="status-indicator-bar" id="gpsIndicator" style="background-color: var(--warning-color);"></div>
+                            <div class="status-text" id="gpsText">Fix Type: -- (No Fix)</div>
+                        </div>
+                        <div class="critical-text" id="gpsSatellites">-- SATELLITES VISIBLE</div>
+                    </div>
+                </div>
+                
+                <!-- Motors Status Card -->
+                <div class="card">
+                    <div class="card-title">MOTORS STATUS</div>
+                    <div class="motors-grid">
+                        <!-- Motor 1 -->
+                        <div class="motor-card">
+                            <div class="motor-title">Motor 1</div>
+                            <div class="motor-gauge">
+                                <svg viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="15" fill="none" stroke="#2ecc71" stroke-width="3"/>
+                                </svg>
+                                <div class="motor-output" id="motor1Output">--</div>
+                            </div>
+                            <div class="motor-label">Output</div>
+                            <div class="motor-status" id="motor1Status">--</div>
+                        </div>
+                        
+                        <!-- Motor 2 -->
+                        <div class="motor-card">
+                            <div class="motor-title">Motor 2</div>
+                            <div class="motor-gauge">
+                                <svg viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="15" fill="none" stroke="#2ecc71" stroke-width="3"/>
+                                </svg>
+                                <div class="motor-output" id="motor2Output">--</div>
+                            </div>
+                            <div class="motor-label">Output</div>
+                            <div class="motor-status" id="motor2Status">--</div>
+                        </div>
+                        
+                        <!-- Motor 3 -->
+                        <div class="motor-card">
+                            <div class="motor-title">Motor 3</div>
+                            <div class="motor-gauge">
+                                <svg viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="15" fill="none" stroke="#2ecc71" stroke-width="3"/>
+                                </svg>
+                                <div class="motor-output" id="motor3Output">--</div>
+                            </div>
+                            <div class="motor-label">Output</div>
+                            <div class="motor-status" id="motor3Status">--</div>
+                        </div>
+                        
+                        <!-- Motor 4 -->
+                        <div class="motor-card">
+                            <div class="motor-title">Motor 4</div>
+                            <div class="motor-gauge">
+                                <svg viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="15" fill="none" stroke="#2ecc71" stroke-width="3"/>
+                                </svg>
+                                <div class="motor-output" id="motor4Output">--</div>
+                            </div>
+                            <div class="motor-label">Output</div>
+                            <div class="motor-status" id="motor4Status">--</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Subsystem Status Table -->
+                <div class="card">
+                    <div class="card-title">SUBSYSTEM STATUS</div>
+                    <table class="subsystem-table" id="subsystemTable">
+                        <thead>
+                            <tr>
+                                <th>COMPONENT</th>
+                                <th>STATUS</th>
+                                <th>DETAILS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- This will be populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Chat Interface -->
+            <div class="chat-container">
+                <h2 class="chat-title">AI Assistant</h2>
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Messages will be added here dynamically -->
+                </div>
+                <div class="chat-input">
+                    <input type="text" class="chat-input-field" id="chatInput" placeholder="Ask a question about your drone...">
+                    <button class="send-button" id="sendButton">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connection Modal -->
+    <div class="modal" id="connectionModal">
+        <div class="modal-content">
+            <div class="modal-title">Connect to Drone</div>
+            <div class="form-group">
+                <label for="portInput">Port:</label>
+                <input type="text" id="portInput" value="COM3" placeholder="COM3">
+            </div>
+            <div class="form-group">
+                <label for="baudInput">Baud Rate:</label>
+                <input type="text" id="baudInput" value="115200" placeholder="115200">
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-button cancel-button" id="cancelConnect">Cancel</button>
+                <button class="modal-button connect-button" id="confirmConnect">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+   document.addEventListener('DOMContentLoaded', function() {
+    // DOM elements
+    const connectionModal = document.getElementById('connectionModal');
+    const connectButton = document.getElementById('connectButton');
+    const cancelConnect = document.getElementById('cancelConnect');
+    const confirmConnect = document.getElementById('confirmConnect');
+    const portInput = document.getElementById('portInput');
+    const baudInput = document.getElementById('baudInput');
+    const connectionIndicator = document.getElementById('connectionIndicator');
+    const connectionText = document.getElementById('connectionText');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendButton = document.getElementById('sendButton');
+
+    // Dashboard elements
+    const healthScoreText = document.getElementById('healthScoreText');
+    const healthScoreArc = document.getElementById('healthScoreArc');
+    const healthIssues = document.getElementById('healthIssues');
+    const readinessIndicator = document.getElementById('readinessIndicator');
+    const readinessMessage = document.getElementById('readinessMessage');
+    const batteryIndicator = document.getElementById('batteryIndicator');
+    const batteryText = document.getElementById('batteryText');
+    const batteryStatus = document.getElementById('batteryStatus');
+    const gpsIndicator = document.getElementById('gpsIndicator');
+    const gpsText = document.getElementById('gpsText');
+    const gpsSatellites = document.getElementById('gpsSatellites');
+    const motor1Output = document.getElementById('motor1Output');
+    const motor1Status = document.getElementById('motor1Status');
+    const motor2Output = document.getElementById('motor2Output');
+    const motor2Status = document.getElementById('motor2Status');
+    const motor3Output = document.getElementById('motor3Output');
+    const motor3Status = document.getElementById('motor3Status');
+    const motor4Output = document.getElementById('motor4Output');
+    const motor4Status = document.getElementById('motor4Status');
+    
+    // Fix for subsystemTable - check if it exists first
+    const subsystemTable = document.getElementById('subsystemTable');
+    const subsystemTableBody = subsystemTable ? subsystemTable.querySelector('tbody') : null;
+
+    // Connection status
+    let isConnected = false;
+    let socket = null;
+
+    // Initialize WebSocket connection
+    function initWebSocket() {
+        // Get the current host
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const socketUrl = `${protocol}//${host}`;
+
+        console.log(`Connecting to WebSocket at ${socketUrl}`);
+        socket = io(socketUrl);
+
+        socket.on('connect', function() {
+            console.log('WebSocket connected');
+        });
+
+        socket.on('disconnect', function() {
+            console.log('WebSocket disconnected');
+            updateConnectionStatus(false);
+        });
+
+        // Listen for system status updates
+        socket.on('system_status', function(data) {
+            updateDashboard(data);
+        });
+
+        // Listen for chat responses
+        socket.on('chat_processing', function(data) {
+            console.log('Processing message:', data);
+            // Could add a typing indicator here
+        });
+
+        socket.on('chat_response', function(data) {
+            if (data.error) {
+                addMessage({
+                    text: `Error: ${data.error}`,
+                    time: getCurrentTime()
+                });
+                return;
+            }
+
+            let messageText = '';
+            if (data.source === 'jarvis') {
+                const response = data.response;
+                console.log("JARVIS response object:", response); 
+                // Convert message to a string if it's an object
+                // bug jarvis reponse was showing as object, object
+                // we have to stringify the json object
+                let messageStr;
+                if (typeof response.message === 'object') {
+                    //messageStr = JSON.stringify(response.message, null, 2);
+                    messageStr = `<pre>${JSON.stringify(response.message, null, 2)}</pre>`;
+                } else {
+                    messageStr = response.message
+                }
+
+                messageText = `<strong>JARVIS:</strong><br><br>${messageStr}`;
+                if (response.fix_command) {
+                    messageText += `<br><br><strong>Fix Command:</strong> ${response.fix_command}`;
+                }
+            } else {
+                messageText = `<strong>AI Pipeline:</strong><br><br>${data.response}`;
+                console.log("AI Pipeline response:", data.response);
+            }
+
+            addMessage({
+                text: messageText,
+                time: getCurrentTime()
+            });
+        });
+    }
+
+    // Connect to the drone
+    async function connectToDrone() {
+        const port = document.getElementById('portInput').value.trim() || 'COM3';
+        const baud = document.getElementById('baudInput').value.trim() || '115200';
+        
+        try {
+            console.log(`Attempting to connect to drone on ${port} at ${baud} baud`);
+            
+            const response = await fetch('/api/connect', {             
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    port: port,
+                    baud: baud
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                updateConnectionStatus(true);
+                addMessage({
+                    text: `<strong>System:</strong> Successfully connected to drone on ${port} at ${baud} baud. Initializing drone parameters...`,
+                    time: getCurrentTime()
+                });
+                // Initialize WebSocket connection after successful API connection
+                initWebSocket();
+            } else {
+                updateConnectionStatus(false);
+                addMessage({
+                    text: `<strong>Error:</strong> Failed to connect to drone: ${data.message}`,
+                    time: getCurrentTime()
+                });
+            }
+        } catch(error) {
+            console.error('Connection error:', error);
+            updateConnectionStatus(false);
+            addMessage({
+                text: `<strong>Error:</strong> Connection failed. Server may be offline or unreachable.`,
+                time: getCurrentTime()
+            });
+        }
+    }
+
+    // Update connection status UI
+    function updateConnectionStatus(connected) {
+        isConnected = connected;
+        
+        // Check if elements exist before updating them
+        if (connectionIndicator) {
+            connectionIndicator.style.backgroundColor = connected ? 'var(--success-color)' : 'var(--danger-color)';
+        }
+        
+        if (connectionText) {
+            connectionText.textContent = connected ? 'Connected' : 'Disconnected';
+        }
+        
+        if (connectButton && connectButton.querySelector('span')) {
+            connectButton.querySelector('span').textContent = connected ? 'UAV' : 'Connect Drone';
+        }
+    }
+
+    // Update dashboard with system status
+    function updateDashboard(data) {
+        // Only update elements if they exist
+        if (healthScoreText) {
+            healthScoreText.textContent = data.score;
+        }
+        
+        if (healthScoreArc) {
+            healthScoreArc.setAttribute('stroke-dasharray', `${data.score}, 100`);
+            healthScoreArc.setAttribute('stroke', data.score < 70 ? 'var(--danger-color)' : 'var(--success-color)');
+        }
+
+        if (healthIssues) {
+            healthIssues.textContent = `${data.critical_issues} CRITICAL ISSUES`;
+        }
+
+        if (readinessIndicator) {
+            readinessIndicator.textContent = data.readiness;
+            readinessIndicator.style.backgroundColor =
+                data.readiness === 'READY' ? 'var(--success-color)' :
+                data.readiness === 'CAUTION' ? 'var(--warning-color)' : 'var(--danger-color)';
+        }
+        
+        if (readinessMessage) {
+            readinessMessage.textContent = data.critical_issues > 0 ? 'PREFLIGHT CHECK REQUIRED' : 'READY TO FLY';
+        }
+
+        if (batteryIndicator) {
+            batteryIndicator.style.backgroundColor =
+                data.battery.status === 'CRITICAL' ? 'var(--danger-color)' :
+                data.battery.status === 'WARNING' ? 'var(--warning-color)' : 'var(--success-color)';
+        }
+        
+        if (batteryText) {
+            batteryText.textContent = `${data.battery.percentage}% / ${data.battery.threshold} Threshold`;
+        }
+        
+        if (batteryStatus) {
+            batteryStatus.textContent = data.battery.status === 'CRITICAL' ? 'CRITICAL: LAND IMMEDIATELY' : '';
+        }
+
+        if (gpsIndicator) {
+            gpsIndicator.style.backgroundColor =
+                data.gps.fix_type < 2 ? 'var(--danger-color)' :
+                data.gps.fix_type < 3 ? 'var(--warning-color)' : 'var(--success-color)';
+        }
+        
+        if (gpsText) {
+            gpsText.textContent = `Fix Type: ${data.gps.fix_type} (${data.gps.fix_type < 2 ? 'No Fix' : data.gps.fix_type < 3 ? '2D Fix' : '3D Fix'})`;
+        }
+        
+        if (gpsSatellites) {
+            gpsSatellites.textContent = `${data.gps.satellites_visible} SATELLITES VISIBLE`;
+        }
+/*
+        // Update motors if elements exist
+        if (motor1Output) motor1Output.textContent = `${data.motors.motor1.output}%`;
+        if (motor1Status) motor1Status.textContent = data.motors.motor1.status;
+        if (motor2Output) motor2Output.textContent = `${data.motors.motor2.output}%`;
+        if (motor2Status) motor2Status.textContent = data.motors.motor2.status;
+        if (motor3Output) motor3Output.textContent = `${data.motors.motor3.output}%`;
+        if (motor3Status) motor3Status.textContent = data.motors.motor3.status;
+        if (motor4Output) motor4Output.textContent = `${data.motors.motor4.output}%`;
+        if (motor4Status) motor4Status.textContent = data.motors.motor4.status;
+*/
+
+        // Update motors if elements exist
+        if (data.motors && Array.isArray(data.motors)) {
+            // Find motors by their id
+            const motor1 = data.motors.find(motor => motor.id === 1);
+            const motor2 = data.motors.find(motor => motor.id === 2);
+            const motor3 = data.motors.find(motor => motor.id === 3);
+            const motor4 = data.motors.find(motor => motor.id === 4);
+            
+            if (motor1 && motor1Output) motor1Output.textContent = `${motor1.output}%`;
+            if (motor1 && motor1Status) motor1Status.textContent = motor1.status;
+            
+            if (motor2 && motor2Output) motor2Output.textContent = `${motor2.output}%`;
+            if (motor2 && motor2Status) motor2Status.textContent = motor2.status;
+            
+            if (motor3 && motor3Output) motor3Output.textContent = `${motor3.output}%`;
+            if (motor3 && motor3Status) motor3Status.textContent = motor3.status;
+            
+            if (motor4 && motor4Output) motor4Output.textContent = `${motor4.output}%`;
+            if (motor4 && motor4Status) motor4Status.textContent = motor4.status;
+        }
+
+        // Update subsystem table
+        if (subsystemTableBody) {
+            subsystemTableBody.innerHTML = '';
+            data.subsystems.forEach(subsystem => {
+                const row = document.createElement('tr');
+
+                const componentCell = document.createElement('td');
+                componentCell.textContent = subsystem.component;
+
+                const statusCell = document.createElement('td');
+                const statusBadge = document.createElement('span');
+                statusBadge.classList.add('status-badge');
+                statusBadge.classList.add(
+                    subsystem.status === 'CRITICAL' ? 'status-critical' :
+                    subsystem.status === 'WARNING' ? 'status-warning' : 'status-ok'
+                );
+                statusBadge.textContent = subsystem.status;
+                statusCell.appendChild(statusBadge);
+
+                const detailsCell = document.createElement('td');
+                detailsCell.textContent = subsystem.details;
+
+                row.appendChild(componentCell);
+                row.appendChild(statusCell);
+                row.appendChild(detailsCell);
+
+                subsystemTableBody.appendChild(row);
+            });
+        }
+    }
+
+    // Helper function to get current time
+    function getCurrentTime() {
+        const now = new Date();
+        let hours = now.getHours();
+        let minutes = now.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        minutes = minutes < 10 ? '0'+minutes : minutes;
+
+        return `${hours}:${minutes} ${ampm}`;
+    }
+
+    // Add a message to the chat
+    function addMessage(message, isUser = false) {
+        if (!chatMessages) return;
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+
+        const messageBubble = document.createElement('div');
+        messageBubble.className = 'message-bubble';
+        messageBubble.innerHTML = message.text;
+
+        const messageTime = document.createElement('div');
+        messageTime.className = 'message-time';
+        messageTime.textContent = message.time;
+
+        messageDiv.appendChild(messageBubble);
+        messageDiv.appendChild(messageTime);
+
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Send a message
+    function sendMessage() {
+        if (!chatInput) return;
+        
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        addMessage({
+            text: message,
+            time: getCurrentTime()
+        }, true);
+
+        chatInput.value = '';
+
+        if (socket && isConnected) {
+            socket.emit('chat_message', { message: message });
+        } else {
+            addMessage({
+                text: "<strong>System:</strong> Please connect to a drone first.",
+                time: getCurrentTime()
+            });
+        }
+    }
+
+    // Initialize event listeners
+    if (connectButton) {
+        connectButton.addEventListener('click', function() {
+            console.log('Connect button clicked');
+            if (connectionModal) {
+                connectionModal.style.display = 'flex';
+            }
+        });
+    }
+
+    if (cancelConnect) {
+        cancelConnect.addEventListener('click', function() {
+            if (connectionModal) {
+                connectionModal.style.display = 'none';
+            }
+        });
+    }
+
+    if (confirmConnect) {
+        confirmConnect.addEventListener('click', function() {
+            if (connectionModal) {
+                connectionModal.style.display = 'none';
+            }
+            connectToDrone();
+        });
+    }
+
+    // Set up chat input
+    if (chatInput) {
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    }
+
+    if (sendButton) {
+        sendButton.addEventListener('click', sendMessage);
+    }
+
+    // Add welcome message
+    addMessage({
+        text: '<strong>System:</strong> Welcome to UAV-AI Assistant. Please connect to your drone to begin.',
+        time: getCurrentTime()
+    });
+});
+
+    </script>
+    
+    </body>
+    </html>

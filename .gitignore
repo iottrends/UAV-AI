@@ -1,0 +1,6 @@
+logs/
+blackbox_logs/
+__pycache__/
+myenv/
+winenv/
+*.pyc
