@@ -40,30 +40,48 @@ def main():
     # Initialize LLM agents
     #llm_ai_v5.initialize_agent_params(validator)
 
-    # Connect to the drone using fixed default values
-    mavlink_logger.info("Attempting to connect to drone on COM3 at 115200 baud")
-    if not validator.connect("COM4", 115200):
-        mavlink_logger.error("Failed to connect to COM port")
-        print("Failed to connect to COM port")
-    else:
-        # Start the message reception loop
-        validator.start_message_loop()
-        validator.request_data_stream()
-        validator.request_autopilot_version()
-        validator.request_parameter_list()
-        mavlink_logger.info("Parameter list request started!")
-        print("Parameter list request started!")
-        print("Total number of threads:", threading.active_count())
+    # Wait for connection request from web interface
+    mavlink_logger.info("Waiting for connection request from web interface...")
+    print("Please use the web interface to connect to your drone.")
+    print("You can specify the COM port and baud rate in the connection dialog.")
+    
+    # Main loop to check for connection request
+    while True:
+        # Check if connection was requested and successful
+        if web_server.connection_params["connect_requested"] and web_server.connection_params["connect_success"]:
+            port = web_server.connection_params["port"]
+            baud = web_server.connection_params["baud"]
+            
+            # Reset the flag to avoid processing again
+            web_server.connection_params["connect_requested"] = False
+            
+            # Now proceed with the connection setup
+            mavlink_logger.info(f"Connection successful to {port} at {baud} baud. Starting message loop...")
+            
+            # Start the message reception loop
+            validator.start_message_loop()
+            validator.request_data_stream()
+            validator.request_autopilot_version()
+            validator.request_parameter_list()
+            mavlink_logger.info("Parameter list request started!")
+            print("Parameter list request started!")
+            print("Total number of threads:", threading.active_count())
 
-        # Wait for validation to complete
-        print("Waiting for hardware validation...")
-        while not validator.hardware_validated:
-            time.sleep(0.5)
+            # Wait for validation to complete
+            print("Waiting for hardware validation...")
+            while not validator.hardware_validated:
+                time.sleep(0.5)
 
-        mavlink_logger.info("Hardware validation complete!")
-        print("Hardware validation complete!")
-        print(f"Total parameters: {len(validator.get_parameters())}")
-        validator.request_blackbox_logs()
+            mavlink_logger.info("Hardware validation complete!")
+            print("Hardware validation complete!")
+            print(f"Total parameters: {len(validator.get_parameters())}")
+            validator.request_blackbox_logs()
+            
+            # Break out of the waiting loop
+            break
+        
+        # Sleep to avoid high CPU usage
+        time.sleep(0.5)
 
     web_logger.info("Terminal interface is active")
     print("Terminal interface is active. Type 'exit' to quit.")

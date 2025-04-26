@@ -23,6 +23,14 @@ telemetry_thread = None  # Will hold the telemetry update thread
 connected_clients = set()  # Track connected WebSocket clients
 mavlink_buffer = deque(maxlen=10)  # Local buffer of recent MAVLink messages
 
+# Connection parameters storage
+connection_params = {
+    "port": None,
+    "baud": None,
+    "connect_requested": False,
+    "connect_success": False
+}
+
 # Status tracking variables
 last_system_health = {
     "score": 0,
@@ -63,37 +71,49 @@ def static_files(path):
 @app.route('/api/connect', methods=['POST'])
 def connect_drone():
     """API endpoint to connect to a drone"""
-    print("Abhi: inside /api/connect")
+    global connection_params
+    
     print("\n=== Connection Request Received ===")
     print(f"Headers: {request.headers}")
     print(f"Data: {request.data}")
 
-    data = request.json
-    port = data.get('port', 'COM3')
-    baud = int(data.get('baud', 115200))
-    print(f"port{port} , baud{baud}")
     if not validator:
-        print("Error: Validator not initialised")
+        print("Error: Validator not initialized")
         return jsonify({"status": "error", "message": "Backend not initialized"}), 500
 
     try:
-
-        # if validator.connect(port, baud):
-        # Start message loop and request necessary data
-        # validator.start_message_loop()
-        # validator.request_data_stream()
-        # validator.request_autopilot_version()
-        # validator.request_parameter_list()
+        # Parse the JSON data from the request
         data = request.get_json(force=True)  # force=True helps with content-type issues
-        print(f"Parsed JSON: {data}")
         port = data.get('port', 'COM3')
         baud = int(data.get('baud', 115200))
         print(f"Attempting connection to {port} at {baud} baud")
-        print("Drone is connected, returning success")
-        return jsonify({"status": "success", "message": "Connected to drone"})
+        
+        # Check if already connected and disconnect first if needed
+        if hasattr(validator, 'is_connected') and validator.is_connected:
+            logger.info(f"Already connected, disconnecting first")
+            validator.disconnect()
+        
+        # Just attempt the basic connection
+        if validator.connect(port, baud):
+            # Store connection parameters and set flags
+            connection_params["port"] = port
+            connection_params["baud"] = baud
+            connection_params["connect_requested"] = True
+            connection_params["connect_success"] = True
+            
+            logger.info(f"Connection successful to {port} at {baud} baud")
+            return jsonify({
+                "status": "success",
+                "message": f"Connected to {port} at {baud} baud"
+            })
+        else:
+            logger.error(f"Failed to connect to drone on {port}")
+            connection_params["connect_success"] = False
+            return jsonify({"status": "error", "message": f"Failed to connect to drone on {port}"}), 400
 
     except Exception as e:
         logger.error(f"Connection error: {str(e)}")
+        connection_params["connect_success"] = False
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
