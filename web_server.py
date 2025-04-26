@@ -201,7 +201,7 @@ def process_query():
         jarvis_response = jarvis_module.ask_gemini(query)
         print(jarvis_response)
         # Process through LLM pipeline
-        llm_response = llm_ai_module.ask_ai5(query, validator, max_tokens)
+        #llm_response = llm_ai_module.ask_ai5(query, validator, max_tokens)
 
         return jsonify({
             "status": "success",
@@ -211,7 +211,7 @@ def process_query():
     except Exception as e:
         logger.error(f"Query processing error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
+###########################################################################
 
 @socketio.on('connect')
 def handle_connect():
@@ -223,7 +223,7 @@ def handle_connect():
     # Send initial system status to the new client
     emit('system_status', last_system_health)
 
-
+#############################################################################
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handle WebSocket disconnection"""
@@ -253,7 +253,10 @@ def handle_chat_message(data):
     """Handle chat messages from clients"""
     query = data.get('message', '')
     client_id = request.sid
-
+    if not validator or not validator.hardware_validated:
+        emit('chat_response', {"error": "Drone not connected or not validated"}, room=client_id)
+        return
+    
     if not query:
         emit('chat_response', {"error": "Empty message"}, room=client_id)
         return
@@ -262,43 +265,28 @@ def handle_chat_message(data):
 
     try:
         # Send acknowledgment first
-        emit('chat_processing', {"status": "processing"}, room=client_id)
-
-        # Process through AI systems (run JARVIS in thread to avoid blocking)
-        def process_and_respond():
-            try:
+        emit('chat_processing', {"status": "processing"}, room=client_id)  
+        try:
                 # Process through JARVIS
-                jarvis_response = jarvis_module.ask_gemini(query)
-                print("Abhinav jarvis rep*****")
-                print(jarvis_response)
+            #jarvis_response = jarvis_module.ask_gemini(query)
+            jarvis_response = jarvis_module.ask_gemini(query, validator.categorized_params)
+            print("Abhinav jarvis rep*****")
+            print(jarvis_response)
                 # Send JARVIS response immediately
-                socketio.emit('chat_response', {
+            socketio.emit('chat_response', {
                     "source": "jarvis",
                     "response": jarvis_response
                 }, room=client_id)
 
-                # Process through LLM pipeline (which takes longer)
-                #llm_response = llm_ai_module.ask_ai5(query, validator, 4500)
-
-                # Send LLM response when ready
-                #socketio.emit('chat_response', {
-                #    "source": "llm",
-                #    "response": llm_response
-                #}, room=client_id)
-
-            except Exception as e:
-                logger.error(f"Error processing query: {str(e)}")
-                socketio.emit('chat_response', {"error": str(e)}, room=client_id)
-
+        except Exception as e:
+            logger.error(f"Error processing query: {str(e)}")
+            socketio.emit('chat_response', {"error": str(e)}, room=client_id)
        
     except Exception as e:
         logger.error(f"Error handling chat message: {str(e)}")
         emit('chat_response', {"error": str(e)}, room=client_id)
 
-
-# Function removed as requested
-
-# Function removed as requested
+########################################################################
 
 def update_system_health():
     """Update system health information from validator data"""
@@ -619,6 +607,8 @@ def update_system_health():
         logger.error(f"Error updating system health: {str(e)}")
         logger.exception("Exception details:")  # Log the full traceback
 
+#####################################################################
+
 def update_param_progress():
     """Update and broadcast parameter download progress"""
     try:
@@ -637,6 +627,8 @@ def update_param_progress():
                
     except Exception as e:
         logger.error(f"Error updating parameter progress: {str(e)}")
+
+######################################################################
 
 def telemetry_update_loop():
     """Continuously update and broadcast telemetry data"""
@@ -666,7 +658,7 @@ def telemetry_update_loop():
             logger.error(f"Error in telemetry update loop: {str(e)}")
             time.sleep(5)  # Sleep longer on error
 
-
+#########################################################################
 def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=False, loggers=None):
     """Start the Flask+SocketIO server in a new thread"""
     global validator, jarvis_module, llm_ai_module, telemetry_thread, logger

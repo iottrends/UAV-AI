@@ -70,13 +70,16 @@ Respond in **strict JSON format only**, without extra text.
 }}
 """
 
-def ask_gemini(query):
+def ask_gemini(query, parameter_context=None):
     """Process the user query using Gemini AI with MAVLink context."""
 
     mavlink_context = json.dumps(list(jarvis_mav_data), indent=2)
 
     # Fill prompt template
-    prompt = PROMPT_TEMPLATE.format(mavlink_context=mavlink_context, query=query)
+    #prompt = PROMPT_TEMPLATE.format(mavlink_context=mavlink_context, query=query)
+    prompt = PROMPT_TEMPLATE.format(mavlink_context=mavlink_context, parameter_context=json.dumps(parameter_context, indent=2), query=query)
+    print("Prompt:", prompt)  # Debugging output
+    
     #print("mavlink_context:", mavlink_context)
     #print("jarvis_mav_data", jarvis_mav_data)
     try:
