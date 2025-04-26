@@ -548,13 +548,25 @@
                 <span>Connect Drone</span>
                 <i class="fas fa-chevron-down"></i>
             </div>
-            <div class="menu-item">System Overview</div>
+            <div class="menu-item active" data-tab="dashboard">
+                <i class="fas fa-tachometer-alt"></i>
+                Dashboard
+            </div>
+            <div class="menu-item" data-tab="parameters">
+                <i class="fas fa-sliders-h"></i>
+                Parameters
+            </div>
+            <div class="menu-item" data-tab="logs">
+                <i class="fas fa-file-alt"></i>
+                Logs
+            </div>
+            <!-- Flight Plan tab removed as requested -->
         </div>
 
         <!-- Main Content -->
         <div class="main-content">
             <!-- Dashboard -->
-            <div class="dashboard">
+            <div class="dashboard tab-content active" id="dashboard-tab">
                 <h2 class="dashboard-title">System Overview</h2>
                 
                 <!-- Top Cards -->
@@ -695,8 +707,87 @@
                 </div>
             </div>
             
+            <!-- Parameters Tab -->
+            <div class="tab-content" id="parameters-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+                <h2 class="dashboard-title">Parameters</h2>
+                
+                <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                    <div style="display: flex; align-items: center;">
+                        <input type="text" id="paramSearch" placeholder="Search parameters..." style="padding: 0.5rem; border-radius: 5px; border: 1px solid #ddd; margin-right: 0.5rem;">
+                        <button id="searchBtn" class="action-button" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <select id="categoryFilter" style="padding: 0.5rem; border-radius: 5px; border: 1px solid #ddd;">
+                            <option value="All Categories">All Categories</option>
+                            <option value="System">System</option>
+                            <option value="GPS">GPS</option>
+                            <option value="Battery">Battery</option>
+                            <option value="Serial">Serial</option>
+                            <option value="Compass">Compass</option>
+                            <option value="IMU">IMU</option>
+                            <option value="Navigation">Navigation</option>
+                            <option value="Motors">Motors</option>
+                            <option value="Servos">Servos</option>
+                            <option value="RC">RC</option>
+                            <option value="Flight Modes">Flight Modes</option>
+                            <option value="Safety">Safety</option>
+                            <option value="EKF">EKF</option>
+                            <option value="AHRS">AHRS</option>
+                            <option value="Control">Control</option>
+                            <option value="Pilot">Pilot</option>
+                            <option value="Landing">Landing</option>
+                            <option value="Barometer">Barometer</option>
+                            <option value="RangeFinder">RangeFinder</option>
+                            <option value="RPM">RPM</option>
+                            <option value="Notifications">Notifications</option>
+                            <option value="OSD">OSD</option>
+                            <option value="Logging">Logging</option>
+                            <option value="Scheduler">Scheduler</option>
+                            <option value="Streaming">Streaming</option>
+                            <option value="Miscellaneous">Miscellaneous</option>
+                        </select>
+                        
+                        <button id="refreshParams" class="action-button" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        
+                        <button id="saveParams" class="action-button" style="background-color: var(--success-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
+                            <i class="fas fa-save"></i> Save Changes
+                        </button>
+                    </div>
+                </div>
+                
+                <div style="overflow-x: auto; overflow-y: auto;">
+                    <table id="parametersTable" style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
+                        <thead>
+                            <tr style="background-color: var(--light-color); text-align: left;">
+                                <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Name</th>
+                                <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Value</th>
+                                <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Description</th>
+                                <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Range</th>
+                                <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="parametersTableBody">
+                            <!-- Parameters will be loaded here dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Logs Tab -->
+            <div class="tab-content" id="logs-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow);">
+                <h2 class="dashboard-title">Logs</h2>
+                <p>Log content will be displayed here.</p>
+            </div>
+            
+            <!-- Flight Plan Tab removed as requested -->
+            
             <!-- Chat Interface -->
-            <div class="chat-container">
+            <div class="chat-container" id="chat-container">
                 <h2 class="chat-title">AI Assistant</h2>
                 <div class="chat-messages" id="chatMessages">
                     <!-- Messages will be added here dynamically -->
@@ -1131,9 +1222,359 @@
         text: '<strong>System:</strong> Welcome to UAV-AI Assistant. Please connect to your drone to begin.',
         time: getCurrentTime()
     });
+    
+    // Tab switching functionality
+    document.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('click', function() {
+            // Remove active class from all menu items and tab contents
+            document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+            
+            // Add active class to clicked menu item
+            this.classList.add('active');
+            
+            // Show corresponding tab content
+            const tabId = this.getAttribute('data-tab');
+            const tabContent = document.getElementById(`${tabId}-tab`);
+            if (tabContent) {
+                tabContent.style.display = 'block';
+                
+                // Keep chat window visible in all tabs
+                document.getElementById('chat-container').style.display = 'flex';
+                
+                // Adjust width of the active tab content to make room for chat
+                const activeTab = document.getElementById(`${tabId}-tab`);
+                if (activeTab) {
+                    activeTab.style.width = '50%';
+                }
+            }
+        });
+    });
+    
+    // Parameters functionality
+    let allParameters = {};
+    let modifiedParameters = {}; // Track modified parameters
+    
+    // Function to fetch parameters from the server
+    async function fetchParameters() {
+        try {
+            const response = await fetch('/api/parameters');
+            if (!response.ok) {
+                throw new Error(`Failed to fetch parameters: ${response.status}`);
+            }
+            
+            allParameters = await response.json();
+            modifiedParameters = {}; // Reset modified parameters
+            displayParameters();
+            return allParameters;
+        } catch (error) {
+            console.error('Error fetching parameters:', error);
+            addMessage({
+                text: `<strong>Error:</strong> Failed to fetch parameters: ${error.message}`,
+                time: getCurrentTime()
+            });
+            return {};
+        }
+    }
+    
+    // Function to display parameters in the table
+    function displayParameters() {
+        const tableBody = document.getElementById('parametersTableBody');
+        if (!tableBody) return;
+        
+        tableBody.innerHTML = '';
+        
+        // Get selected category
+        const categoryFilter = document.getElementById('categoryFilter').value;
+        
+        // Get search term
+        const searchTerm = document.getElementById('paramSearch').value.toLowerCase();
+        
+        // Filter parameters based on category and search term
+        let filteredParams = {};
+        
+        if (categoryFilter === 'All Categories') {
+            // Include all categories but still filter by search term
+            for (const category in allParameters) {
+                filteredParams[category] = {};
+                for (const param in allParameters[category]) {
+                    if (param.toLowerCase().includes(searchTerm)) {
+                        filteredParams[category][param] = allParameters[category][param];
+                    }
+                }
+            }
+        } else {
+            // Only include the selected category
+            if (allParameters[categoryFilter]) {
+                filteredParams[categoryFilter] = {};
+                for (const param in allParameters[categoryFilter]) {
+                    if (param.toLowerCase().includes(searchTerm)) {
+                        filteredParams[categoryFilter][param] = allParameters[categoryFilter][param];
+                    }
+                }
+            }
+        }
+        
+        // Display parameters
+        for (const category in filteredParams) {
+            for (const param in filteredParams[category]) {
+                const value = filteredParams[category][param];
+                
+                // Create row
+                const row = document.createElement('tr');
+                
+                // Parameter name
+                const nameCell = document.createElement('td');
+                nameCell.style.padding = '0.75rem';
+                nameCell.style.borderBottom = '1px solid #ddd';
+                nameCell.textContent = param;
+                
+                // Parameter value
+                const valueCell = document.createElement('td');
+                valueCell.style.padding = '0.75rem';
+                valueCell.style.borderBottom = '1px solid #ddd';
+                
+                // Create editable input for value
+                const valueInput = document.createElement('input');
+                valueInput.type = 'text';
+                valueInput.value = modifiedParameters[param] !== undefined ? modifiedParameters[param] : value;
+                valueInput.style.width = '100%';
+                valueInput.style.padding = '0.25rem';
+                valueInput.style.border = '1px solid #ddd';
+                valueInput.style.borderRadius = '3px';
+                
+                // If this parameter has been modified, highlight the input
+                if (modifiedParameters[param] !== undefined) {
+                    valueInput.style.backgroundColor = '#fff8e1';
+                    valueInput.style.borderColor = 'var(--warning-color)';
+                }
+                
+                // Add event listener to track changes
+                valueInput.addEventListener('change', function() {
+                    const newValue = this.value.trim();
+                    if (newValue !== value.toString()) {
+                        modifiedParameters[param] = newValue;
+                        this.style.backgroundColor = '#fff8e1';
+                        this.style.borderColor = 'var(--warning-color)';
+                    } else {
+                        delete modifiedParameters[param];
+                        this.style.backgroundColor = '';
+                        this.style.borderColor = '#ddd';
+                    }
+                    
+                    // Enable/disable save button based on whether there are changes
+                    document.getElementById('saveParams').disabled = Object.keys(modifiedParameters).length === 0;
+                });
+                
+                valueCell.appendChild(valueInput);
+                
+                // Description
+                const descCell = document.createElement('td');
+                descCell.style.padding = '0.75rem';
+                descCell.style.borderBottom = '1px solid #ddd';
+                
+                // Get description based on parameter name
+                let description = getParameterDescription(param);
+                descCell.textContent = description;
+                
+                // Range
+                const rangeCell = document.createElement('td');
+                rangeCell.style.padding = '0.75rem';
+                rangeCell.style.borderBottom = '1px solid #ddd';
+                
+                // Get range based on parameter name
+                let range = getParameterRange(param);
+                rangeCell.textContent = range;
+                
+                // Actions
+                const actionsCell = document.createElement('td');
+                actionsCell.style.padding = '0.75rem';
+                actionsCell.style.borderBottom = '1px solid #ddd';
+                
+                // Reset button
+                const resetButton = document.createElement('button');
+                resetButton.innerHTML = '<i class="fas fa-undo"></i>';
+                resetButton.title = 'Reset to default';
+                resetButton.style.backgroundColor = 'transparent';
+                resetButton.style.border = 'none';
+                resetButton.style.cursor = 'pointer';
+                resetButton.style.color = 'var(--primary-color)';
+                resetButton.style.borderRadius = '50%';
+                resetButton.style.width = '30px';
+                resetButton.style.height = '30px';
+                resetButton.style.display = 'flex';
+                resetButton.style.justifyContent = 'center';
+                resetButton.style.alignItems = 'center';
+                
+                resetButton.addEventListener('click', function() {
+                    valueInput.value = value;
+                    delete modifiedParameters[param];
+                    valueInput.style.backgroundColor = '';
+                    valueInput.style.borderColor = '#ddd';
+                    
+                    // Enable/disable save button based on whether there are changes
+                    document.getElementById('saveParams').disabled = Object.keys(modifiedParameters).length === 0;
+                });
+                
+                actionsCell.appendChild(resetButton);
+                
+                // Add cells to row
+                row.appendChild(nameCell);
+                row.appendChild(valueCell);
+                row.appendChild(descCell);
+                row.appendChild(rangeCell);
+                row.appendChild(actionsCell);
+                
+                // Add row to table
+                tableBody.appendChild(row);
+            }
+        }
+    }
+    
+    // Function to save modified parameters
+    async function saveParameters() {
+        if (Object.keys(modifiedParameters).length === 0) {
+            return; // Nothing to save
+        }
+        
+        try {
+            const response = await fetch('/api/parameters', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(modifiedParameters)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to save parameters: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                // Show success message
+                addMessage({
+                    text: `<strong>Success:</strong> Parameters saved successfully.`,
+                    time: getCurrentTime()
+                });
+                
+                // Refresh parameters to get updated values
+                fetchParameters();
+            } else {
+                throw new Error(result.message || 'Unknown error');
+            }
+        } catch (error) {
+            console.error('Error saving parameters:', error);
+            addMessage({
+                text: `<strong>Error:</strong> Failed to save parameters: ${error.message}`,
+                time: getCurrentTime()
+            });
+        }
+    }
+    
+    // Function to get parameter description
+    function getParameterDescription(param) {
+        // This is a simplified mapping - in a real implementation, you would have a more comprehensive database
+        const descriptions = {
+            'BATT_CAPACITY': 'Battery capacity in mAh',
+            'BATT_CRT_VOLT': 'Battery critical voltage threshold',
+            'BATT_LOW_VOLT': 'Battery low voltage threshold',
+            'BATT_MONITOR': 'Battery monitoring type',
+            'AHRS_GPS_USE': 'Use GPS for attitude estimation',
+            'GPS_HDOP_GOOD': 'GPS HDOP good threshold',
+            'GPS_TYPE': 'GPS type/provider',
+            'MOT_PWM_TYPE': 'Motor PWM output type',
+            'MOT_SPIN_MAX': 'Maximum motor output',
+            'MOT_SPIN_MIN': 'Throttle minimum when armed'
+        };
+        
+        return descriptions[param] || '';
+    }
+    
+    // Function to get parameter range
+    function getParameterRange(param) {
+        // This is a simplified mapping - in a real implementation, you would have a more comprehensive database
+        const ranges = {
+            'BATT_CAPACITY': '0-50000 mAh',
+            'BATT_CRT_VOLT': '-',
+            'BATT_LOW_VOLT': '-',
+            'BATT_MONITOR': '-',
+            'AHRS_GPS_USE': '-',
+            'GPS_HDOP_GOOD': '-',
+            'GPS_TYPE': 'Various',
+            'MOT_PWM_TYPE': 'Various',
+            'MOT_SPIN_MAX': '0.7-1.0',
+            'MOT_SPIN_MIN': '0.0-0.3'
+        };
+        
+        return ranges[param] || '-';
+    }
+    
+    // Event listeners for parameter functionality
+    document.getElementById('refreshParams')?.addEventListener('click', fetchParameters);
+    document.getElementById('saveParams')?.addEventListener('click', saveParameters);
+    document.getElementById('searchBtn')?.addEventListener('click', displayParameters);
+    document.getElementById('categoryFilter')?.addEventListener('change', displayParameters);
+    document.getElementById('paramSearch')?.addEventListener('keyup', function(e) {
+        if (e.key === 'Enter') {
+            displayParameters();
+        }
+    });
+    
+    // Fetch parameters when the parameters tab is first shown
+    document.querySelector('.menu-item[data-tab="parameters"]')?.addEventListener('click', function() {
+        if (Object.keys(allParameters).length === 0) {
+            fetchParameters();
+        }
+    });
+    
+    // Initially disable save button
+    if (document.getElementById('saveParams')) {
+        document.getElementById('saveParams').disabled = true;
+    }
 });
 
     </script>
+    
+    <style>
+        /* Additional styles for the new tabs */
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .menu-item.active {
+            background-color: var(--primary-color);
+        }
+        
+        .tab-content {
+            display: none;
+            height: 100%;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Style for parameter inputs */
+        #parametersTable input {
+            transition: background-color 0.3s;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .dashboard, .chat-container, .tab-content {
+                width: 100% !important;
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
     
     </body>
     </html>

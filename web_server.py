@@ -116,6 +116,43 @@ def test():
     return "Web server is working!"
 
 
+@app.route('/api/parameters', methods=['GET', 'POST'])
+def handle_parameters():
+    """API endpoint to get or update drone parameters"""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+
+    try:
+        if request.method == 'GET':
+            # Return the categorized parameters
+            return jsonify(validator.categorized_params)
+        elif request.method == 'POST':
+            # Update parameters
+            data = request.json
+            if not data:
+                return jsonify({"status": "error", "message": "No parameters provided"}), 400
+            
+            # Log the parameters being updated
+            logger.info(f"Updating parameters: {data}")
+            
+            # In a real implementation, we would update the parameters on the drone
+            # For now, we'll just simulate success
+            
+            # TODO: Implement actual parameter update logic
+            # Example:
+            # for param_name, value in data.items():
+            #     validator.set_parameter(param_name, value)
+            
+            return jsonify({
+                "status": "success",
+                "message": "Parameters updated successfully",
+                "updated": list(data.keys())
+            })
+    except Exception as e:
+        logger.error(f"Error handling parameters: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/query', methods=['POST'])
 def process_query():
     """API endpoint to process a query through both AI systems"""
@@ -196,13 +233,13 @@ def handle_chat_message(data):
                 }, room=client_id)
 
                 # Process through LLM pipeline (which takes longer)
-                llm_response = llm_ai_module.ask_ai5(query, validator, 4500)
+                #llm_response = llm_ai_module.ask_ai5(query, validator, 4500)
 
                 # Send LLM response when ready
-                socketio.emit('chat_response', {
-                    "source": "llm",
-                    "response": llm_response
-                }, room=client_id)
+                #socketio.emit('chat_response', {
+                #    "source": "llm",
+                #    "response": llm_response
+                #}, room=client_id)
 
             except Exception as e:
                 logger.error(f"Error processing query: {str(e)}")
@@ -531,7 +568,7 @@ def update_system_health():
 
         # Broadcast system health to all connected clients
         if connected_clients:
-            socketio.emit('system_status', last_system_health, broadcast=True)
+            socketio.emit('system_status', last_system_health)
 
     except Exception as e:
         logger.error(f"Error updating system health: {str(e)}")
