@@ -20,6 +20,7 @@ class MavlinkHandler:
         self.heartbeat_timeout_flag = False
         self.is_connected = False
         self.param_count = 0
+        self.param_progress = 0  # Track parameter download progress percentage
         self.target_system = None
         self.target_component = None
         self.log_directory = "blackbox_logs"
@@ -161,8 +162,8 @@ class MavlinkHandler:
 
         # Show progress periodically
         if param_index % 50 == 0 or param_index == self.param_count - 1:
-            progress = (param_index + 1) / self.param_count * 100
-            mavlink_logger.info(f"⏳ Parameter download: {progress:.1f}% ({param_index + 1}/{self.param_count})")
+            self.param_progress = (param_index + 1) / self.param_count * 100
+            mavlink_logger.info(f"⏳ Parameter download: {self.param_progress:.1f}% ({param_index + 1}/{self.param_count})")
 
         # Check if we've received all parameters
         if len(self.params_dict) >= self.param_count > 0:

@@ -31,6 +31,10 @@ connection_params = {
     "connect_success": False
 }
 
+# Global thread references
+telemetry_thread = None
+server_thread = None
+
 # Status tracking variables
 last_system_health = {
     "score": 0,
@@ -52,7 +56,13 @@ last_system_health = {
         {"id": 3, "output": 1000, "status": "OK"},
         {"id": 4, "output": 1000, "status": "OK"}
     ],
-    "subsystems": []
+    "subsystems": [],
+    "params": {
+        "percentage": 0,
+        "downloaded": 0,
+        "total": 0
+    },
+    "latency": 0
 }
 
 
@@ -221,6 +231,21 @@ def handle_disconnect():
     if client_id in connected_clients:
         connected_clients.remove(client_id)
     logger.info(f"Client disconnected: {client_id}, remaining clients: {len(connected_clients)}")
+
+@socketio.on('ping')
+def handle_ping():
+    """Handle ping from client for latency measurement"""
+    client_id = request.sid
+    # Send pong back immediately
+    emit('pong', {}, room=client_id)
+
+@socketio.on('update_latency')
+def handle_latency_update(data):
+    """Handle latency updates from client"""
+    global last_system_health
+    
+    if 'latency' in data:
+        last_system_health['latency'] = data['latency']
 
 
 @socketio.on('chat_message')
@@ -585,6 +610,8 @@ def update_system_health():
             "motors": motors,
             "subsystems": subsystems
         }
+        
+        # Parameter progress is now handled by update_param_progress function
 
         # Broadcast system health to all connected clients
         if connected_clients:
@@ -594,9 +621,30 @@ def update_system_health():
         logger.error(f"Error updating system health: {str(e)}")
         logger.exception("Exception details:")  # Log the full traceback
 
+def update_param_progress():
+    """Update and broadcast parameter download progress"""
+    try:
+        if validator and connected_clients:
+            # Get parameter progress from validator
+            param_percentage = validator.param_progress if hasattr(validator, 'param_progress') else 0
+            param_count = validator.param_count if hasattr(validator, 'param_count') else 0
+            param_downloaded = int(param_count * (param_percentage / 100)) if param_count > 0 else 0
+
+            socketio.emit('parameter_progress', {
+                "percentage": param_percentage,
+                "downloaded": param_downloaded,
+                "total": param_count
+            }, room=connected_clients)
+            
+               
+    except Exception as e:
+        logger.error(f"Error updating parameter progress: {str(e)}")
+
 def telemetry_update_loop():
     """Continuously update and broadcast telemetry data"""
     logger.info("Starting telemetry update loop")
+    param_update_counter = 0
+    
     while True:
         try:
             # Update system health from validator data
@@ -608,10 +656,14 @@ def telemetry_update_loop():
 
                 # Update and broadcast system health
                 update_system_health()
-
-            # Sleep to avoid excessive updates
-            time.sleep(1)
-
+                time.sleep(1)  # Sleep to avoid excessive updates
+            elif validator and not validator.hardware_validated:    
+                # Update parameter progress more frequently
+                update_param_progress()
+                time.sleep(0.25)  # Sleep to avoid excessive updates
+            else:
+                time.sleep(1)  # Sleep to avoid excessive updates
+            
         except Exception as e:
             logger.error(f"Error in telemetry update loop: {str(e)}")
             time.sleep(5)  # Sleep longer on error

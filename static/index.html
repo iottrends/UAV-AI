@@ -117,7 +117,7 @@
             border-radius: var(--border-radius);
             padding: 1.5rem;
             box-shadow: var(--card-shadow);
-            width: 50%;
+            width: 65%;
             overflow-y: auto;
         }
 
@@ -338,7 +338,7 @@
             border-radius: var(--border-radius);
             padding: 1.5rem;
             box-shadow: var(--card-shadow);
-            width: 50%;
+            width: 35%;
             display: flex;
             flex-direction: column;
         }
@@ -537,6 +537,8 @@
         <div class="connection-status">
             <span id="connectionText">Disconnected</span>
             <div class="status-indicator" id="connectionIndicator"></div>
+            <span id="headerParamsText" style="margin-left: 15px; display: none;">Params: <span id="headerParamsValue">0%</span></span>
+            <span id="headerLatencyText" style="margin-left: 15px; display: none;">Latency: <span id="headerLatencyValue">0ms</span></span>
         </div>
     </header>
 
@@ -559,6 +561,10 @@
             <div class="menu-item" data-tab="logs">
                 <i class="fas fa-file-alt"></i>
                 Logs
+            </div>
+            <div class="menu-item" data-tab="latency-params">
+                <i class="fas fa-tachometer-alt"></i>
+                Latency & Parameters
             </div>
             <!-- Flight Plan tab removed as requested -->
         </div>
@@ -784,6 +790,95 @@
                 <p>Log content will be displayed here.</p>
             </div>
             
+            <!-- Latency & Parameters Tab -->
+            <div class="tab-content" id="latency-params-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+                <h2 class="dashboard-title">Latency & Parameters</h2>
+                
+                <!-- Latency Section -->
+                <div class="card">
+                    <div class="card-title">LATENCY MONITOR</div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <div>
+                            <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);" id="currentLatency">-- ms</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">Current Latency</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 1.2rem; font-weight: bold;" id="avgLatency">-- ms</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">Average</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 1.2rem; font-weight: bold;" id="maxLatency">-- ms</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">Maximum</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 1.2rem; font-weight: bold;" id="minLatency">-- ms</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">Minimum</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Latency Graph -->
+                    <div style="height: 200px; background-color: #f7f9fa; border-radius: 5px; padding: 1rem; position: relative; margin-bottom: 1rem;">
+                        <canvas id="latencyChart" width="100%" height="100%"></canvas>
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted); font-size: 0.9rem; display: none;" id="noLatencyData">No latency data available</div>
+                    </div>
+                    
+                    <!-- Latency Status -->
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="width: 12px; height: 12px; border-radius: 50%;" id="latencyStatusIndicator"></div>
+                        <div id="latencyStatusText">Latency Status: Unknown</div>
+                    </div>
+                </div>
+                
+                <!-- Parameters Download Progress Section -->
+                <div class="card" style="margin-top: 1rem;">
+                    <div class="card-title">PARAMETERS DOWNLOAD PROGRESS</div>
+                    
+                    <!-- Progress Bar -->
+                    <div style="margin: 1.5rem 0;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <div style="font-size: 0.9rem; font-weight: bold;" id="paramPercentage">0%</div>
+                            <div style="font-size: 0.9rem; color: var(--text-muted);" id="paramCount">0/0 Parameters</div>
+                        </div>
+                        <div style="height: 20px; background-color: #f0f0f0; border-radius: 10px; overflow: hidden;">
+                            <div id="paramProgressBar" style="height: 100%; width: 0%; background-color: var(--primary-color); border-radius: 10px; transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Parameter Download Stats -->
+                    <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">Download Status</div>
+                            <div style="font-size: 1rem; font-weight: bold;" id="paramStatus">Not Started</div>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">Time Elapsed</div>
+                            <div style="font-size: 1rem; font-weight: bold;" id="paramTimeElapsed">00:00</div>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">Estimated Time Remaining</div>
+                            <div style="font-size: 1rem; font-weight: bold;" id="paramTimeRemaining">--:--</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Parameter Categories Progress -->
+                    <div style="margin-top: 1.5rem;">
+                        <div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 0.5rem;">Category Progress</div>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background-color: var(--light-color); text-align: left;">
+                                    <th style="padding: 0.5rem; font-size: 0.8rem;">Category</th>
+                                    <th style="padding: 0.5rem; font-size: 0.8rem;">Progress</th>
+                                    <th style="padding: 0.5rem; font-size: 0.8rem;">Count</th>
+                                </tr>
+                            </thead>
+                            <tbody id="paramCategoriesTable">
+                                <!-- Will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Flight Plan Tab removed as requested -->
             
             <!-- Chat Interface -->
@@ -821,7 +916,12 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+   // Variables for latency measurement
+   let pingInterval = null;
+   let lastPingTime = 0;
+   
    document.addEventListener('DOMContentLoaded', function() {
     // DOM elements
     const connectionModal = document.getElementById('connectionModal');
@@ -835,6 +935,21 @@
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
     const sendButton = document.getElementById('sendButton');
+    
+    // Latency & Parameters tab elements
+    const currentLatency = document.getElementById('currentLatency');
+    const avgLatency = document.getElementById('avgLatency');
+    const maxLatency = document.getElementById('maxLatency');
+    const minLatency = document.getElementById('minLatency');
+    const latencyStatusIndicator = document.getElementById('latencyStatusIndicator');
+    const latencyStatusText = document.getElementById('latencyStatusText');
+    const paramPercentage = document.getElementById('paramPercentage');
+    const paramCount = document.getElementById('paramCount');
+    const paramProgressBar = document.getElementById('paramProgressBar');
+    const paramStatus = document.getElementById('paramStatus');
+    const paramTimeElapsed = document.getElementById('paramTimeElapsed');
+    const paramTimeRemaining = document.getElementById('paramTimeRemaining');
+    const paramCategoriesTable = document.getElementById('paramCategoriesTable');
 
     // Dashboard elements
     const healthScoreText = document.getElementById('healthScoreText');
@@ -878,6 +993,20 @@
         socket.on('connect', function() {
             console.log('WebSocket connected');
         });
+        
+        // Handle pong response for latency measurement
+        socket.on('pong', function() {
+            const latency = Date.now() - lastPingTime;
+            const headerLatencyValue = document.getElementById('headerLatencyValue');
+            if (headerLatencyValue) {
+                headerLatencyValue.textContent = `${latency}ms`;
+            }
+            
+            // Also update the system status data
+            if (socket) {
+                socket.emit('update_latency', { latency: latency });
+            }
+        });
 
         socket.on('disconnect', function() {
             console.log('WebSocket disconnected');
@@ -887,6 +1016,25 @@
         // Listen for system status updates
         socket.on('system_status', function(data) {
             updateDashboard(data);
+            updateLatencyAndParams(data);
+            
+            // Update parameter progress in header
+            const headerParamsValue = document.getElementById('headerParamsValue');
+            if (data.params && headerParamsValue) {
+                headerParamsValue.textContent = `${data.params.percentage.toFixed(1)}%`;
+            }
+        });
+        
+        // Listen for parameter progress updates
+        socket.on('param_progress', function(data) {
+            // Update parameter progress in header
+            const headerParamsValue = document.getElementById('headerParamsValue');
+            if (data.params && headerParamsValue) {
+                headerParamsValue.textContent = `${data.params.percentage.toFixed(1)}%`;
+            }
+            
+            // Also update the parameter progress in the Parameters tab
+            updateLatencyAndParams(data);
         });
 
         // Listen for chat responses
@@ -997,10 +1145,56 @@
         if (connectButton && connectButton.querySelector('span')) {
             connectButton.querySelector('span').textContent = connected ? 'UAV' : 'Connect Drone';
         }
+        
+        // Show/hide header params and latency indicators
+        const headerParamsText = document.getElementById('headerParamsText');
+        const headerLatencyText = document.getElementById('headerLatencyText');
+        
+        if (headerParamsText) {
+            headerParamsText.style.display = connected ? 'inline' : 'none';
+        }
+        
+        if (headerLatencyText) {
+            headerLatencyText.style.display = connected ? 'inline' : 'none';
+        }
+        
+        // Start/stop latency measurement
+        if (connected) {
+            startLatencyMeasurement();
+        } else if (pingInterval) {
+            clearInterval(pingInterval);
+            pingInterval = null;
+        }
+    }
+    
+    // Function to measure latency
+    function startLatencyMeasurement() {
+        if (pingInterval) {
+            clearInterval(pingInterval);
+        }
+        
+        pingInterval = setInterval(() => {
+            if (socket && isConnected) {
+                lastPingTime = Date.now();
+                socket.emit('ping');
+            }
+        }, 2000); // Ping every 2 seconds
     }
 
     // Update dashboard with system status
     function updateDashboard(data) {
+        // Update header params and latency values
+        const headerParamsValue = document.getElementById('headerParamsValue');
+        const headerLatencyValue = document.getElementById('headerLatencyValue');
+        
+        if (headerParamsValue && data.params && data.params.percentage !== undefined) {
+            headerParamsValue.textContent = `${data.params.percentage}%`;
+        }
+        
+        if (headerLatencyValue && data.latency !== undefined) {
+            headerLatencyValue.textContent = `${data.latency}ms`;
+        }
+        
         // Only update elements if they exist
         if (healthScoreText) {
             healthScoreText.textContent = data.score;
@@ -1114,6 +1308,188 @@
 
                 subsystemTableBody.appendChild(row);
             });
+        }
+    }
+    
+    // Update latency and parameters tab
+    function updateLatencyAndParams(data) {
+        // Update latency information if available
+        if (data.latency !== undefined) {
+            if (currentLatency) currentLatency.textContent = `${data.latency} ms`;
+            
+            // Update latency status indicator
+            if (latencyStatusIndicator && latencyStatusText) {
+                let statusColor, statusText;
+                
+                if (data.latency < 100) {
+                    statusColor = 'var(--success-color)';
+                    statusText = 'Excellent';
+                } else if (data.latency < 200) {
+                    statusColor = 'var(--success-color)';
+                    statusText = 'Good';
+                } else if (data.latency < 300) {
+                    statusColor = 'var(--warning-color)';
+                    statusText = 'Fair';
+                } else {
+                    statusColor = 'var(--danger-color)';
+                    statusText = 'Poor';
+                }
+                
+                latencyStatusIndicator.style.backgroundColor = statusColor;
+                latencyStatusText.textContent = `Latency Status: ${statusText}`;
+            }
+            
+            // Update latency statistics
+            if (data.latency_stats) {
+                if (avgLatency) avgLatency.textContent = `${data.latency_stats.avg} ms`;
+                if (maxLatency) maxLatency.textContent = `${data.latency_stats.max} ms`;
+                if (minLatency) minLatency.textContent = `${data.latency_stats.min} ms`;
+            }
+            
+            // Update latency chart if it exists
+            updateLatencyChart(data.latency);
+        }
+        
+        // Update parameter download progress if available
+        if (data.params !== undefined) {
+            const percentage = data.params.percentage || 0;
+            const downloaded = data.params.downloaded || 0;
+            const total = data.params.total || 0;
+            const status = data.params.status || 'Not Started';
+            const timeElapsed = data.params.time_elapsed || '00:00';
+            const timeRemaining = data.params.time_remaining || '--:--';
+            
+            if (paramPercentage) paramPercentage.textContent = `${percentage}%`;
+            if (paramProgressBar) paramProgressBar.style.width = `${percentage}%`;
+            if (paramCount) paramCount.textContent = `${downloaded}/${total} Parameters`;
+            if (paramStatus) paramStatus.textContent = status;
+            if (paramTimeElapsed) paramTimeElapsed.textContent = timeElapsed;
+            if (paramTimeRemaining) paramTimeRemaining.textContent = timeRemaining;
+            
+            // Update parameter categories table if available
+            if (data.params.categories && paramCategoriesTable) {
+                paramCategoriesTable.innerHTML = '';
+                
+                Object.entries(data.params.categories).forEach(([category, info]) => {
+                    const row = document.createElement('tr');
+                    
+                    const categoryCell = document.createElement('td');
+                    categoryCell.style.padding = '0.5rem';
+                    categoryCell.style.borderBottom = '1px solid #f0f0f0';
+                    categoryCell.textContent = category;
+                    
+                    const progressCell = document.createElement('td');
+                    progressCell.style.padding = '0.5rem';
+                    progressCell.style.borderBottom = '1px solid #f0f0f0';
+                    
+                    const progressBar = document.createElement('div');
+                    progressBar.style.height = '10px';
+                    progressBar.style.backgroundColor = '#f0f0f0';
+                    progressBar.style.borderRadius = '5px';
+                    progressBar.style.overflow = 'hidden';
+                    
+                    const progressFill = document.createElement('div');
+                    progressFill.style.height = '100%';
+                    progressFill.style.width = `${info.percentage}%`;
+                    progressFill.style.backgroundColor = 'var(--primary-color)';
+                    progressFill.style.borderRadius = '5px';
+                    
+                    progressBar.appendChild(progressFill);
+                    progressCell.appendChild(progressBar);
+                    
+                    const countCell = document.createElement('td');
+                    countCell.style.padding = '0.5rem';
+                    countCell.style.borderBottom = '1px solid #f0f0f0';
+                    countCell.textContent = `${info.downloaded}/${info.total}`;
+                    
+                    row.appendChild(categoryCell);
+                    row.appendChild(progressCell);
+                    row.appendChild(countCell);
+                    
+                    paramCategoriesTable.appendChild(row);
+                });
+            }
+        }
+    }
+    
+    // Latency chart initialization and update
+    let latencyChart = null;
+    let latencyData = [];
+    const MAX_DATA_POINTS = 60; // Show last 60 data points
+    
+    function initLatencyChart() {
+        const ctx = document.getElementById('latencyChart');
+        if (!ctx) return;
+        
+        latencyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(MAX_DATA_POINTS).fill(''),
+                datasets: [{
+                    label: 'Latency (ms)',
+                    data: Array(MAX_DATA_POINTS).fill(null),
+                    borderColor: 'var(--primary-color)',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Milliseconds'
+                        }
+                    },
+                    x: {
+                        display: false
+                    }
+                }
+            }
+        });
+    }
+    
+    function updateLatencyChart(newLatency) {
+        if (!latencyChart) {
+            initLatencyChart();
+            if (!latencyChart) return; // Exit if chart initialization failed
+        }
+        
+        // Add new data point
+        latencyData.push(newLatency);
+        
+        // Keep only the last MAX_DATA_POINTS data points
+        if (latencyData.length > MAX_DATA_POINTS) {
+            latencyData = latencyData.slice(-MAX_DATA_POINTS);
+        }
+        
+        // Update chart data
+        latencyChart.data.datasets[0].data = latencyData;
+        
+        // Update labels (just for proper spacing)
+        latencyChart.data.labels = Array(latencyData.length).fill('');
+        
+        // Update chart
+        latencyChart.update();
+        
+        // Show/hide "no data" message
+        const noDataMsg = document.getElementById('noLatencyData');
+        if (noDataMsg) {
+            noDataMsg.style.display = latencyData.length > 0 ? 'none' : 'block';
         }
     }
 
@@ -1245,7 +1621,7 @@
                 // Adjust width of the active tab content to make room for chat
                 const activeTab = document.getElementById(`${tabId}-tab`);
                 if (activeTab) {
-                    activeTab.style.width = '50%';
+                    activeTab.style.width = '65%';
                 }
             }
         });
