@@ -290,9 +290,7 @@ def handle_chat_message(data):
                 logger.error(f"Error processing query: {str(e)}")
                 socketio.emit('chat_response', {"error": str(e)}, room=client_id)
 
-        # Start processing in a thread
-        threading.Thread(target=process_and_respond).start()
-
+       
     except Exception as e:
         logger.error(f"Error handling chat message: {str(e)}")
         emit('chat_response', {"error": str(e)}, room=client_id)

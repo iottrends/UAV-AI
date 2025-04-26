@@ -25,11 +25,12 @@ agent_logger.info("Initializing Gemini model")
 #genai.configure(api_key="AIzaSyCSmT6jaHLH60SdoPQmMPMZXxMbqKBftG4")
 
 # Initialize the model once
-gemini_model = genai.GenerativeModel("gemini-1.5-pro")
+#gemini_model = genai.GenerativeModel("gemini-1.5-pro")
+gemini_model = genai.GenerativeModel("gemini-2.0-flash")
 
 # Define prompt template correctly
 PROMPT_TEMPLATE = """You are a MAVLink drone assistant.
-Analyze the MAVLink messages and the user query to determine intent.
+Analyze the MAVLink messages, user query, and available parameter references to determine intent.
 
 ### Intent Categories:
 1️⃣ **Status Queries:**  
@@ -38,14 +39,22 @@ Analyze the MAVLink messages and the user query to determine intent.
 2️⃣ **Diagnostic Queries:**  
    - "Why is the motor not spinning?" → Checks ESC status.  
    - "Why is the compass not working?" → Checks sensor health & calibration.  
+3️⃣ **Tuning Queries:**  
+   - "How can I tune my drone for better stability?" → Respond with relevant parameter list and recommended values.
 
 ### Instructions:
 - If it is a **status query**, extract and parse the MAVLink data.
 - If it is a **diagnostic query**, find possible issues and suggest a fix.
-- If a fix is required, provide the **MAVLink command** needed.
+- If it is a **tuning query**, respond first with relevant parameters and their recommended values.
+- Use the available **parameter list** for referencing correct parameters and values.
+- **Ask clarifying questions ONLY if essential information is missing** from the user query.
+- If a fix is needed, suggest the correct **MAVLink command** or **parameter update**.
 
 ### MAVLink Messages:
 {mavlink_context}
+
+### Available Parameters:
+{parameter_context}
 
 ### User Query:
 "{query}"
@@ -53,12 +62,13 @@ Analyze the MAVLink messages and the user query to determine intent.
 ### Expected JSON Response:
 Respond in **strict JSON format only**, without extra text.
 {{
-    "intent": "status" or "diagnostic",
+    "intent": "status" or "diagnostic" or "tuning",
     "message": "your response here",
-    "fix_command": "optional MAVLink command or null"
+    "fix_command": "optional MAVLink command or null",
+    "recommended_param": "list of recommended parameters and values, or null",
+    "clarification_needed": "your clarification question if needed, or null"
 }}
 """
-
 
 def ask_gemini(query):
     """Process the user query using Gemini AI with MAVLink context."""
