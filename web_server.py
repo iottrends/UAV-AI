@@ -165,23 +165,65 @@ def handle_parameters():
             # Log the parameters being updated
             logger.info(f"Updating parameters: {data}")
             
-            # In a real implementation, we would update the parameters on the drone
-            # For now, we'll just simulate success
-            
-            # TODO: Implement actual parameter update logic
-            # Example:
-            # for param_name, value in data.items():
-            #     validator.set_parameter(param_name, value)
-            
-            return jsonify({
-                "status": "success",
-                "message": "Parameters updated successfully",
-                "updated": list(data.keys())
-            })
+            try:
+                # Send MAVLink messages to update parameters on the flight controller
+                for param_name, value in data.items():
+                    print(f"Updating parameter {param_name} to {value}")
+                    if not validator.update_parameter(param_name, value):
+                        raise ValueError(f"Failed to update parameter {param_name}")
+                
+                print("Wait for and verify parameter updates")
+                start_time = time.time()
+                timeout = 2  # timeout to 2 seconds
+                verified_params = {}
+                last_mismatch = None
+                
+                while time.time() - start_time < timeout:
+                    # Check if all parameters have been updated in params_dict
+                    verified_params = {
+                        param: validator.params_dict.get(param)
+                        for param in data.keys()
+                    }
+                    
+                    # Compare values with tolerance for floating point numbers
+                    mismatches = [
+                        param for param, value in data.items()
+                        if not (
+                            verified_params.get(param) is not None and
+                            abs(float(verified_params[param]) - float(value)) < 0.0001
+                        )
+                    ]
+                    
+                    if not mismatches:
+                        return jsonify({
+                            "status": "success",
+                            "message": "Parameters updated successfully",
+                            "updated": list(data.keys())
+                        })
+                    
+                    # Track last mismatch for better error reporting
+                    if mismatches != last_mismatch:
+                        logger.info(f"Waiting for parameters to update: {mismatches}")
+                        last_mismatch = mismatches
+                    
+                    time.sleep(0.1)
+                
+                # If we get here, timeout occurred
+                raise TimeoutError(
+                    f"Timeout waiting for parameter updates. "
+                    f"Last verified values: {verified_params}. "
+                    f"Pending parameters: {last_mismatch}"
+                )
+            except Exception as e:
+                logger.error(f"Error updating parameters: {str(e)}")
+                return jsonify({
+                    "status": "error",
+                    "message": f"Failed to update parameters: {str(e)}"
+                }), 500
     except Exception as e:
         logger.error(f"Error handling parameters: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
+####################################################################################
 
 @app.route('/api/query', methods=['POST'])
 def process_query():
@@ -636,6 +678,7 @@ def telemetry_update_loop():
     param_update_counter = 0
     
     while True:
+        print("Total number of threads:", threading.active_count())
         try:
             # Update system health from validator data
             if validator and validator.hardware_validated and connected_clients:

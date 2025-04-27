@@ -69,7 +69,7 @@ class MavlinkHandler:
         except Exception as e:
             mavlink_logger.error(f"❌ Connection error: {e}")
             return False
-
+#############################################################################
     def start_message_loop(self):
         """Start the MAVLink message reception loop in a separate thread."""
         if not self.is_connected:
@@ -78,7 +78,7 @@ class MavlinkHandler:
 
         threading.Thread(target=self._message_loop, daemon=True).start()
         return True
-
+###########################################################################################
     def _message_loop(self):
         """Main loop for receiving MAVLink messages."""
         try:
@@ -96,7 +96,7 @@ class MavlinkHandler:
             mavlink_logger.error(traceback.format_exc())
         finally:
             self.is_connected = False
-
+########################################################################################
     def _process_message(self, msg):
         """Process received MAVLink messages."""
         msg_dict = msg.to_dict()  # Create dict from message for processing
@@ -175,7 +175,7 @@ class MavlinkHandler:
     def on_params_received(self):
         """Called when all parameters are received. Override this in subclass."""
         pass
-
+############################################################################################
     def _check_heartbeat_timeout(self):
         """Monitor for heartbeat timeouts."""
         while self.is_connected:
@@ -206,7 +206,7 @@ class MavlinkHandler:
             # store tx mavlink msg
             self.tx_mav_msg.append("DATA_STREAM_REQUEST")
         return True
-
+####################################################################################
     def request_autopilot_version(self):
         """Request autopilot version information."""
         if not self.is_connected:
@@ -223,7 +223,7 @@ class MavlinkHandler:
         )
         self.tx_mav_msg.append("VERSION_REQUEST")
         return True
-
+#############################################################################
     def request_parameter_list(self):
         """Request full parameter list."""
         if not self.is_connected:
@@ -237,11 +237,39 @@ class MavlinkHandler:
         )
         self.tx_mav_msg.append("PARAM_REQUEST")
         return True
-
+#########################################################################
     def get_parameters(self):
         """Return the current parameter dictionary."""
         return self.params_dict.copy()
+########################################################################
+    def update_parameter(self, param_name, value):
+        """Update a parameter on the flight controller."""
+        if not self.is_connected:
+            return False
 
+        try:
+            # Convert parameter value to float
+            param_value = float(value)
+            
+            # Send parameter set command
+            self.mav_conn.mav.param_set_send(
+                self.target_system,
+                self.target_component,
+                param_name.encode('utf-8'),
+                param_value,
+                mavutil.mavlink.MAV_PARAM_TYPE_REAL32
+            )
+            
+            # Store the sent command
+            self.tx_mav_msg.append(f"PARAM_SET:{param_name}")
+            
+            mavlink_logger.info(f"⏳ Sent parameter update: {param_name} = {param_value}")
+            return True
+            
+        except Exception as e:
+            mavlink_logger.error(f"❌ Failed to update parameter {param_name}: {e}")
+            return False
+################################################################################
     ##log file handler
     def request_blackbox_logs(self):
         if not self.is_connected:
@@ -260,7 +288,7 @@ class MavlinkHandler:
         )
         self.tx_mav_msg.append("LOG_REQUEST")
         return True
-
+#################################################################################
     def on_log_list_received(self, log_list):
         mavlink_logger.info(f"📜 Received log list: {len(log_list)} logs")
         if not log_list:
@@ -278,7 +306,7 @@ class MavlinkHandler:
                     0,  # Offset
                     0xFFFFFFFF  # Request all data
                 )
-
+####################################################################################
     def on_log_data_received(self, log_id, data):
         """Handle received log data (override in subclass)."""
         if len(self.log_list) == 0:
@@ -298,7 +326,7 @@ class MavlinkHandler:
     def parse_blackbox_log(self, log_filename, log_id):
         """Parse black-box log (override in subclass)."""
         pass
-
+#####################################################################################
     ##log file handler
     def disconnect(self):
         """Disconnect from MAVLink."""
@@ -309,7 +337,7 @@ class MavlinkHandler:
             except:
                 pass
         mavlink_logger.info("🔌 Disconnected from MAVLink")
-
+######################################################################################
     def parse_firmware_info(self, msg):
         flight_sw_major = (msg.flight_sw_version >> 24) & 0xFF
         flight_sw_minor = (msg.flight_sw_version >> 16) & 0xFF
