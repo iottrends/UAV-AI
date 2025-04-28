@@ -110,6 +110,9 @@ def connect_drone():
             connection_params["baud"] = baud
             connection_params["connect_requested"] = True
             connection_params["connect_success"] = True
+            #paass the socketio instance to the validator
+            validator.update_socketio(socketio)
+            print("passed socketio instance to validator!!!!")
             
             logger.info(f"Connection successful to {port} at {baud} baud")
             return jsonify({
@@ -223,8 +226,23 @@ def handle_parameters():
     except Exception as e:
         logger.error(f"Error handling parameters: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
-####################################################################################
 
+@app.route('/api/firmware', methods=['GET'])
+def get_firmware_info():
+    """API endpoint to get firmware information"""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+
+    try:
+        if validator.firmware_data:
+            return jsonify({"status": "success", "firmware": validator.firmware_data})
+        else:
+            return jsonify({"status": "error", "message": "Firmware information not available"}), 404
+    except Exception as e:
+        logger.error(f"Error getting firmware info: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+####################################################################################
 @app.route('/api/query', methods=['POST'])
 def process_query():
     """API endpoint to process a query through both AI systems"""
@@ -650,26 +668,6 @@ def update_system_health():
         logger.exception("Exception details:")  # Log the full traceback
 
 #####################################################################
-
-def update_param_progress():
-    """Update and broadcast parameter download progress"""
-    try:
-        if validator and connected_clients:
-            # Get parameter progress from validator
-            param_percentage = validator.param_progress if hasattr(validator, 'param_progress') else 0
-            param_count = validator.param_count if hasattr(validator, 'param_count') else 0
-            param_downloaded = int(param_count * (param_percentage / 100)) if param_count > 0 else 0
-
-            socketio.emit('parameter_progress', {
-                "percentage": param_percentage,
-                "downloaded": param_downloaded,
-                "total": param_count
-            }, room=connected_clients)
-            
-               
-    except Exception as e:
-        logger.error(f"Error updating parameter progress: {str(e)}")
-
 ######################################################################
 
 def telemetry_update_loop():
@@ -690,12 +688,9 @@ def telemetry_update_loop():
                 # Update and broadcast system health
                 update_system_health()
                 time.sleep(1)  # Sleep to avoid excessive updates
-            elif validator and not validator.hardware_validated:    
-                # Update parameter progress more frequently
-                update_param_progress()
-                time.sleep(0.25)  # Sleep to avoid excessive updates
+            
             else:
-                time.sleep(1)  # Sleep to avoid excessive updates
+                time.sleep(2)  # Sleep to avoid excessive updates
             
         except Exception as e:
             logger.error(f"Error in telemetry update loop: {str(e)}")
@@ -712,6 +707,7 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
 
     # Store references to backend components
     validator = validator_instance
+    #validator.update_socketio(socketio)
     jarvis_module = jarvis
     #llm_ai_module = llm_ai
 

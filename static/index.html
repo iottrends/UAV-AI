@@ -632,6 +632,34 @@
                      </tbody>
                   </table>
                </div>
+               <!-- Firmware Information Card -->
+               <div class="card">
+                  <div class="card-title">FIRMWARE INFORMATION</div>
+                  <table class="subsystem-table">
+                     <tbody>
+                        <tr>
+                           <td>Firmware Version</td>
+                           <td id="firmwareVersion">--</td>
+                        </tr>
+                        <tr>
+                           <td>Custom Version</td>
+                           <td id="customVersion">--</td>
+                        </tr>
+                        <tr>
+                           <td>Board Version</td>
+                           <td id="boardVersion">--</td>
+                        </tr>
+                        <tr>
+                           <td>Vendor/Product ID</td>
+                           <td id="vendorProductId">--</td>
+                        </tr>
+                        <tr>
+                           <td>Capabilities</td>
+                           <td id="capabilities">--</td>
+                        </tr>
+                     </tbody>
+                  </table>
+               </div>
             </div>
             <!-- Parameters Tab -->
             <div class="tab-content" id="parameters-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
@@ -881,9 +909,9 @@
           // Connection status
           let isConnected = false;
           let socket = null;
-         
-          // Initialize WebSocket connection
-          function initWebSocket() {
+         // Initialize WebSocket connection
+         initWebSocket();
+         function initWebSocket() {
               // Get the current host
               const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
               const host = window.location.host;
@@ -924,6 +952,7 @@
                   const headerParamsValue = document.getElementById('headerParamsValue');
                   if (data.params && headerParamsValue) {
                       headerParamsValue.textContent = `${data.params.percentage.toFixed(1)}%`;
+                      console.log("Received parameter_progress (system_status) data:", data.params);
                   }
               });
               
@@ -933,8 +962,9 @@
                   const headerParamsValue = document.getElementById('headerParamsValue');
                   if (data.params && headerParamsValue) {
                       headerParamsValue.textContent = `${data.params.percentage.toFixed(1)}%`;
+                      console.log("Abhinav:Received parameter_progress (param_progress) data:", data.params);
                   }
-                  
+
                   // Also update the parameter progress in the Parameters tab
                   updateLatencyAndParams(data);
               });
@@ -1058,9 +1088,9 @@
                           text: `<strong>System:</strong> Successfully connected to drone on ${port} at ${baud} baud. Initializing drone parameters...`,
                           time: getCurrentTime()
                       });
-                      // Initialize WebSocket connection after successful API connection
-                      initWebSocket();
-                  } else {
+// Initialize WebSocket connection after successful API connection
+//initWebSocket();
+} else {
                       updateConnectionStatus(false);
                       addMessage({
                           text: `<strong>Error:</strong> Failed to connect to drone: ${data.message}`,
@@ -1950,5 +1980,43 @@
          }
          }
       </style>
+      <script>
+         // Function to fetch firmware information
+         function fetchFirmwareInfo() {
+            fetch('/api/firmware')
+               .then(response => response.json())
+               .then(data => {
+                  if (data.status === 'success') {
+                     const firmware = data.firmware;
+                     document.getElementById('firmwareVersion').textContent = firmware.firmware_version || '--';
+                     document.getElementById('customVersion').textContent = firmware.flight_custom_version || '--';
+                     document.getElementById('boardVersion').textContent = firmware.board_version || '--';
+                     document.getElementById('vendorProductId').textContent = `Vendor ID: ${firmware.vendor_id || '--'} / Product ID: ${firmware.product_id || '--'}`;
+                     document.getElementById('capabilities').textContent = firmware.capabilities ? firmware.capabilities.join(', ') : '--';
+                  } else {
+                     console.error('Failed to fetch firmware info:', data.message);
+                     document.getElementById('firmwareVersion').textContent = 'Error';
+                     document.getElementById('customVersion').textContent = 'Error';
+                     document.getElementById('boardVersion').textContent = 'Error';
+                     document.getElementById('vendorProductId').textContent = 'Error';
+                     document.getElementById('capabilities').textContent = 'Error';
+                  }
+               })
+               .catch(error => {
+                  console.error('Error fetching firmware info:', error);
+                  document.getElementById('firmwareVersion').textContent = 'Error';
+                  document.getElementById('customVersion').textContent = 'Error';
+                  document.getElementById('boardVersion').textContent = 'Error';
+                  document.getElementById('vendorProductId').textContent = 'Error';
+                  document.getElementById('capabilities').textContent = 'Error';
+               });
+         }
+
+         // Fetch firmware info every 5 seconds
+         setInterval(fetchFirmwareInfo, 5000);
+
+         // Call it once on load
+         fetchFirmwareInfo();
+      </script>
    </body>
 </html>

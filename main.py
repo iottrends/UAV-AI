@@ -70,6 +70,7 @@ def main():
             # Wait for validation to complete
             print("Waiting for hardware validation...")
             while not validator.hardware_validated:
+                print("Waiting for hardware validation to complete...")
                 time.sleep(0.5)
 
             mavlink_logger.info("Hardware validation complete!")

@@ -7,6 +7,7 @@ import os
 from pymavlink import mavutil
 import JARVIS
 from collections import deque
+import socketio
 
 # Update: Get the mavlink logger from root when available
 mavlink_logger = logging.getLogger('mavlink')
@@ -15,6 +16,8 @@ class MavlinkHandler:
         self.mav_conn = None
         self.ws_uri = None
         self.params_dict = {}
+        self.socketio = None  
+        mavlink_logger.info("SocketIO instance updated successfully")
         self.param_done = 0
         self.last_heartbeat = 0
         self.heartbeat_timeout_flag = False
@@ -25,6 +28,7 @@ class MavlinkHandler:
         self.target_component = None
         self.log_directory = "blackbox_logs"
         self.log_list = []  # store log Ids from Log_Entry messages
+        self.firmware_data = {}
         os.makedirs(self.log_directory, exist_ok=True)
         self.rx_mav_msg = list(range (100)) # rx mavlink list size 100
         self.ai_mavlink_ctx = deque(maxlen=10)
@@ -69,6 +73,14 @@ class MavlinkHandler:
         except Exception as e:
             mavlink_logger.error(f"❌ Connection error: {e}")
             return False
+
+##############################################################################
+    def update_socketio(self, socketio_instance):
+        """Update the SocketIO instance."""
+        self.socketio = socketio_instance
+        mavlink_logger.info("SocketIO instance updated successfully")
+
+        
 #############################################################################
     def start_message_loop(self):
         """Start the MAVLink message reception loop in a separate thread."""
@@ -149,7 +161,7 @@ class MavlinkHandler:
 
         elif msg.get_type() == "LOG_DATA":
             self.on_log_data_received(msg.id, msg.data)
-
+########################################################################################
     def _process_parameter(self, msg):
         """Process parameter messages."""
         param_id = msg.param_id
@@ -164,14 +176,32 @@ class MavlinkHandler:
         if param_index % 50 == 0 or param_index == self.param_count - 1:
             self.param_progress = (param_index + 1) / self.param_count * 100
             mavlink_logger.info(f"⏳ Parameter download: {self.param_progress:.1f}% ({param_index + 1}/{self.param_count})")
+            print(f"⏳ Parameter download: {self.param_progress:.1f}% ({param_index + 1}/{self.param_count})")
+
+            ## emit param progress to frontend
+            if self.socketio:
+                self.socketio.emit('parameter_progress', {
+                "percentage": self.param_progress,
+                "downloaded": param_index + 1,
+                "total": self.param_count
+            })
 
         # Check if we've received all parameters
         if len(self.params_dict) >= self.param_count > 0:
             mavlink_logger.info(f"✅ All {self.param_count} parameters received!")
             mavlink_logger.info(f"Abhinav Params: {self.params_dict}")
             # Notify that all parameters are received
+            #emit to frontend
             self.on_params_received()
+            if self.socketio:
+                self.socketio.emit('parameter_progress', {
+                    "percentage": self.param_progress,
+                    "downloaded": param_index + 1,
+                    "total": self.param_count
+                })
 
+
+#######################################################################
     def on_params_received(self):
         """Called when all parameters are received. Override this in subclass."""
         pass
@@ -395,6 +425,15 @@ class MavlinkHandler:
         mavlink_logger.info("\n✅ Capabilities:")
         for cap in detected_capabilities:
             mavlink_logger.info(f"  ✔ {cap}")
+
+        self.firmware_data = {
+            "firmware_version": f"{flight_sw_major}.{flight_sw_minor}.{flight_sw_patch} (Type: {flight_sw_type})",
+            "board_version": f"{board_version_major}.{board_version_minor}",
+            "flight_custom_version": flight_custom_str,
+            "vendor_id": msg.vendor_id,
+            "product_id": msg.product_id,
+            "capabilities": detected_capabilities
+        }
 
     def decode_sensor_bitmask(self, msg):
         bitmask = msg.onboard_control_sensors_present

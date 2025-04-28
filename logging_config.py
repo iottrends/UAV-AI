@@ -1,5 +1,8 @@
 import logging
 import os
+import logging.handlers
+import glob
+import time
 
 
 def setup_logging():
@@ -13,6 +16,29 @@ def setup_logging():
     # Ensure log directory exists
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
+    
+    # Cleanup old logs if total size exceeds 1GB
+    def cleanup_old_logs():
+        log_files = glob.glob(os.path.join(log_dir, '*.log')) + \
+                   glob.glob(os.path.join(log_dir, '*.txt'))
+        
+        # Calculate total size
+        total_size = sum(os.path.getsize(f) for f in log_files)
+        
+        # If over 1GB, delete oldest files
+        if total_size > 1024*1024*1024:  # 1GB
+            # Sort by modification time (oldest first)
+            log_files.sort(key=os.path.getmtime)
+            while total_size > 1024*1024*1024 and len(log_files) > 1:
+                oldest = log_files.pop(0)
+                total_size -= os.path.getsize(oldest)
+                try:
+                    os.remove(oldest)
+                except Exception as e:
+                    print(f"Error removing log file {oldest}: {e}")
+    
+    # Run cleanup before setting up new logs
+    cleanup_old_logs()
 
     # Configure root logger
     root_logger = logging.getLogger()
@@ -31,7 +57,12 @@ def setup_logging():
     mavlink_logger = logging.getLogger('mavlink')
     mavlink_logger.setLevel(logging.DEBUG)
     # Use immediate flush for mavlink logs (high volume)
-    mavlink_handler = logging.FileHandler(os.path.join(log_dir, 'mavlink_log.txt'), encoding='utf-8')
+    mavlink_handler = logging.handlers.RotatingFileHandler(
+        os.path.join(log_dir, 'mavlink_log.txt'),
+        encoding='utf-8',
+        maxBytes=100*1024*1024,  # 100MB per file
+        backupCount=5  # Keep 5 backup files
+    )
     mavlink_handler.setLevel(logging.DEBUG)
     mavlink_handler.setFormatter(formatter)
     # Set flush behavior
@@ -42,7 +73,12 @@ def setup_logging():
     # 2. Configure Agent logger
     agent_logger = logging.getLogger('agent')
     agent_logger.setLevel(logging.DEBUG)
-    agent_handler = logging.FileHandler(os.path.join(log_dir, 'Agent.log'), encoding='utf-8')
+    agent_handler = logging.handlers.RotatingFileHandler(
+        os.path.join(log_dir, 'Agent.log'),
+        encoding='utf-8',
+        maxBytes=100*1024*1024,  # 100MB per file
+        backupCount=5  # Keep 5 backup files
+    )
     agent_handler.setLevel(logging.DEBUG)
     agent_handler.setFormatter(formatter)
     # Set flush behavior
@@ -53,7 +89,12 @@ def setup_logging():
     # 3. Configure Web Server logger
     web_logger = logging.getLogger('web_server')
     web_logger.setLevel(logging.DEBUG)
-    web_handler = logging.FileHandler(os.path.join(log_dir, 'webserver.log'), encoding='utf-8')
+    web_handler = logging.handlers.RotatingFileHandler(
+        os.path.join(log_dir, 'webserver.log'),
+        encoding='utf-8',
+        maxBytes=100*1024*1024,  # 100MB per file
+        backupCount=5  # Keep 5 backup files
+    )
     web_handler.setLevel(logging.DEBUG)
     web_handler.setFormatter(formatter)
     # Set flush behavior
