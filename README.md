@@ -4,6 +4,11 @@
 
 AI-powered, web-based ground station for ArduPilot. Voice commands, real-time diagnostics, MAVLink over serial/UDP. Runs on RPi Zero 2W, fits in your pocket.
 
+## Demo Videos
+
+- [UAV-AI Demo - AI Diagnostics & Voice Commands](https://www.youtube.com/watch?v=UgpRxgj8m-M)
+- [UAV-AI Demo - Drone Connection & Telemetry](https://www.youtube.com/watch?v=JldcjQK7234)
+
 ## What's Inside (~3,700 lines of code)
 
 **MAVLink Layer**
