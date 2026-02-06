@@ -249,6 +249,74 @@ RPi Zero 2W
 
 **Note on RPi Zero 2W ports:** The Zero 2W has only one micro USB data port (the other is power only), hence the USB hub is required to connect both the touchscreen's touch input and the 4G dongle.
 
+### Option C: OpenHD Integration — AI-Powered HUD with Voice Commands
+
+UAV-AI can run alongside [OpenHD](https://openhdfpv.org/) on the same RPi, adding AI diagnostics and voice commands on top of the live video feed. This turns your FPV setup into an intelligent HUD.
+
+```
+┌──────────────────────────────────────────────┐
+│  OpenHD Video Feed (goggles or ground screen) │
+│                                               │
+│   ALT: 45m    SPD: 12m/s                     │
+│   BAT: 14.2V  GPS: 3D (12 sats)             │
+│                                               │
+│   ┌─────────────────────────────────────┐     │
+│   │ JARVIS: Motor 3 vibration is high.  │     │
+│   │ Prop damage likely. Recommend land. │     │
+│   └─────────────────────────────────────┘     │
+│                                               │
+│   Pilot: "Land now"                           │
+│   JARVIS: "Initiating RTL. ETA 30 seconds."  │
+└──────────────────────────────────────────────┘
+```
+
+**Why voice commands matter in-flight:**
+- Hands are on the sticks — you can't touch a screen
+- Eyes are on the video feed — you can't read a dashboard
+- Radio switches are limited (6-8) and pre-mapped
+- Voice gives unlimited commands without taking hands off sticks
+
+**Example in-flight voice interactions:**
+- "What's my battery?" → "14.2 volts, approximately 6 minutes of flight time remaining"
+- "Why is it drifting?" → "GPS fix is 2D with only 4 satellites. Recommend switching to LOITER only when 3D fix is achieved"
+- "Switch to RTL" → sends MAV_CMD to change flight mode
+- "Arm the drone" / "Kill motors" → direct MAVLink commands via voice
+
+**How it fits with OpenHD:**
+
+| Component | Role |
+|---|---|
+| OpenHD | Video streaming, OSD telemetry overlay |
+| UAV-AI | AI diagnostics, voice commands, parameter management |
+| RPi (shared) | Runs both — OpenHD handles video, UAV-AI handles intelligence |
+
+Both OpenHD and UAV-AI consume MAVLink from the flight controller. OpenHD renders it as an OSD overlay on the video feed, while UAV-AI feeds it to the AI for diagnostics and voice interaction. They complement each other — OpenHD shows you what's happening, UAV-AI tells you why and what to do about it.
+
+## Why UAV-AI?
+
+**The problem:** Troubleshooting and tuning a drone in the field is painful. You crash, something isn't right, and now you're staring at 800 parameters in Mission Planner on a laptop trying to figure out what went wrong. Or worse — you're mid-flight and something feels off but you can't diagnose it without landing.
+
+**Today's workflow:**
+1. Pull out laptop
+2. Connect USB cable
+3. Open Mission Planner
+4. Stare at 800 parameters
+5. Google the error message
+6. Read ArduPilot wiki for 20 minutes
+7. Maybe fix it, maybe pack up and go home
+
+**With UAV-AI:**
+1. Open phone → "Hey JARVIS, why did it flip on takeoff?"
+2. "Your MOT_SPIN_ARM is too low for your motor/prop combo, and SERVO3 output is reversed. Want me to fix it?"
+3. "Yes"
+4. Fixed. Fly again.
+
+**This tool is built for:**
+- FPV pilots who don't want to carry a laptop to the field
+- ArduPilot beginners who want plain-English diagnostics instead of reading param docs
+- System integrators doing rapid assembly and validation
+- Anyone who has ever rage-quit a tuning session
+
 ## Logging
 
 The system maintains several log files in the `logs/` directory:
