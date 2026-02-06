@@ -6,11 +6,13 @@ AI-powered, web-based ground station for ArduPilot. Voice commands, real-time di
 
 ## Demo Videos
 
-- [UAV-AI Demo - AI Diagnostics & Voice Commands](https://www.youtube.com/watch?v=UgpRxgj8m-M)
-- [UAV-AI Demo - Drone Connection & Telemetry](https://www.youtube.com/watch?v=JldcjQK7234)
+#### AI Diagnostics & Voice Commands
+[![UAV-AI Demo 1](https://img.youtube.com/vi/UgpRxgj8m-M/maxresdefault.jpg)](https://www.youtube.com/watch?v=UgpRxgj8m-M)
+
+#### Drone Connection & Telemetry
+[![UAV-AI Demo 2](https://img.youtube.com/vi/JldcjQK7234/maxresdefault.jpg)](https://www.youtube.com/watch?v=JldcjQK7234)
 
 ## What's Inside (~3,700 lines of code)
-
 **MAVLink Layer**
 - Serial, WebSocket, and UDP connections
 - Full parameter list download + progress tracking
@@ -345,3 +347,4 @@ The system maintains several log files in the `logs/` directory:
 - [PyMAVLink](https://github.com/ArduPilot/pymavlink) for MAVLink protocol support
 - [Flask](https://flask.palletsprojects.com/) for the web framework
 - [Google Generative AI](https://ai.google.dev/) for the Gemini API
+
