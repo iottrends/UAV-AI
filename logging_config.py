@@ -102,11 +102,28 @@ def setup_logging():
     web_logger.addHandler(web_handler)
     web_logger.propagate = False  # Don't send to root logger
 
+    # 4. Configure STT Module logger
+    stt_logger = logging.getLogger('stt_module')
+    stt_logger.setLevel(logging.DEBUG)
+    stt_handler = logging.handlers.RotatingFileHandler(
+        os.path.join(log_dir, 'STT.log'),
+        encoding='utf-8',
+        maxBytes=100*1024*1024,  # 100MB per file
+        backupCount=5  # Keep 5 backup files
+    )
+    stt_handler.setLevel(logging.DEBUG)
+    stt_handler.setFormatter(formatter)
+    # Set flush behavior
+    stt_handler.flush = lambda: stt_handler.stream.flush()
+    stt_logger.addHandler(stt_handler)
+    stt_logger.propagate = False  # Don't send to root logger
+
     # Create a dictionary of loggers for easy access
     loggers = {
         'mavlink': mavlink_logger,
         'agent': agent_logger,
-        'web_server': web_logger
+        'web_server': web_logger,
+        'stt_module': stt_logger
     }
 
     # Add a custom filter to force flushing after each log entry

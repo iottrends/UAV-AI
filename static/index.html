@@ -395,6 +395,37 @@
          .send-button:hover {
          background-color: #2980b9;
          }
+         .voice-button {
+         width: 40px;
+         height: 40px;
+         border-radius: 50%;
+         background-color: var(--success-color); /* Green for voice */
+         display: flex;
+         justify-content: center;
+         align-items: center;
+         color: var(--white-color);
+         border: none;
+         cursor: pointer;
+         transition: background-color 0.2s;
+         }
+         .voice-button:hover {
+         background-color: #27ae60;
+         }
+         .voice-button.active {
+         background-color: var(--danger-color); /* Red when active/recording */
+         }
+         .voice-status-indicator {
+         display: none; /* Hidden by default */
+         position: absolute;
+         bottom: 15px;
+         right: 15px;
+         padding: 8px 12px;
+         border-radius: 20px;
+         background-color: rgba(0, 0, 0, 0.7);
+         color: var(--white-color);
+         font-size: 0.8rem;
+         z-index: 1001;
+         }
          /* Connection modal */
          .modal {
          display: none;
@@ -729,7 +760,12 @@
             <!-- Logs Tab -->
             <div class="tab-content" id="logs-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow);">
                <h2 class="dashboard-title">Logs</h2>
-               <p>Log content will be displayed here.</p>
+               <button id="fetchLogsButton" class="action-button" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; margin-bottom: 1rem;">
+               <i class="fas fa-download"></i> Fetch Logs
+               </button>
+               <div id="logContent" style="white-space: pre-wrap; background-color: #f0f0f0; padding: 1rem; border-radius: 5px; max-height: 400px; overflow-y: auto;">
+                  No logs fetched yet.
+               </div>
             </div>
             <!-- Latency & Parameters Tab -->
             <div class="tab-content" id="latency-params-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
@@ -821,10 +857,14 @@
                </div>
                <div class="chat-input">
                   <input type="text" class="chat-input-field" id="chatInput" placeholder="Ask a question about your drone...">
+                  <button class="voice-button" id="voiceButton">
+                     <i class="fas fa-microphone"></i>
+                  </button>
                   <button class="send-button" id="sendButton">
-                  <i class="fas fa-paper-plane"></i>
+                     <i class="fas fa-paper-plane"></i>
                   </button>
                </div>
+               <div class="voice-status-indicator" id="voiceStatusIndicator"></div>
             </div>
          </div>
       </div>
@@ -832,13 +872,29 @@
       <div class="modal" id="connectionModal">
          <div class="modal-content">
             <div class="modal-title">Connect to Drone</div>
-            <div class="form-group">
-               <label for="portInput">Port:</label>
-               <input type="text" id="portInput" value="COM3" placeholder="COM3">
+            <div class="form-group" style="display:flex;gap:1.5rem;align-items:center;">
+               <label><input type="radio" name="connType" value="serial" checked onchange="toggleConnFields()"> Serial</label>
+               <label><input type="radio" name="connType" value="ip" onchange="toggleConnFields()"> IP (UDP)</label>
             </div>
-            <div class="form-group">
-               <label for="baudInput">Baud Rate:</label>
-               <input type="text" id="baudInput" value="115200" placeholder="115200">
+            <div id="serialFields">
+               <div class="form-group">
+                  <label for="portInput">Port:</label>
+                  <input type="text" id="portInput" value="COM3" placeholder="COM3">
+               </div>
+               <div class="form-group">
+                  <label for="baudInput">Baud Rate:</label>
+                  <input type="text" id="baudInput" value="115200" placeholder="115200">
+               </div>
+            </div>
+            <div id="ipFields" style="display:none;">
+               <div class="form-group">
+                  <label for="ipAddressInput">IP Address:</label>
+                  <input type="text" id="ipAddressInput" value="0.0.0.0" placeholder="0.0.0.0">
+               </div>
+               <div class="form-group">
+                  <label for="udpPortInput">Port:</label>
+                  <input type="text" id="udpPortInput" value="14550" placeholder="14550">
+               </div>
             </div>
             <div class="modal-buttons">
                <button class="modal-button cancel-button" id="cancelConnect">Cancel</button>
@@ -848,7 +904,12 @@
       </div>
       <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
       <script>
-         // Variables for latency measurement
+         function toggleConnFields() {
+            const isSerial = document.querySelector('input[name="connType"][value="serial"]').checked;
+            document.getElementById('serialFields').style.display = isSerial ? '' : 'none';
+            document.getElementById('ipFields').style.display = isSerial ? 'none' : '';
+         }
+         // Variables for browser-to-server latency measurement (WebSocket ping/pong)
          let pingInterval = null;
          let lastPingTime = 0;
          
@@ -865,6 +926,8 @@
           const chatMessages = document.getElementById('chatMessages');
           const chatInput = document.getElementById('chatInput');
           const sendButton = document.getElementById('sendButton');
+          const voiceButton = document.getElementById('voiceButton');
+          const voiceStatusIndicator = document.getElementById('voiceStatusIndicator');
           
           // Latency & Parameters tab elements
           const currentLatency = document.getElementById('currentLatency');
@@ -924,14 +987,14 @@
                   console.log('WebSocket connected');
               });
               
-              // Handle pong response for latency measurement
+              // Handle pong response for browser-to-server latency measurement
               socket.on('pong', function() {
                   const latency = Date.now() - lastPingTime;
                   const headerLatencyValue = document.getElementById('headerLatencyValue');
                   if (headerLatencyValue) {
                       headerLatencyValue.textContent = `${latency}ms`;
                   }
-                  
+
                   // Also update the system status data
                   if (socket) {
                       socket.emit('update_latency', { latency: latency });
@@ -1059,33 +1122,97 @@
                       time: getCurrentTime()
                   });
               });
+         
+              // Listen for voice command responses
+              socket.on('voice_status', function(data) {
+                  const voiceStatusIndicator = document.getElementById('voiceStatusIndicator');
+                  if (voiceStatusIndicator) {
+                      voiceStatusIndicator.style.display = 'block';
+                      if (data.status === 'listening') {
+                          voiceStatusIndicator.textContent = 'Listening...';
+                          voiceButton.classList.add('active');
+                      } else if (data.status === 'processing') {
+                          voiceStatusIndicator.textContent = 'Processing...';
+                          voiceButton.classList.remove('active');
+                      } else {
+                          voiceStatusIndicator.style.display = 'none';
+                          voiceButton.classList.remove('active');
+                      }
+                  }
+              });
+         
+              socket.on('voice_response', function(data) {
+                  const voiceStatusIndicator = document.getElementById('voiceStatusIndicator');
+                  if (voiceStatusIndicator) {
+                      voiceStatusIndicator.style.display = 'none';
+                      voiceButton.classList.remove('active');
+                  }
+         
+                  if (data.error) {
+                      addMessage({
+                          text: `<strong>Voice Error:</strong> ${data.error}`,
+                          time: getCurrentTime()
+                      });
+                      return;
+                  }
+                  if (data.message) {
+                      addMessage({
+                          text: `<strong>System:</strong> ${data.message}`,
+                          time: getCurrentTime()
+                      });
+                  }
+                  if (data.response) { // Response from JARVIS
+                    let messageStr = '';
+                    if (data.response?.message) {
+                        messageStr += `${data.response.message}<br><br>`;
+                    }
+                    if (data.response?.intent) {
+                        messageStr += `<strong>Intent:</strong> ${data.response.intent}<br><br>`;
+                    }
+                    messageStr += formatResponse(data.response);
+         
+                    addMessage({
+                        text: `<strong>JARVIS (Voice):</strong><br><br>${messageStr}`,
+                        time: getCurrentTime()
+                    });
+                  }
+              });
           }
          
           // Connect to the drone
           async function connectToDrone() {
-              const port = document.getElementById('portInput').value.trim() || 'COM3';
-              const baud = document.getElementById('baudInput').value.trim() || '115200';
-              
+              const connType = document.querySelector('input[name="connType"]:checked').value;
+              let body, connLabel;
+
+              if (connType === 'ip') {
+                  const ip = document.getElementById('ipAddressInput').value.trim() || '0.0.0.0';
+                  const udpPort = document.getElementById('udpPortInput').value.trim() || '14550';
+                  body = { type: 'udp', ip: ip, port: udpPort };
+                  connLabel = `UDP ${ip}:${udpPort}`;
+              } else {
+                  const port = document.getElementById('portInput').value.trim() || 'COM3';
+                  const baud = document.getElementById('baudInput').value.trim() || '115200';
+                  body = { type: 'serial', port: port, baud: baud };
+                  connLabel = `${port} at ${baud} baud`;
+              }
+
               try {
-                  console.log(`Attempting to connect to drone on ${port} at ${baud} baud`);
-                  
+                  console.log(`Attempting to connect to drone via ${connLabel}`);
+
                   const response = await fetch('/api/connect', {
                       method: 'POST',
                       headers: {
                           'Content-Type': 'application/json'
                       },
-                      body: JSON.stringify({
-                          port: port,
-                          baud: baud
-                      })
+                      body: JSON.stringify(body)
                   });
-          
+
                   const data = await response.json();
-                  
+
                   if (data.status === 'success') {
                       updateConnectionStatus(true);
                       addMessage({
-                          text: `<strong>System:</strong> Successfully connected to drone on ${port} at ${baud} baud. Initializing drone parameters...`,
+                          text: `<strong>System:</strong> Successfully connected to drone via ${connLabel}. Initializing drone parameters...`,
                           time: getCurrentTime()
                       });
 // Initialize WebSocket connection after successful API connection
@@ -1183,8 +1310,8 @@
               if (headerLatencyText) {
                   headerLatencyText.style.display = connected ? 'inline' : 'none';
               }
-              
-              // Start/stop latency measurement
+
+              // Start/stop browser-to-server latency measurement
               if (connected) {
                   startLatencyMeasurement();
               } else if (pingInterval) {
@@ -1192,13 +1319,13 @@
                   pingInterval = null;
               }
           }
-          
-          // Function to measure latency
+
+          // Function to measure browser-to-server latency via WebSocket
           function startLatencyMeasurement() {
               if (pingInterval) {
                   clearInterval(pingInterval);
               }
-              
+
               pingInterval = setInterval(() => {
                   if (socket && isConnected) {
                       lastPingTime = Date.now();
@@ -1206,7 +1333,7 @@
                   }
               }, 2000); // Ping every 2 seconds
           }
-         
+
           // Update dashboard with system status
           function updateDashboard(data) {
               // Update header params and latency values
@@ -1628,6 +1755,65 @@
               sendButton.addEventListener('click', sendMessage);
           }
          
+          // Voice button PTT functionality
+          if (voiceButton) {
+              let voiceRecordingTimeout;
+              const MAX_RECORDING_TIME = 10000; // 10 seconds max recording time
+         
+              voiceButton.addEventListener('mousedown', function() {
+                  console.log("Voice button pressed - starting recording");
+                  if (socket && isConnected) {
+                      socket.emit('start_voice_input');
+                      voiceRecordingTimeout = setTimeout(() => {
+                          console.log("Max recording time reached, stopping voice input.");
+                          socket.emit('stop_voice_input');
+                      }, MAX_RECORDING_TIME);
+                  } else {
+                      addMessage({
+                          text: "<strong>System:</strong> Please connect to a drone first to use voice commands.",
+                          time: getCurrentTime()
+                      });
+                  }
+              });
+         
+              voiceButton.addEventListener('mouseup', function() {
+                  console.log("Voice button released - stopping recording");
+                  if (voiceRecordingTimeout) {
+                      clearTimeout(voiceRecordingTimeout);
+                  }
+                  if (socket && isConnected) {
+                      socket.emit('stop_voice_input');
+                  }
+              });
+         
+              // For touch devices
+              voiceButton.addEventListener('touchstart', function(e) {
+                  e.preventDefault(); // Prevent scrolling
+                  if (socket && isConnected) {
+                      socket.emit('start_voice_input');
+                      voiceRecordingTimeout = setTimeout(() => {
+                          console.log("Max recording time reached, stopping voice input.");
+                          socket.emit('stop_voice_input');
+                      }, MAX_RECORDING_TIME);
+                  } else {
+                      addMessage({
+                          text: "<strong>System:</strong> Please connect to a drone first to use voice commands.",
+                          time: getCurrentTime()
+                      });
+                  }
+              });
+         
+              voiceButton.addEventListener('touchend', function(e) {
+                  e.preventDefault(); // Prevent scrolling
+                  if (voiceRecordingTimeout) {
+                      clearTimeout(voiceRecordingTimeout);
+                  }
+                  if (socket && isConnected) {
+                      socket.emit('stop_voice_input');
+                  }
+              });
+          }
+         
           // Add welcome message
           addMessage({
               text: '<strong>System:</strong> Welcome to UAV-AI Assistant. Please connect to your drone to begin.',
@@ -1943,6 +2129,55 @@
           // Initially disable save button
           if (document.getElementById('saveParams')) {
               document.getElementById('saveParams').disabled = true;
+          }
+
+          // Logs functionality
+          const fetchLogsButton = document.getElementById('fetchLogsButton');
+          const logContent = document.getElementById('logContent');
+
+          if (fetchLogsButton) {
+              fetchLogsButton.addEventListener('click', async function() {
+                  if (!isConnected) {
+                      addMessage({
+                          text: "<strong>System:</strong> Please connect to a drone first to fetch logs.",
+                          time: getCurrentTime()
+                      });
+                      return;
+                  }
+
+                  logContent.textContent = 'Fetching logs...';
+                  fetchLogsButton.disabled = true;
+
+                  try {
+                      const response = await fetch('/api/fc_logs');
+                      if (!response.ok) {
+                          throw new Error(`Failed to fetch logs: ${response.status}`);
+                      }
+                      const data = await response.json();
+                      if (data.status === 'success') {
+                          logContent.textContent = data.logs || 'No logs available.';
+                          addMessage({
+                              text: `<strong>System:</strong> Logs fetched successfully.`,
+                              time: getCurrentTime()
+                          });
+                      } else {
+                          logContent.textContent = `Error: ${data.message || 'Failed to fetch logs.'}`;
+                          addMessage({
+                              text: `<strong>Error:</strong> ${data.message || 'Failed to fetch logs.'}`,
+                              time: getCurrentTime()
+                          });
+                      }
+                  } catch (error) {
+                      console.error('Error fetching logs:', error);
+                      logContent.textContent = `Error fetching logs: ${error.message}`;
+                      addMessage({
+                          text: `<strong>Error:</strong> Error fetching logs: ${error.message}`,
+                          time: getCurrentTime()
+                      });
+                  } finally {
+                      fetchLogsButton.disabled = false;
+                  }
+              });
           }
          });
          

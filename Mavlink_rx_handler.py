@@ -35,10 +35,22 @@ class MavlinkHandler:
         self.tx_mav_msg = [] # store all tx mavlink msg.
         self.last_dump_time = time.time()
 
+        # Additions for command acknowledgment
+        self.command_ack_status = {} # Stores {command_id: (result, completion_time)}
+        self.command_ack_condition = threading.Condition() # For signaling ACK reception
+
+        # Latency measurement via TIMESYNC
+        self.latency_ms = 0  # most recent RTT in ms
+        self.latency_history = deque(maxlen=60)  # last 60 samples (~1 per second)
+
     def connect(self, port_name, baudrate):
         """Establish connection to flight controller."""
         try:
-            if port_name.startswith("ws://") or port_name.startswith("wss://"):
+            if port_name.startswith("udpin:") or port_name.startswith("udpout:") or port_name.startswith("udp:"):
+                mavlink_logger.info(f"Connecting via UDP: {port_name}")
+                self.mav_conn = mavutil.mavlink_connection(port_name, dialect="ardupilotmega")
+                mavlink_logger.info(f"✅ Connected successfully!: {port_name}")
+            elif port_name.startswith("ws://") or port_name.startswith("wss://"):
                 mavlink_logger.info(f"Connecting via websocket:{port_name}")
                 ws_url = "wsserver:" + port_name[5:]
                 self.mav_conn = mavutil.mavlink_connection(ws_url, dialect="ardupilotmega")
@@ -67,6 +79,9 @@ class MavlinkHandler:
 
             # Start heartbeat monitoring
             threading.Thread(target=self._check_heartbeat_timeout, daemon=True).start()
+
+            # Start TIMESYNC loop for latency measurement
+            threading.Thread(target=self._timesync_loop, daemon=True).start()
 
             return True
 
@@ -161,6 +176,24 @@ class MavlinkHandler:
 
         elif msg.get_type() == "LOG_DATA":
             self.on_log_data_received(msg.id, msg.data)
+        elif msg.get_type() == "TIMESYNC":
+            # tc1 != 0 means this is a response to our request
+            tc1 = msg.tc1
+            ts1 = msg.ts1
+            if tc1 != 0:
+                now_us = int(time.time() * 1e6)
+                rtt_ms = (now_us - ts1) / 1000.0
+                if 0 < rtt_ms < 10000:  # sanity check: ignore negative or >10s
+                    self.latency_ms = round(rtt_ms, 1)
+                    self.latency_history.append(self.latency_ms)
+
+        elif msg.get_type() == "COMMAND_ACK":
+            with self.command_ack_condition:
+                command_id = msg.command
+                result = msg.result
+                mavlink_logger.info(f"Received COMMAND_ACK for command {command_id} with result: {result}")
+                self.command_ack_status[command_id] = result
+                self.command_ack_condition.notify_all() # Notify waiting threads
 ########################################################################################
     def _process_parameter(self, msg):
         """Process parameter messages."""
@@ -217,6 +250,30 @@ class MavlinkHandler:
                     print(f" mavlink tx {self.rx_mav_msg}")
             time.sleep(1)
 
+############################################################################################
+    def _timesync_loop(self):
+        """Send TIMESYNC requests every 1 second to measure MAVLink link latency."""
+        while self.is_connected:
+            try:
+                ts1 = int(time.time() * 1e6)  # current time in microseconds
+                self.mav_conn.mav.timesync_send(0, ts1)  # tc1=0 means request
+            except Exception as e:
+                mavlink_logger.debug(f"TIMESYNC send error: {e}")
+            time.sleep(1)
+
+    def get_latency_stats(self):
+        """Return current latency and statistics (avg, min, max) in ms."""
+        if not self.latency_history:
+            return {"current": 0, "avg": 0, "min": 0, "max": 0}
+        history = list(self.latency_history)
+        return {
+            "current": self.latency_ms,
+            "avg": round(sum(history) / len(history), 1),
+            "min": round(min(history), 1),
+            "max": round(max(history), 1),
+        }
+
+############################################################################################
     # Command sending methods
     def request_data_stream(self):
         """Request data stream from FC."""
@@ -299,6 +356,89 @@ class MavlinkHandler:
         except Exception as e:
             mavlink_logger.error(f"❌ Failed to update parameter {param_name}: {e}")
             return False
+################################################################################
+
+    _mav_command_map = {
+        "MAV_CMD_COMPONENT_ARM_DISARM": mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+        "MAV_CMD_DO_MOTOR_TEST": mavutil.mavlink.MAV_CMD_DO_MOTOR_TEST,
+        "MAV_CMD_NAV_TAKEOFF": mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
+        "MAV_CMD_NAV_LAND": mavutil.mavlink.MAV_CMD_NAV_LAND,
+        # Add other MAVLink commands as needed
+    }
+
+    def send_mavlink_command_from_json(self, command_json):
+        """
+        Sends a MAVLink command (MAV_CMD_LONG) to the flight controller
+        based on a JSON dictionary provided by JARVIS.
+        
+        Args:
+            command_json (dict): A dictionary containing command and parameters.
+                                 Example: {"command": "MAV_CMD_COMPONENT_ARM_DISARM", "param1": 1, "param2": 21196}
+        Returns:
+            bool: True if command was sent, False otherwise.
+        """
+        if not self.is_connected:
+            mavlink_logger.error("❌ Not connected to MAVLink device. Cannot send command.")
+            return False
+
+        command_name = command_json.get("command")
+        if command_name not in self._mav_command_map:
+            mavlink_logger.error(f"❌ Unknown MAVLink command: {command_name}")
+            return False
+        
+        mavlink_command_id = self._mav_command_map[command_name]
+
+        # Extract params, defaulting to 0.0 for unused ones
+        params = [
+            float(command_json.get("param1", 0)),
+            float(command_json.get("param2", 0)),
+            float(command_json.get("param3", 0)),
+            float(command_json.get("param4", 0)),
+            float(command_json.get("param5", 0)),
+            float(command_json.get("param6", 0)),
+            float(command_json.get("param7", 0))
+        ]
+
+        try:
+            # Clear previous ACK status for this command
+            with self.command_ack_condition:
+                self.command_ack_status.pop(mavlink_command_id, None)
+
+            # Send the MAV_CMD_LONG command
+            self.mav_conn.mav.command_long_send(
+                self.target_system,
+                self.target_component,
+                mavlink_command_id,
+                1,  # Confirmation, 1 for first transmission (expected to be ACKed)
+                *params
+            )
+            self.tx_mav_msg.append(f"COMMAND_SENT:{command_name}")
+            mavlink_logger.info(f"✅ Sent MAVLink command: {command_name} with params: {params}")
+
+            # Wait for ACK with a timeout
+            timeout_seconds = 5
+            with self.command_ack_condition:
+                acked_result = self.command_ack_status.get(mavlink_command_id)
+                if acked_result is None: # Only wait if ACK not already received (unlikely but safe)
+                    self.command_ack_condition.wait(timeout=timeout_seconds)
+                
+                acked_result = self.command_ack_status.get(mavlink_command_id)
+                if acked_result is not None:
+                    if acked_result == mavutil.mavlink.MAV_RESULT_ACCEPTED or \
+                       acked_result == mavutil.mavlink.MAV_RESULT_TEMPORARILY_REJECTED or \
+                       acked_result == mavutil.mavlink.MAV_RESULT_IN_PROGRESS:
+                        mavlink_logger.info(f"✅ Command {command_name} ACKed with result: {acked_result}")
+                        return True
+                    else:
+                        mavlink_logger.warning(f"⚠️ Command {command_name} NACKed with result: {acked_result}")
+                        return False
+                else:
+                    mavlink_logger.error(f"❌ Command {command_name} timed out waiting for ACK.")
+                    return False
+        except Exception as e:
+            mavlink_logger.error(f"❌ Failed to send MAVLink command {command_name}: {e}")
+            return False
+
 ################################################################################
     ##log file handler
     def request_blackbox_logs(self):

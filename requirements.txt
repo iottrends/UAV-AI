@@ -1,13 +1,11 @@
-# Core dependencies
-pymavlink>=2.4.0
-pyserial>=3.5
-flask>=2.0.0
-flask_socketio>=5.0.0
-python-dotenv>=0.19.0
-
-# AI components
-google-generativeai>=0.1.0
-
-# Additional dependencies
-requests>=2.25.0
-werkzeug>=2.0.0
+numpy==1.26.4
+pymavlink
+Flask==3.0.3
+Flask-SocketIO==5.3.6
+python-dotenv==1.0.1
+eventlet
+google-generativeai==0.4.1
+pyserial==3.5
+pyaudio==0.2.14
+google-cloud-speech==2.26.0
+Flask-Cors==4.0.1

@@ -8,6 +8,7 @@ import JARVIS
 #import llm_ai_v5
 import web_server
 from logging_config import setup_logging  # Import the logging setup
+from stt_module import stt_recorder # Import the STT recorder
 
 # Initialize logging
 loggers = setup_logging()
@@ -34,7 +35,8 @@ def main():
         host='127.0.0.1',  # Listen on all interfaces
         port=5000,  # Set to True for debugging
         debug=False,
-        loggers=loggers  # Pass loggers to web_server
+        loggers=loggers,  # Pass loggers to web_server
+        stt_recorder=stt_recorder
     )
 
     # Initialize LLM agents

@@ -41,11 +41,18 @@ Analyze the MAVLink messages, user query, and available parameter references to 
    - "Why is the compass not working?" → Checks sensor health & calibration.  
 3️⃣ **Tuning Queries:**  
    - "How can I tune my drone for better stability?" → Respond with relevant parameter list and recommended values.
+4️⃣ **Action Commands:**
+   - "Arm the drone" → Generates `fix_command` for arming.
+   - "Disarm the drone" → Generates `fix_command` for disarming.
+   - "Spin motor 1 at 50%" → Generates `fix_command` for motor testing.
+   - "Take off" -> Generates `fix_command` for taking off.
+   - "Land" -> Generates `fix_command` for landing.
 
 ### Instructions:
 - If it is a **status query**, extract and parse the MAVLink data.
 - If it is a **diagnostic query**, find possible issues and suggest a fix.
 - If it is a **tuning query**, respond first with relevant parameters and their recommended values.
+- If it is an **action command**, generate the appropriate MAVLink command in the `fix_command` field.
 - Use the available **parameter list** for referencing correct parameters and values.
 - **Ask clarifying questions ONLY if essential information is missing** from the user query.
 - If a fix is needed, suggest the correct **MAVLink command** or **parameter update**.
@@ -62,12 +69,27 @@ Analyze the MAVLink messages, user query, and available parameter references to 
 ### Expected JSON Response:
 Respond in **strict JSON format only**, without extra text.
 {{
-    "intent": "status" or "diagnostic" or "tuning",
+    "intent": "status" or "diagnostic" or "tuning" or "action",
     "message": "your response here",
-    "fix_command": "optional MAVLink command or null",
+    "fix_command": "MAVLink command JSON object or null",
     "recommended_param": "list of recommended parameters and values, or null",
     "clarification_needed": "your clarification question if needed, or null"
 }}
+
+### MAVLink Command JSON Object Format Examples for `fix_command`:
+For MAV_CMD_COMPONENT_ARM_DISARM:
+{{ "command": "MAV_CMD_COMPONENT_ARM_DISARM", "param1": 1, "param2": 21196 }} // Arm
+{{ "command": "MAV_CMD_COMPONENT_ARM_DISARM", "param1": 0, "param2": 29892 }} // Disarm
+
+For MAV_CMD_DO_MOTOR_TEST (e.g., spin motor 1 at 50% for 5 seconds):
+{{ "command": "MAV_CMD_DO_MOTOR_TEST", "param1": 1, "param2": 1, "param3": 500, "param4": 5, "param5": 0, "param6": 0 }} // Motor 1, Thrust, 50% (500), 5 seconds
+// param1: instance (motor ID, 1-based), param2: throttle type (1=Thrust), param3: throttle (0-1000 for 0-100%), param4: timeout (seconds)
+
+For MAV_CMD_NAV_TAKEOFF:
+{{ "command": "MAV_CMD_NAV_TAKEOFF", "param1": 0, "param2": 0, "param3": 0, "param4": 0, "param5": 0, "param6": 0, "param7": 2.0 }} // Take off to 2 meters altitude
+
+For MAV_CMD_NAV_LAND:
+{{ "command": "MAV_CMD_NAV_LAND", "param1": 0, "param2": 0, "param3": 0, "param4": 0, "param5": 0, "param6": 0, "param7": 0 }} // Land at current position
 """
 
 def ask_gemini(query, parameter_context=None):

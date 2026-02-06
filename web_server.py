@@ -9,6 +9,7 @@ from collections import deque
 
 # Default logger that will be replaced if loggers are provided
 logger = logging.getLogger('web_server')
+stt_logger = logging.getLogger('stt_module')
 
 # Create Flask app and SocketIO instance
 app = Flask(__name__, static_folder='static')
@@ -19,6 +20,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 validator = None  # Will hold the DroneValidator instance
 jarvis_module = None  # Will hold the JARVIS module
 llm_ai_module = None  # Will hold the llm_ai_v5 module
+stt_module = None # Will hold the STT recorder instance
 telemetry_thread = None  # Will hold the telemetry update thread
 connected_clients = set()  # Track connected WebSocket clients
 mavlink_buffer = deque(maxlen=10)  # Local buffer of recent MAVLink messages
@@ -94,35 +96,52 @@ def connect_drone():
     try:
         # Parse the JSON data from the request
         data = request.get_json(force=True)  # force=True helps with content-type issues
-        port = data.get('port', 'COM3')
-        baud = int(data.get('baud', 115200))
-        print(f"Attempting connection to {port} at {baud} baud")
+        conn_type = data.get('type', 'serial')
+
+        if conn_type == 'udp':
+            ip = data.get('ip')
+            udp_port = data.get('port')
+            port = f"udpin:{ip}:{udp_port}"
+            baud = 115200  # unused for UDP but required by connect() signature
+            print(f"Attempting UDP connection on {port}")
+        else:
+            port = data.get('port')
+            baud = int(data.get('baud'))
+            print(f"Attempting connection to {port} at {baud} baud")
         
         # Check if already connected and disconnect first if needed
         if hasattr(validator, 'is_connected') and validator.is_connected:
             logger.info(f"Already connected, disconnecting first")
             validator.disconnect()
         
-        # Just attempt the basic connection
-        if validator.connect(port, baud):
-            # Store connection parameters and set flags
-            connection_params["port"] = port
-            connection_params["baud"] = baud
-            connection_params["connect_requested"] = True
-            connection_params["connect_success"] = True
-            #paass the socketio instance to the validator
-            validator.update_socketio(socketio)
-            print("passed socketio instance to validator!!!!")
-            
-            logger.info(f"Connection successful to {port} at {baud} baud")
-            return jsonify({
-                "status": "success",
-                "message": f"Connected to {port} at {baud} baud"
-            })
-        else:
-            logger.error(f"Failed to connect to drone on {port}")
-            connection_params["connect_success"] = False
-            return jsonify({"status": "error", "message": f"Failed to connect to drone on {port}"}), 400
+        # Attempt connection with retries
+        MAX_RETRIES = 3
+        RETRY_DELAY_SECONDS = 2
+        for attempt in range(MAX_RETRIES):
+            logger.info(f"Attempting connection to {port} at {baud} baud (Attempt {attempt + 1}/{MAX_RETRIES})")
+            if validator.connect(port, baud):
+                # Store connection parameters and set flags
+                connection_params["port"] = port
+                connection_params["baud"] = baud
+                connection_params["connect_requested"] = True
+                connection_params["connect_success"] = True
+                #paass the socketio instance to the validator
+                validator.update_socketio(socketio)
+                print("passed socketio instance to validator!!!!")
+                
+                logger.info(f"Connection successful to {port} at {baud} baud")
+                return jsonify({
+                    "status": "success",
+                    "message": f"Connected to {port} at {baud} baud"
+                })
+            else:
+                logger.warning(f"Connection failed on attempt {attempt + 1}. Retrying in {RETRY_DELAY_SECONDS} seconds...")
+                time.sleep(RETRY_DELAY_SECONDS)
+
+        # If all retries fail
+        logger.error(f"Failed to connect to drone on {port} after {MAX_RETRIES} attempts.")
+        connection_params["connect_success"] = False
+        return jsonify({"status": "error", "message": f"Failed to connect to drone on {port} after {MAX_RETRIES} attempts."}), 400
 
     except Exception as e:
         logger.error(f"Connection error: {str(e)}")
@@ -148,7 +167,32 @@ def disconnect_drone():
 def test():
     return "Web server is working!"
 
+############################################################################
+@app.route('/api/fc_logs', methods=['GET'])
+def get_fc_logs():
+    """API endpoint to fetch logs from the flight controller"""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
 
+    try:
+        if not validator.hardware_validated:
+            return jsonify({"status": "error", "message": "Drone not connected or not validated"}), 400
+
+         # Placeholder for actual logs. This should be replaced with a call to the validator's log fetching method.
+        flight_controller_logs = """Mock log content from flight controller: This is a test log entry.
+        Another log line with some important
+        information.
+Log entry with a timestamp: [2026-02-06 10:30:00] System ready."""
+
+        if flight_controller_logs:
+            return jsonify({"status": "success", "logs": flight_controller_logs})
+        else:
+            return jsonify({"status": "success", "logs": "No logs available from the flight controller."})
+    except Exception as e:
+        logger.error(f"Error fetching logs: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#############################################################################
 @app.route('/api/parameters', methods=['GET', 'POST'])
 def handle_parameters():
     """API endpoint to get or update drone parameters"""
@@ -212,10 +256,16 @@ def handle_parameters():
                     time.sleep(0.1)
                 
                 # If we get here, timeout occurred
+                failed_updates_details = []
+                for param in mismatches:
+                    expected = data[param]
+                    actual = verified_params.get(param, "Not Received")
+                    failed_updates_details.append(f"{param}: Expected {expected}, Actual {actual}")
+                
                 raise TimeoutError(
                     f"Timeout waiting for parameter updates. "
-                    f"Last verified values: {verified_params}. "
-                    f"Pending parameters: {last_mismatch}"
+                    f"The following parameters did not update as expected: {'; '.join(failed_updates_details)}. "
+                    f"Last verified values for all parameters: {verified_params}"
                 )
             except Exception as e:
                 logger.error(f"Error updating parameters: {str(e)}")
@@ -345,6 +395,91 @@ def handle_chat_message(data):
     except Exception as e:
         logger.error(f"Error handling chat message: {str(e)}")
         emit('chat_response', {"error": str(e)}, room=client_id)
+
+@socketio.on('start_voice_input')
+def handle_start_voice_input():
+    """Handle request from client to start voice input."""
+    client_id = request.sid
+    stt_logger.info(f"Client {client_id} requested to start voice input.")
+
+    if not stt_module:
+        stt_logger.error("STT module not initialized.")
+        emit('voice_response', {'error': 'STT module not initialized.'}, room=client_id)
+        return
+
+    def transcription_callback(transcript, error=None):
+        if error:
+            stt_logger.error(f"Voice input error: {error}")
+            socketio.emit('voice_response', {'error': error}, room=client_id)
+        elif transcript:
+            stt_logger.info(f"Transcribed text for {client_id}: '{transcript}'")
+            # Now pass the transcribed text to JARVIS, similar to chat_message
+            process_voice_command(client_id, transcript)
+        else:
+            stt_logger.warning(f"No transcription received for {client_id}.")
+            socketio.emit('voice_response', {'message': 'No speech detected.'}, room=client_id)
+
+    stt_module.start_recording(transcription_callback=transcription_callback)
+    emit('voice_status', {'status': 'listening'}, room=client_id)
+
+@socketio.on('stop_voice_input')
+def handle_stop_voice_input():
+    """Handle request from client to stop voice input and transcribe."""
+    client_id = request.sid
+    stt_logger.info(f"Client {client_id} requested to stop voice input and transcribe.")
+
+    if not stt_module:
+        stt_logger.error("STT module not initialized.")
+        emit('voice_response', {'error': 'STT module not initialized.'}, room=client_id)
+        return
+
+    emit('voice_status', {'status': 'processing'}, room=client_id)
+    stt_module.stop_recording_and_transcribe() # Transcription happens via callback
+
+def process_voice_command(client_id, query):
+    """Processes a transcribed voice command through JARVIS."""
+    if not validator or not validator.hardware_validated:
+        socketio.emit('voice_response', {"error": "Drone not connected or not validated"}, room=client_id)
+        return
+    
+    if not query:
+        socketio.emit('voice_response', {"error": "Empty command"}, room=client_id)
+        return
+
+    logger.info(f"Voice command from {client_id}: {query}")
+
+    try:
+        jarvis_response = jarvis_module.ask_gemini(query, validator.categorized_params)
+        logger.info(f"JARVIS response to voice command: {jarvis_response}")
+        
+        socketio.emit('voice_response', {
+            "source": "jarvis",
+            "response": jarvis_response
+        }, room=client_id)
+
+        if jarvis_response and 'fix_command' in jarvis_response and jarvis_response['fix_command']:
+            fix_command_json = jarvis_response['fix_command']
+            logger.info(f"Attempting to execute fix command from JARVIS: {fix_command_json}")
+            try:
+                if isinstance(fix_command_json, dict): # Ensure it's a dict
+                    command_name = fix_command_json.get('command', 'unknown')
+                    if validator.send_mavlink_command_from_json(fix_command_json):
+                        # The `send_mavlink_command_from_json` now handles logging the ACK/NACK/timeout details
+                        # We can just confirm it was initiated and (eventually) ACKed/in_progress
+                        socketio.emit('voice_response', {'message': f"Command '{command_name}' initiated and acknowledged by drone."}, room=client_id)
+                    else:
+                        # If send_mavlink_command_from_json returns False, it means NACK or timeout
+                        socketio.emit('voice_response', {'error': f"Command '{command_name}' failed to be acknowledged by drone or timed out."}, room=client_id)
+                else:
+                    logger.error(f"Invalid fix_command format from JARVIS: {fix_command_json}")
+                    socketio.emit('voice_response', {'error': f"Invalid command format: {fix_command_json}"}, room=client_id)
+            except Exception as e:
+                logger.error(f"Error sending MAVLink command: {e}")
+                socketio.emit('voice_response', {'error': f"Error sending command: {e}"}, room=client_id)
+
+    except Exception as e:
+        logger.error(f"Error processing voice command with JARVIS: {str(e)}")
+        socketio.emit('voice_response', {"error": str(e)}, room=client_id)
 
 ########################################################################
 
@@ -656,6 +791,16 @@ def update_system_health():
             "motors": motors,
             "subsystems": subsystems
         }
+
+        # Add MAVLink link latency from TIMESYNC
+        if hasattr(validator, 'get_latency_stats'):
+            latency_stats = validator.get_latency_stats()
+            last_system_health["latency"] = latency_stats["current"]
+            last_system_health["latency_stats"] = {
+                "avg": latency_stats["avg"],
+                "min": latency_stats["min"],
+                "max": latency_stats["max"],
+            }
         
         # Parameter progress is now handled by update_param_progress function
 
@@ -697,7 +842,7 @@ def telemetry_update_loop():
             time.sleep(5)  # Sleep longer on error
 
 #########################################################################
-def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=False, loggers=None):
+def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=False, loggers=None, stt_recorder=None):
     """Start the Flask+SocketIO server in a new thread"""
     global validator, jarvis_module, llm_ai_module, telemetry_thread, logger
     
@@ -707,8 +852,8 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
 
     # Store references to backend components
     validator = validator_instance
-    #validator.update_socketio(socketio)
     jarvis_module = jarvis
+    stt_module = stt_recorder
     #llm_ai_module = llm_ai
 
     # Make sure the static directory exists
