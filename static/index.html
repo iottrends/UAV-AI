@@ -528,6 +528,14 @@
                <i class="fas fa-tachometer-alt"></i>
                Latency & Parameters
             </div>
+            <div class="menu-item" data-tab="configs">
+               <i class="fas fa-save"></i>
+               Configs
+            </div>
+            <div class="menu-item" data-tab="calibration">
+               <i class="fas fa-crosshairs"></i>
+               Calibration
+            </div>
             <!-- Flight Plan tab removed as requested -->
          </div>
          <!-- Main Content -->
@@ -763,8 +771,8 @@
                <button id="fetchLogsButton" class="action-button" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; margin-bottom: 1rem;">
                <i class="fas fa-download"></i> Fetch Logs
                </button>
-               <div id="logContent" style="white-space: pre-wrap; background-color: #f0f0f0; padding: 1rem; border-radius: 5px; max-height: 400px; overflow-y: auto;">
-                  No logs fetched yet.
+               <div id="logContent" style="background-color: #f0f0f0; padding: 1rem; border-radius: 5px; max-height: 400px; overflow-y: auto;">
+                  <p style="color: var(--text-muted);">Click "Fetch Logs" to request blackbox logs from the flight controller.</p>
                </div>
             </div>
             <!-- Latency & Parameters Tab -->
@@ -849,6 +857,82 @@
                </div>
             </div>
             <!-- Flight Plan Tab removed as requested -->
+            <!-- Configs Tab -->
+            <div class="tab-content" id="configs-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+               <h2 class="dashboard-title">Golden Config Snapshots</h2>
+               <p style="color: var(--text-muted); margin-bottom: 1rem;">Save and restore up to 5 named parameter configurations for different quads or tunes.</p>
+               <!-- Save Config Button -->
+               <button id="saveConfigBtn" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.6rem 1.2rem; cursor: pointer; font-size: 0.9rem; margin-bottom: 1.5rem;">
+                  <i class="fas fa-plus"></i> Save Current Config
+               </button>
+               <!-- Save Config Modal -->
+               <div id="saveConfigModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+                  <div style="background: white; border-radius: 10px; padding: 2rem; width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+                     <h3 style="margin-bottom: 1rem;">Save Config Snapshot</h3>
+                     <input type="text" id="configNameInput" placeholder="e.g. 5inch-freestyle-6S" style="width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 5px; font-size: 0.95rem; margin-bottom: 1rem;">
+                     <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                        <button id="cancelConfigBtn" style="padding: 0.5rem 1rem; border: 1px solid #ddd; border-radius: 5px; cursor: pointer; background: white;">Cancel</button>
+                        <button id="confirmSaveConfigBtn" style="padding: 0.5rem 1rem; border: none; border-radius: 5px; cursor: pointer; background: var(--primary-color); color: white;">Save</button>
+                     </div>
+                  </div>
+               </div>
+               <!-- Config List -->
+               <div id="configList" style="display: flex; flex-direction: column; gap: 1rem;">
+                  <div style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading configs...</div>
+               </div>
+            </div>
+            <!-- Calibration Tab -->
+            <div class="tab-content" id="calibration-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+               <h2 class="dashboard-title">Field Calibration</h2>
+               <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Trigger on-board calibration routines directly from the web UI.</p>
+               <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
+                  <!-- Gyro -->
+                  <div class="card cal-card" data-cal="gyro" style="min-width: 200px; flex: 1;">
+                     <div class="card-title"><i class="fas fa-sync-alt"></i> Gyro Calibration</div>
+                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Keep the drone still on a flat surface. Takes ~2 seconds.</p>
+                     <button class="cal-btn" data-cal="gyro" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                        <i class="fas fa-play"></i> Start Gyro Cal
+                     </button>
+                     <div class="cal-status" data-cal="gyro" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                  </div>
+                  <!-- Level -->
+                  <div class="card cal-card" data-cal="level" style="min-width: 200px; flex: 1;">
+                     <div class="card-title"><i class="fas fa-balance-scale"></i> Level Calibration</div>
+                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Place drone on a level surface. Calibrates accelerometer level.</p>
+                     <button class="cal-btn" data-cal="level" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                        <i class="fas fa-play"></i> Start Level Cal
+                     </button>
+                     <div class="cal-status" data-cal="level" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                  </div>
+                  <!-- Accel -->
+                  <div class="card cal-card" data-cal="accel" style="min-width: 200px; flex: 1;">
+                     <div class="card-title"><i class="fas fa-arrows-alt"></i> Accelerometer Calibration</div>
+                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Multi-step: you will need to place the drone in 6 orientations.</p>
+                     <button class="cal-btn" data-cal="accel" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                        <i class="fas fa-play"></i> Start Accel Cal
+                     </button>
+                     <div class="cal-status" data-cal="accel" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                  </div>
+                  <!-- Compass -->
+                  <div class="card cal-card" data-cal="compass" style="min-width: 200px; flex: 1;">
+                     <div class="card-title"><i class="fas fa-compass"></i> Compass Calibration</div>
+                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Rotate drone in all orientations during calibration.</p>
+                     <button class="cal-btn" data-cal="compass" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                        <i class="fas fa-play"></i> Start Compass Cal
+                     </button>
+                     <div class="cal-status" data-cal="compass" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                  </div>
+                  <!-- Baro -->
+                  <div class="card cal-card" data-cal="baro" style="min-width: 200px; flex: 1;">
+                     <div class="card-title"><i class="fas fa-thermometer-half"></i> Barometer Calibration</div>
+                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Calibrate barometer ground pressure. Keep drone stationary.</p>
+                     <button class="cal-btn" data-cal="baro" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                        <i class="fas fa-play"></i> Start Baro Cal
+                     </button>
+                     <div class="cal-status" data-cal="baro" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                  </div>
+               </div>
+            </div>
             <!-- Chat Interface -->
             <div class="chat-container" id="chat-container">
                <h2 class="chat-title">AI Assistant</h2>
@@ -2131,6 +2215,151 @@
               document.getElementById('saveParams').disabled = true;
           }
 
+          // ========== Golden Config Snapshots ==========
+          function loadConfigList() {
+              fetch('/api/configs')
+                  .then(r => r.json())
+                  .then(data => {
+                      const list = document.getElementById('configList');
+                      if (!list) return;
+                      if (data.status !== 'success' || !data.configs.length) {
+                          list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:2rem;">No saved configs yet.</div>';
+                          return;
+                      }
+                      list.innerHTML = data.configs.map(c => `
+                          <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+                              <div>
+                                  <div style="font-weight:bold;font-size:1rem;">${c.name}</div>
+                                  <div style="font-size:0.8rem;color:var(--text-muted);">${c.saved_at} &bull; ${c.param_count} params</div>
+                              </div>
+                              <div style="display:flex;gap:0.5rem;">
+                                  <button onclick="applyConfig('${c.filename}')" style="background:var(--success-color);color:white;border:none;border-radius:5px;padding:0.4rem 0.8rem;cursor:pointer;font-size:0.8rem;">
+                                      <i class="fas fa-upload"></i> Apply
+                                  </button>
+                                  <button onclick="deleteConfig('${c.filename}')" style="background:var(--danger-color);color:white;border:none;border-radius:5px;padding:0.4rem 0.8rem;cursor:pointer;font-size:0.8rem;">
+                                      <i class="fas fa-trash"></i>
+                                  </button>
+                              </div>
+                          </div>
+                      `).join('');
+                  })
+                  .catch(() => {
+                      const list = document.getElementById('configList');
+                      if (list) list.innerHTML = '<div style="text-align:center;color:var(--danger-color);padding:2rem;">Failed to load configs.</div>';
+                  });
+          }
+
+          document.getElementById('saveConfigBtn')?.addEventListener('click', () => {
+              const modal = document.getElementById('saveConfigModal');
+              modal.style.display = 'flex';
+              document.getElementById('configNameInput').value = '';
+              document.getElementById('configNameInput').focus();
+          });
+
+          document.getElementById('cancelConfigBtn')?.addEventListener('click', () => {
+              document.getElementById('saveConfigModal').style.display = 'none';
+          });
+
+          document.getElementById('confirmSaveConfigBtn')?.addEventListener('click', () => {
+              const name = document.getElementById('configNameInput').value.trim();
+              if (!name) { alert('Please enter a config name.'); return; }
+              fetch('/api/configs', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({name})
+              })
+              .then(r => r.json())
+              .then(data => {
+                  document.getElementById('saveConfigModal').style.display = 'none';
+                  if (data.status === 'success') {
+                      addMessage({text: `<strong>Config:</strong> ${data.message}`, time: getCurrentTime()});
+                      loadConfigList();
+                  } else {
+                      alert(data.message || 'Failed to save config');
+                  }
+              })
+              .catch(e => alert('Error saving config: ' + e.message));
+          });
+
+          window.applyConfig = function(filename) {
+              if (!confirm('Apply this config? Changed parameters will be written to the flight controller.')) return;
+              const btn = event.target.closest('button');
+              btn.disabled = true;
+              btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Applying...';
+              fetch('/api/configs/apply', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({filename})
+              })
+              .then(r => r.json())
+              .then(data => {
+                  btn.disabled = false;
+                  btn.innerHTML = '<i class="fas fa-upload"></i> Apply';
+                  addMessage({text: `<strong>Config:</strong> ${data.message}`, time: getCurrentTime()});
+                  if (data.failed && data.failed.length) {
+                      addMessage({text: `<strong>Warning:</strong> Failed params: ${data.failed.join(', ')}`, time: getCurrentTime()});
+                  }
+              })
+              .catch(e => {
+                  btn.disabled = false;
+                  btn.innerHTML = '<i class="fas fa-upload"></i> Apply';
+                  alert('Error applying config: ' + e.message);
+              });
+          };
+
+          window.deleteConfig = function(filename) {
+              if (!confirm('Delete this config snapshot?')) return;
+              fetch('/api/configs/' + filename, {method: 'DELETE'})
+              .then(r => r.json())
+              .then(data => {
+                  if (data.status === 'success') {
+                      loadConfigList();
+                  } else {
+                      alert(data.message || 'Failed to delete config');
+                  }
+              })
+              .catch(e => alert('Error deleting config: ' + e.message));
+          };
+
+          // Load configs when Configs tab is clicked
+          document.querySelector('.menu-item[data-tab="configs"]')?.addEventListener('click', loadConfigList);
+
+          // ========== Field Calibration ==========
+          document.querySelectorAll('.cal-btn').forEach(btn => {
+              btn.addEventListener('click', function() {
+                  const calType = this.getAttribute('data-cal');
+                  const statusEl = document.querySelector(`.cal-status[data-cal="${calType}"]`);
+                  this.disabled = true;
+                  this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Calibrating...';
+                  statusEl.textContent = 'Calibrating...';
+                  statusEl.style.color = 'var(--primary-color)';
+
+                  fetch('/api/calibrate', {
+                      method: 'POST',
+                      headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify({type: calType})
+                  })
+                  .then(r => r.json())
+                  .then(data => {
+                      this.disabled = false;
+                      this.innerHTML = `<i class="fas fa-play"></i> Start ${calType.charAt(0).toUpperCase() + calType.slice(1)} Cal`;
+                      if (data.status === 'success') {
+                          statusEl.textContent = 'Success';
+                          statusEl.style.color = 'var(--success-color)';
+                      } else {
+                          statusEl.textContent = data.message || 'Failed';
+                          statusEl.style.color = 'var(--danger-color)';
+                      }
+                  })
+                  .catch(e => {
+                      this.disabled = false;
+                      this.innerHTML = `<i class="fas fa-play"></i> Start ${calType.charAt(0).toUpperCase() + calType.slice(1)} Cal`;
+                      statusEl.textContent = 'Error: ' + e.message;
+                      statusEl.style.color = 'var(--danger-color)';
+                  });
+              });
+          });
+
           // Logs functionality
           const fetchLogsButton = document.getElementById('fetchLogsButton');
           const logContent = document.getElementById('logContent');
@@ -2155,13 +2384,25 @@
                       }
                       const data = await response.json();
                       if (data.status === 'success') {
-                          logContent.textContent = data.logs || 'No logs available.';
+                          if (data.log_count === 0) {
+                              logContent.innerHTML = `<p style="color:var(--text-muted);">${data.message}</p>`;
+                          } else {
+                              let html = `<p style="margin-bottom:0.5rem;"><strong>${data.message}</strong></p>`;
+                              html += '<table style="width:100%;border-collapse:collapse;">';
+                              html += '<tr style="background:var(--light-color);text-align:left;"><th style="padding:0.4rem;">Log ID</th><th style="padding:0.4rem;">File</th><th style="padding:0.4rem;">Size</th></tr>';
+                              data.logs.forEach(log => {
+                                  const sizeKB = (log.size_bytes / 1024).toFixed(1);
+                                  html += `<tr style="border-bottom:1px solid #ddd;"><td style="padding:0.4rem;">${log.id}</td><td style="padding:0.4rem;">${log.filename}</td><td style="padding:0.4rem;">${sizeKB} KB</td></tr>`;
+                              });
+                              html += '</table>';
+                              logContent.innerHTML = html;
+                          }
                           addMessage({
-                              text: `<strong>System:</strong> Logs fetched successfully.`,
+                              text: `<strong>System:</strong> ${data.message}`,
                               time: getCurrentTime()
                           });
                       } else {
-                          logContent.textContent = `Error: ${data.message || 'Failed to fetch logs.'}`;
+                          logContent.innerHTML = `<p style="color:var(--danger-color);">${data.message || 'Failed to fetch logs.'}</p>`;
                           addMessage({
                               text: `<strong>Error:</strong> ${data.message || 'Failed to fetch logs.'}`,
                               time: getCurrentTime()
@@ -2169,7 +2410,7 @@
                       }
                   } catch (error) {
                       console.error('Error fetching logs:', error);
-                      logContent.textContent = `Error fetching logs: ${error.message}`;
+                      logContent.innerHTML = `<p style="color:var(--danger-color);">Error fetching logs: ${error.message}</p>`;
                       addMessage({
                           text: `<strong>Error:</strong> Error fetching logs: ${error.message}`,
                           time: getCurrentTime()

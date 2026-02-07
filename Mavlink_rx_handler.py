@@ -363,6 +363,7 @@ class MavlinkHandler:
         "MAV_CMD_DO_MOTOR_TEST": mavutil.mavlink.MAV_CMD_DO_MOTOR_TEST,
         "MAV_CMD_NAV_TAKEOFF": mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
         "MAV_CMD_NAV_LAND": mavutil.mavlink.MAV_CMD_NAV_LAND,
+        "MAV_CMD_PREFLIGHT_CALIBRATION": mavutil.mavlink.MAV_CMD_PREFLIGHT_CALIBRATION,
         # Add other MAVLink commands as needed
     }
 

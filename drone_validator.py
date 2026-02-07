@@ -295,3 +295,11 @@ class DroneValidator(MavlinkHandler):
         with open(filename, 'w') as f:
             json.dump(self.categorized_params, f, indent=4)
         drone_logger.info(f"Parameters saved to {filename}")
+
+    def load_from_json(self, filename):
+        """Load flat parameters from a JSON config file into params_dict."""
+        with open(filename, 'r') as f:
+            data = json.load(f)
+        params = data.get("params", {})
+        drone_logger.info(f"Loaded {len(params)} parameters from {filename}")
+        return params

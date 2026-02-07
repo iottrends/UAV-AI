@@ -3,6 +3,8 @@ import json
 import logging
 import threading
 import time
+import glob
+from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from collections import deque
@@ -128,8 +130,14 @@ def connect_drone():
                 #paass the socketio instance to the validator
                 validator.update_socketio(socketio)
                 print("passed socketio instance to validator!!!!")
-                
-                logger.info(f"Connection successful to {port} at {baud} baud")
+
+                # Start message loop and request data every time we connect
+                validator.start_message_loop()
+                validator.request_data_stream()
+                validator.request_autopilot_version()
+                validator.request_parameter_list()
+                logger.info(f"Connection successful to {port} at {baud} baud. Message loop started.")
+
                 return jsonify({
                     "status": "success",
                     "message": f"Connected to {port} at {baud} baud"
@@ -170,24 +178,40 @@ def test():
 ############################################################################
 @app.route('/api/fc_logs', methods=['GET'])
 def get_fc_logs():
-    """API endpoint to fetch logs from the flight controller"""
+    """API endpoint to request blackbox log list from FC and return status."""
     if not validator:
         return jsonify({"status": "error", "message": "Backend not initialized"}), 500
 
     try:
-        if not validator.hardware_validated:
-            return jsonify({"status": "error", "message": "Drone not connected or not validated"}), 400
+        if not validator.is_connected:
+            return jsonify({"status": "error", "message": "Drone not connected"}), 400
 
-         # Placeholder for actual logs. This should be replaced with a call to the validator's log fetching method.
-        flight_controller_logs = """Mock log content from flight controller: This is a test log entry.
-        Another log line with some important
-        information.
-Log entry with a timestamp: [2026-02-06 10:30:00] System ready."""
+        # Trigger a log list request from the FC
+        validator.request_blackbox_logs()
 
-        if flight_controller_logs:
-            return jsonify({"status": "success", "logs": flight_controller_logs})
-        else:
-            return jsonify({"status": "success", "logs": "No logs available from the flight controller."})
+        # Return current log status
+        log_ids = list(validator.log_list)
+        downloaded_files = []
+        for log_id in log_ids:
+            log_path = os.path.join(validator.log_directory, f"log_{log_id}.bin")
+            if os.path.exists(log_path):
+                size = os.path.getsize(log_path)
+                downloaded_files.append({"id": log_id, "filename": f"log_{log_id}.bin", "size_bytes": size})
+
+        if not log_ids:
+            return jsonify({
+                "status": "success",
+                "message": "Log list requested from FC. No logs found yet — the FC may have no stored logs.",
+                "log_count": 0,
+                "logs": []
+            })
+
+        return jsonify({
+            "status": "success",
+            "message": f"Found {len(log_ids)} log(s) on FC.",
+            "log_count": len(log_ids),
+            "logs": downloaded_files
+        })
     except Exception as e:
         logger.error(f"Error fetching logs: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -291,6 +315,177 @@ def get_firmware_info():
     except Exception as e:
         logger.error(f"Error getting firmware info: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+####################################################################################
+# Golden Config Snapshots
+####################################################################################
+CONFIGS_DIR = os.path.join(os.path.dirname(__file__), 'configs')
+os.makedirs(CONFIGS_DIR, exist_ok=True)
+MAX_CONFIGS = 5
+
+
+@app.route('/api/configs', methods=['GET'])
+def list_configs():
+    """List saved config snapshots."""
+    configs = []
+    for filepath in sorted(glob.glob(os.path.join(CONFIGS_DIR, '*.json'))):
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            configs.append({
+                "name": data.get("name", os.path.basename(filepath)),
+                "saved_at": data.get("saved_at", ""),
+                "param_count": data.get("param_count", 0),
+                "filename": os.path.basename(filepath)
+            })
+        except Exception:
+            continue
+    return jsonify({"status": "success", "configs": configs})
+
+
+@app.route('/api/configs', methods=['POST'])
+def save_config():
+    """Save current params_dict as a named config snapshot."""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+
+    if not validator.params_dict:
+        return jsonify({"status": "error", "message": "No parameters loaded from drone"}), 400
+
+    data = request.get_json(force=True)
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({"status": "error", "message": "Config name is required"}), 400
+
+    # Check max configs limit
+    existing = glob.glob(os.path.join(CONFIGS_DIR, '*.json'))
+    if len(existing) >= MAX_CONFIGS:
+        return jsonify({"status": "error", "message": f"Maximum {MAX_CONFIGS} configs allowed. Delete one first."}), 400
+
+    # Sanitize filename
+    safe_name = "".join(c if c.isalnum() or c in '-_' else '_' for c in name)
+    filepath = os.path.join(CONFIGS_DIR, f"{safe_name}.json")
+
+    config_data = {
+        "name": name,
+        "saved_at": datetime.now().isoformat(timespec='seconds'),
+        "param_count": len(validator.params_dict),
+        "params": dict(validator.params_dict)
+    }
+
+    with open(filepath, 'w') as f:
+        json.dump(config_data, f, indent=4)
+
+    logger.info(f"Config saved: {name} ({len(validator.params_dict)} params)")
+    return jsonify({"status": "success", "message": f"Config '{name}' saved", "filename": f"{safe_name}.json"})
+
+
+@app.route('/api/configs/apply', methods=['POST'])
+def apply_config():
+    """Load a config and write only changed params to the FC."""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+
+    if not validator.is_connected:
+        return jsonify({"status": "error", "message": "Drone not connected"}), 400
+
+    data = request.get_json(force=True)
+    filename = data.get('filename', '')
+    filepath = os.path.join(CONFIGS_DIR, filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({"status": "error", "message": "Config file not found"}), 404
+
+    try:
+        saved_params = validator.load_from_json(filepath)
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to load config: {str(e)}"}), 500
+
+    # Diff against current params and write only changed ones
+    changed = {}
+    for param, value in saved_params.items():
+        current = validator.params_dict.get(param)
+        if current is None or abs(float(current) - float(value)) > 0.0001:
+            changed[param] = value
+
+    if not changed:
+        return jsonify({"status": "success", "message": "All parameters already match", "changed": 0})
+
+    errors = []
+    for param, value in changed.items():
+        if not validator.update_parameter(param, value):
+            errors.append(param)
+
+    if errors:
+        return jsonify({
+            "status": "partial",
+            "message": f"Applied {len(changed) - len(errors)} params, {len(errors)} failed",
+            "changed": len(changed) - len(errors),
+            "failed": errors
+        }), 207
+
+    return jsonify({"status": "success", "message": f"Applied {len(changed)} changed parameters", "changed": len(changed)})
+
+
+@app.route('/api/configs/<name>', methods=['DELETE'])
+def delete_config(name):
+    """Delete a saved config snapshot."""
+    safe_name = "".join(c if c.isalnum() or c in '-_.' else '_' for c in name)
+    filepath = os.path.join(CONFIGS_DIR, safe_name)
+
+    if not os.path.exists(filepath):
+        return jsonify({"status": "error", "message": "Config not found"}), 404
+
+    os.remove(filepath)
+    logger.info(f"Config deleted: {safe_name}")
+    return jsonify({"status": "success", "message": f"Config deleted"})
+
+
+####################################################################################
+# Field Calibration
+####################################################################################
+CALIBRATION_PARAMS = {
+    "gyro":    {"param1": 1, "param2": 0, "param3": 0, "param5": 0},
+    "compass": {"param1": 0, "param2": 1, "param3": 0, "param5": 0},
+    "accel":   {"param1": 0, "param2": 0, "param3": 0, "param5": 1},
+    "baro":    {"param1": 0, "param2": 0, "param3": 1, "param5": 0},
+    "level":   {"param1": 0, "param2": 0, "param3": 0, "param5": 2},
+}
+
+
+@app.route('/api/calibrate', methods=['POST'])
+def calibrate():
+    """Trigger an on-board calibration routine via MAV_CMD_PREFLIGHT_CALIBRATION."""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+
+    if not validator.is_connected:
+        return jsonify({"status": "error", "message": "Drone not connected"}), 400
+
+    data = request.get_json(force=True)
+    cal_type = data.get('type', '').lower()
+
+    if cal_type not in CALIBRATION_PARAMS:
+        return jsonify({"status": "error", "message": f"Unknown calibration type: {cal_type}. Valid: {list(CALIBRATION_PARAMS.keys())}"}), 400
+
+    cal = CALIBRATION_PARAMS[cal_type]
+    command_json = {
+        "command": "MAV_CMD_PREFLIGHT_CALIBRATION",
+        "param1": cal["param1"],
+        "param2": cal["param2"],
+        "param3": cal["param3"],
+        "param4": 0,
+        "param5": cal["param5"],
+        "param6": 0,
+        "param7": 0,
+    }
+
+    success = validator.send_mavlink_command_from_json(command_json)
+    if success:
+        return jsonify({"status": "success", "message": f"{cal_type.capitalize()} calibration command accepted"})
+    else:
+        return jsonify({"status": "error", "message": f"{cal_type.capitalize()} calibration command rejected or timed out"}), 500
+
 
 ####################################################################################
 @app.route('/api/query', methods=['POST'])
@@ -802,7 +997,13 @@ def update_system_health():
                 "max": latency_stats["max"],
             }
         
-        # Parameter progress is now handled by update_param_progress function
+        # Update parameter progress from validator
+        if hasattr(validator, 'param_progress'):
+            last_system_health["params"] = {
+                "percentage": validator.param_progress,
+                "downloaded": len(validator.params_dict),
+                "total": validator.param_count
+            }
 
         # Broadcast system health to all connected clients
         if connected_clients:

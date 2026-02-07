@@ -47,43 +47,29 @@ def main():
     print("Please use the web interface to connect to your drone.")
     print("You can specify the COM port and baud rate in the connection dialog.")
     
-    # Main loop to check for connection request
+    # Wait for first connection from web interface
+    # Post-connection setup (message loop, data streams, params) is now
+    # handled inside the /api/connect endpoint in web_server.py,
+    # so reconnects work too.
     while True:
-        # Check if connection was requested and successful
         if web_server.connection_params["connect_requested"] and web_server.connection_params["connect_success"]:
+            web_server.connection_params["connect_requested"] = False
             port = web_server.connection_params["port"]
             baud = web_server.connection_params["baud"]
-            
-            # Reset the flag to avoid processing again
-            web_server.connection_params["connect_requested"] = False
-            
-            # Now proceed with the connection setup
-            mavlink_logger.info(f"Connection successful to {port} at {baud} baud. Starting message loop...")
-            
-            # Start the message reception loop
-            validator.start_message_loop()
-            validator.request_data_stream()
-            validator.request_autopilot_version()
-            validator.request_parameter_list()
-            mavlink_logger.info("Parameter list request started!")
-            print("Parameter list request started!")
+            mavlink_logger.info(f"Connection successful to {port} at {baud} baud")
             print("Total number of threads:", threading.active_count())
 
             # Wait for validation to complete
             print("Waiting for hardware validation...")
             while not validator.hardware_validated:
-                print("Waiting for hardware validation to complete...")
                 time.sleep(0.5)
 
             mavlink_logger.info("Hardware validation complete!")
             print("Hardware validation complete!")
             print(f"Total parameters: {len(validator.get_parameters())}")
             validator.request_blackbox_logs()
-            
-            # Break out of the waiting loop
             break
-        
-        # Sleep to avoid high CPU usage
+
         time.sleep(0.5)
 
     web_logger.info("Terminal interface is active")
