@@ -30,8 +30,10 @@ class MavlinkHandler:
         self.log_list = []  # store log Ids from Log_Entry messages
         self.firmware_data = {}
         os.makedirs(self.log_directory, exist_ok=True)
-        self.rx_mav_msg = list(range (100)) # rx mavlink list size 100
-        self.ai_mavlink_ctx = deque(maxlen=10)
+        self.rx_mav_msg = deque(maxlen=100)  # circular buffer: last 100 rx MAVLink messages
+        self._rx_mav_lock = threading.Lock()  # protects rx_mav_msg
+        self.ai_mavlink_ctx = {}  # dict keyed by message type → latest msg (built from snapshot)
+        self._telemetry_snapshot = []  # snapshot copy taken at telemetry loop start
         self.tx_mav_msg = [] # store all tx mavlink msg.
         self.last_dump_time = time.time()
 
@@ -127,10 +129,13 @@ class MavlinkHandler:
     def _process_message(self, msg):
         """Process received MAVLink messages."""
         msg_dict = msg.to_dict()  # Create dict from message for processing
-        #self.rx_mav_msg.append(msg) # rx mavlink msg in list.
-        JARVIS.jarvis_mav_data.append(msg_dict)
-        #llm_ai.mavlink_context.append(msg_dict)
-        self.ai_mavlink_ctx.append(msg_dict)
+        msg_dict["_rx_timestamp"] = time.time()  # arrival timestamp
+        msg_type = msg_dict.get("mavpackettype", "UNKNOWN")
+
+        # Push into the 100-msg circular buffer (thread-safe)
+        with self._rx_mav_lock:
+            self.rx_mav_msg.append(msg_dict)
+
         mavlink_logger.debug(f"Received msg: {msg.get_type()}")
 
         if time.time() - self.last_dump_time > 5:
@@ -191,7 +196,10 @@ class MavlinkHandler:
             with self.command_ack_condition:
                 command_id = msg.command
                 result = msg.result
-                mavlink_logger.info(f"Received COMMAND_ACK for command {command_id} with result: {result}")
+                result_names = {0: "ACCEPTED", 1: "TEMPORARILY_REJECTED", 2: "DENIED", 3: "UNSUPPORTED", 4: "FAILED", 5: "IN_PROGRESS", 6: "CANCELLED"}
+                result_str = result_names.get(result, f"UNKNOWN({result})")
+                mavlink_logger.info(f"Received COMMAND_ACK for command {command_id} with result: {result_str}")
+                print(f"<<< COMMAND_ACK: cmd={command_id} result={result_str}")
                 self.command_ack_status[command_id] = result
                 self.command_ack_condition.notify_all() # Notify waiting threads
 ########################################################################################
@@ -239,6 +247,23 @@ class MavlinkHandler:
         """Called when all parameters are received. Override this in subclass."""
         pass
 ############################################################################################
+    def snapshot_rx_queue(self):
+        """Copy the rx queue and build ai_mavlink_ctx (latest msg per type).
+        Call at the START of the telemetry loop."""
+        with self._rx_mav_lock:
+            self._telemetry_snapshot = list(self.rx_mav_msg)
+
+        # Build ai_mavlink_ctx: last message of each type from the snapshot
+        ctx = {}
+        for m in self._telemetry_snapshot:
+            ctx[m.get("mavpackettype", "UNKNOWN")] = m
+        self.ai_mavlink_ctx = ctx
+
+    def flush_rx_queue(self):
+        """Clear the rx queue. Call at the END of the telemetry loop."""
+        with self._rx_mav_lock:
+            self.rx_mav_msg.clear()
+
     def _check_heartbeat_timeout(self):
         """Monitor for heartbeat timeouts."""
         while self.is_connected:
@@ -364,7 +389,10 @@ class MavlinkHandler:
         "MAV_CMD_NAV_TAKEOFF": mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
         "MAV_CMD_NAV_LAND": mavutil.mavlink.MAV_CMD_NAV_LAND,
         "MAV_CMD_PREFLIGHT_CALIBRATION": mavutil.mavlink.MAV_CMD_PREFLIGHT_CALIBRATION,
-        # Add other MAVLink commands as needed
+        "MAV_CMD_DO_SET_MODE": mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        "MAV_CMD_CONDITION_CHANGE_ALT": mavutil.mavlink.MAV_CMD_CONDITION_CHANGE_ALT,
+        "MAV_CMD_DO_CHANGE_SPEED": mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED,
+        "MAV_CMD_NAV_RETURN_TO_LAUNCH": mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH,
     }
 
     def send_mavlink_command_from_json(self, command_json):
@@ -415,6 +443,7 @@ class MavlinkHandler:
             )
             self.tx_mav_msg.append(f"COMMAND_SENT:{command_name}")
             mavlink_logger.info(f"✅ Sent MAVLink command: {command_name} with params: {params}")
+            print(f">>> SENT MAVLink command: {command_name} | target_sys={self.target_system} target_comp={self.target_component} | params={params}")
 
             # Wait for ACK with a timeout
             timeout_seconds = 5
@@ -432,9 +461,11 @@ class MavlinkHandler:
                         return True
                     else:
                         mavlink_logger.warning(f"⚠️ Command {command_name} NACKed with result: {acked_result}")
+                        print(f"<<< NACK: {command_name} result={acked_result}")
                         return False
                 else:
                     mavlink_logger.error(f"❌ Command {command_name} timed out waiting for ACK.")
+                    print(f"<<< TIMEOUT: {command_name} — no ACK received within 5s")
                     return False
         except Exception as e:
             mavlink_logger.error(f"❌ Failed to send MAVLink command {command_name}: {e}")

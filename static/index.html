@@ -536,7 +536,10 @@
                <i class="fas fa-crosshairs"></i>
                Calibration
             </div>
-            <!-- Flight Plan tab removed as requested -->
+            <div class="menu-item" data-tab="motors">
+               <i class="fas fa-cog"></i>
+               Motors
+            </div>
          </div>
          <!-- Main Content -->
          <div class="main-content">
@@ -931,6 +934,148 @@
                      </button>
                      <div class="cal-status" data-cal="baro" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
                   </div>
+               </div>
+            </div>
+            <!-- Motors Tab -->
+            <div class="tab-content" id="motors-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+               <h2 class="dashboard-title">Motor Testing</h2>
+
+               <!-- Safety Gate -->
+               <div id="motorSafetyBanner" class="motor-safety-banner">
+                  <div class="motor-safety-warning">
+                     <i class="fas fa-exclamation-triangle"></i>
+                     <span>Remove all propellers before testing! Motors will spin.</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem;">
+                     <label class="motor-safety-toggle">
+                        <input type="checkbox" id="motorEnableToggle">
+                        <span class="motor-toggle-slider"></span>
+                     </label>
+                     <span id="motorEnableLabel" style="font-weight: bold; font-size: 0.9rem; color: var(--danger-color);">Motor Test DISABLED</span>
+                  </div>
+                  <div id="motorArmedWarning" class="motor-armed-warning" style="display: none;">
+                     <i class="fas fa-shield-alt"></i> ARM DETECTED — motor test disabled
+                  </div>
+               </div>
+
+               <!-- Motor Sliders + Quad Diagram -->
+               <div class="motor-test-layout">
+                  <!-- Motor Sliders -->
+                  <div class="motor-sliders-row">
+                     <!-- Motor 1 -->
+                     <div class="motor-test-card" id="motorTestCard1">
+                        <div class="motor-test-title">Motor 1</div>
+                        <div class="motor-slider-wrap">
+                           <div class="motor-slider-value" id="motorSliderVal1">0%</div>
+                           <input type="range" min="0" max="100" value="0" class="motor-vslider" id="motorSlider1" orient="vertical" disabled>
+                        </div>
+                        <div class="motor-test-controls">
+                           <label style="font-size:0.7rem; color: var(--text-muted);">Duration (s)</label>
+                           <input type="number" min="1" max="10" value="3" class="motor-duration-input" id="motorDur1" disabled>
+                           <button class="motor-test-btn" id="motorTestBtn1" disabled><i class="fas fa-play"></i> Test</button>
+                           <button class="motor-stop-btn" id="motorStopBtn1" disabled><i class="fas fa-stop"></i> Stop</button>
+                        </div>
+                        <div class="motor-response-status" id="motorResp1">--</div>
+                     </div>
+                     <!-- Motor 2 -->
+                     <div class="motor-test-card" id="motorTestCard2">
+                        <div class="motor-test-title">Motor 2</div>
+                        <div class="motor-slider-wrap">
+                           <div class="motor-slider-value" id="motorSliderVal2">0%</div>
+                           <input type="range" min="0" max="100" value="0" class="motor-vslider" id="motorSlider2" orient="vertical" disabled>
+                        </div>
+                        <div class="motor-test-controls">
+                           <label style="font-size:0.7rem; color: var(--text-muted);">Duration (s)</label>
+                           <input type="number" min="1" max="10" value="3" class="motor-duration-input" id="motorDur2" disabled>
+                           <button class="motor-test-btn" id="motorTestBtn2" disabled><i class="fas fa-play"></i> Test</button>
+                           <button class="motor-stop-btn" id="motorStopBtn2" disabled><i class="fas fa-stop"></i> Stop</button>
+                        </div>
+                        <div class="motor-response-status" id="motorResp2">--</div>
+                     </div>
+
+                     <!-- Quad Diagram -->
+                     <div class="motor-quad-diagram">
+                        <svg viewBox="0 0 200 200" width="160" height="160">
+                           <!-- Arms -->
+                           <line x1="40" y1="40" x2="160" y2="160" stroke="#555" stroke-width="3"/>
+                           <line x1="160" y1="40" x2="40" y2="160" stroke="#555" stroke-width="3"/>
+                           <!-- Center body -->
+                           <rect x="80" y="80" width="40" height="40" rx="6" fill="var(--dark-color)"/>
+                           <text x="100" y="105" text-anchor="middle" fill="white" font-size="12" font-weight="bold">FC</text>
+                           <!-- Direction arrow -->
+                           <polygon points="100,70 94,82 106,82" fill="var(--danger-color)"/>
+                           <!-- Motor circles -->
+                           <circle id="motorDiag1" cx="40" cy="40" r="22" fill="#444" stroke="#666" stroke-width="2"/>
+                           <text x="40" y="44" text-anchor="middle" fill="white" font-size="11" font-weight="bold">M1</text>
+                           <circle id="motorDiag2" cx="160" cy="40" r="22" fill="#444" stroke="#666" stroke-width="2"/>
+                           <text x="160" y="44" text-anchor="middle" fill="white" font-size="11" font-weight="bold">M2</text>
+                           <circle id="motorDiag3" cx="40" cy="160" r="22" fill="#444" stroke="#666" stroke-width="2"/>
+                           <text x="40" y="164" text-anchor="middle" fill="white" font-size="11" font-weight="bold">M3</text>
+                           <circle id="motorDiag4" cx="160" cy="160" r="22" fill="#444" stroke="#666" stroke-width="2"/>
+                           <text x="160" y="164" text-anchor="middle" fill="white" font-size="11" font-weight="bold">M4</text>
+                        </svg>
+                     </div>
+
+                     <!-- Motor 3 -->
+                     <div class="motor-test-card" id="motorTestCard3">
+                        <div class="motor-test-title">Motor 3</div>
+                        <div class="motor-slider-wrap">
+                           <div class="motor-slider-value" id="motorSliderVal3">0%</div>
+                           <input type="range" min="0" max="100" value="0" class="motor-vslider" id="motorSlider3" orient="vertical" disabled>
+                        </div>
+                        <div class="motor-test-controls">
+                           <label style="font-size:0.7rem; color: var(--text-muted);">Duration (s)</label>
+                           <input type="number" min="1" max="10" value="3" class="motor-duration-input" id="motorDur3" disabled>
+                           <button class="motor-test-btn" id="motorTestBtn3" disabled><i class="fas fa-play"></i> Test</button>
+                           <button class="motor-stop-btn" id="motorStopBtn3" disabled><i class="fas fa-stop"></i> Stop</button>
+                        </div>
+                        <div class="motor-response-status" id="motorResp3">--</div>
+                     </div>
+                     <!-- Motor 4 -->
+                     <div class="motor-test-card" id="motorTestCard4">
+                        <div class="motor-test-title">Motor 4</div>
+                        <div class="motor-slider-wrap">
+                           <div class="motor-slider-value" id="motorSliderVal4">0%</div>
+                           <input type="range" min="0" max="100" value="0" class="motor-vslider" id="motorSlider4" orient="vertical" disabled>
+                        </div>
+                        <div class="motor-test-controls">
+                           <label style="font-size:0.7rem; color: var(--text-muted);">Duration (s)</label>
+                           <input type="number" min="1" max="10" value="3" class="motor-duration-input" id="motorDur4" disabled>
+                           <button class="motor-test-btn" id="motorTestBtn4" disabled><i class="fas fa-play"></i> Test</button>
+                           <button class="motor-stop-btn" id="motorStopBtn4" disabled><i class="fas fa-stop"></i> Stop</button>
+                        </div>
+                        <div class="motor-response-status" id="motorResp4">--</div>
+                     </div>
+                  </div>
+               </div>
+
+               <!-- ESC Telemetry Table -->
+               <div class="card" style="margin-top: 1rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                     <div class="card-title" style="margin-bottom: 0;">ESC TELEMETRY</div>
+                     <div style="font-size: 0.8rem;">
+                        <span style="color: var(--text-muted);">Protocol:</span>
+                        <span id="escProtocolBadge" style="background-color: var(--primary-color); color: white; padding: 0.2rem 0.6rem; border-radius: 10px; font-weight: bold; font-size: 0.75rem;">--</span>
+                     </div>
+                  </div>
+                  <table class="subsystem-table" id="escTelemetryTable">
+                     <thead>
+                        <tr>
+                           <th>MOTOR</th>
+                           <th>RPM / PWM</th>
+                           <th>TEMP (&deg;C)</th>
+                           <th>VOLTAGE (V)</th>
+                           <th>CURRENT (A)</th>
+                           <th>STATUS</th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        <tr><td>1</td><td id="escRpm1">--</td><td id="escTemp1">--</td><td id="escVolt1">--</td><td id="escCurr1">--</td><td id="escStatus1">--</td></tr>
+                        <tr><td>2</td><td id="escRpm2">--</td><td id="escTemp2">--</td><td id="escVolt2">--</td><td id="escCurr2">--</td><td id="escStatus2">--</td></tr>
+                        <tr><td>3</td><td id="escRpm3">--</td><td id="escTemp3">--</td><td id="escVolt3">--</td><td id="escCurr3">--</td><td id="escStatus3">--</td></tr>
+                        <tr><td>4</td><td id="escRpm4">--</td><td id="escTemp4">--</td><td id="escVolt4">--</td><td id="escCurr4">--</td><td id="escStatus4">--</td></tr>
+                     </tbody>
+                  </table>
                </div>
             </div>
             <!-- Chat Interface -->
@@ -1545,6 +1690,11 @@
          
                       subsystemTableBody.appendChild(row);
                   });
+              }
+
+              // Update Motors tab (ESC telemetry + armed state)
+              if (window._motorTab && window._motorTab.onSystemStatus) {
+                  window._motorTab.onSystemStatus(data);
               }
           }
           
@@ -2445,6 +2595,188 @@
          #parametersTable input {
          transition: background-color 0.3s;
          }
+         /* ===== Motors Tab Styles ===== */
+         .motor-safety-banner {
+         background-color: #1a1a2e;
+         border: 2px solid var(--danger-color);
+         border-radius: var(--border-radius);
+         padding: 1rem 1.5rem;
+         margin-bottom: 1rem;
+         }
+         .motor-safety-warning {
+         color: var(--danger-color);
+         font-size: 0.9rem;
+         font-weight: bold;
+         display: flex;
+         align-items: center;
+         gap: 0.5rem;
+         }
+         .motor-armed-warning {
+         margin-top: 0.75rem;
+         padding: 0.5rem 1rem;
+         background-color: var(--danger-color);
+         color: white;
+         border-radius: 5px;
+         font-weight: bold;
+         font-size: 0.85rem;
+         text-align: center;
+         }
+         /* Toggle switch */
+         .motor-safety-toggle {
+         position: relative;
+         display: inline-block;
+         width: 48px;
+         height: 24px;
+         }
+         .motor-safety-toggle input { opacity: 0; width: 0; height: 0; }
+         .motor-toggle-slider {
+         position: absolute; cursor: pointer;
+         top: 0; left: 0; right: 0; bottom: 0;
+         background-color: #555;
+         border-radius: 24px;
+         transition: 0.3s;
+         }
+         .motor-toggle-slider:before {
+         content: "";
+         position: absolute;
+         height: 18px; width: 18px;
+         left: 3px; bottom: 3px;
+         background-color: white;
+         border-radius: 50%;
+         transition: 0.3s;
+         }
+         .motor-safety-toggle input:checked + .motor-toggle-slider {
+         background-color: var(--success-color);
+         }
+         .motor-safety-toggle input:checked + .motor-toggle-slider:before {
+         transform: translateX(24px);
+         }
+         /* Motor test layout */
+         .motor-test-layout {
+         margin-top: 0.5rem;
+         }
+         .motor-sliders-row {
+         display: flex;
+         justify-content: center;
+         align-items: flex-start;
+         gap: 1rem;
+         flex-wrap: wrap;
+         }
+         .motor-test-card {
+         background-color: #1a1a2e;
+         border-radius: var(--border-radius);
+         padding: 1rem;
+         width: 130px;
+         display: flex;
+         flex-direction: column;
+         align-items: center;
+         border: 1px solid #333;
+         }
+         .motor-test-title {
+         color: white;
+         font-weight: bold;
+         font-size: 0.9rem;
+         margin-bottom: 0.5rem;
+         }
+         .motor-slider-wrap {
+         display: flex;
+         flex-direction: column;
+         align-items: center;
+         height: 160px;
+         justify-content: center;
+         }
+         .motor-slider-value {
+         color: var(--primary-color);
+         font-weight: bold;
+         font-size: 1.1rem;
+         margin-bottom: 0.5rem;
+         }
+         /* Vertical slider styling */
+         .motor-vslider {
+         -webkit-appearance: none;
+         appearance: none;
+         width: 120px;
+         height: 6px;
+         background: #333;
+         border-radius: 3px;
+         outline: none;
+         transform: rotate(-90deg);
+         transform-origin: center center;
+         margin: 50px 0;
+         }
+         .motor-vslider::-webkit-slider-thumb {
+         -webkit-appearance: none;
+         appearance: none;
+         width: 20px;
+         height: 20px;
+         background: var(--primary-color);
+         border-radius: 50%;
+         cursor: pointer;
+         border: 2px solid white;
+         }
+         .motor-vslider::-moz-range-thumb {
+         width: 20px;
+         height: 20px;
+         background: var(--primary-color);
+         border-radius: 50%;
+         cursor: pointer;
+         border: 2px solid white;
+         }
+         .motor-vslider:disabled {
+         opacity: 0.4;
+         cursor: not-allowed;
+         }
+         .motor-vslider:disabled::-webkit-slider-thumb { cursor: not-allowed; }
+         .motor-vslider:disabled::-moz-range-thumb { cursor: not-allowed; }
+         .motor-test-controls {
+         display: flex;
+         flex-direction: column;
+         align-items: center;
+         gap: 0.35rem;
+         width: 100%;
+         }
+         .motor-duration-input {
+         width: 60px;
+         padding: 0.25rem;
+         border-radius: 4px;
+         border: 1px solid #555;
+         background: #2a2a3e;
+         color: white;
+         text-align: center;
+         font-size: 0.8rem;
+         }
+         .motor-duration-input:disabled { opacity: 0.4; }
+         .motor-test-btn, .motor-stop-btn {
+         width: 100%;
+         padding: 0.4rem;
+         border: none;
+         border-radius: 4px;
+         cursor: pointer;
+         font-size: 0.75rem;
+         font-weight: bold;
+         color: white;
+         }
+         .motor-test-btn { background-color: var(--primary-color); }
+         .motor-test-btn:hover:not(:disabled) { background-color: #2980b9; }
+         .motor-stop-btn { background-color: var(--danger-color); }
+         .motor-stop-btn:hover:not(:disabled) { background-color: #c0392b; }
+         .motor-test-btn:disabled, .motor-stop-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+         .motor-response-status {
+         margin-top: 0.5rem;
+         font-size: 0.75rem;
+         font-weight: bold;
+         color: var(--text-muted);
+         text-align: center;
+         }
+         .motor-response-status.responding { color: var(--success-color); }
+         .motor-response-status.no-response { color: var(--danger-color); }
+         /* Quad diagram */
+         .motor-quad-diagram {
+         display: flex;
+         align-items: center;
+         justify-content: center;
+         padding: 0.5rem;
+         }
          /* Responsive adjustments */
          @media (max-width: 768px) {
          .main-content {
@@ -2493,6 +2825,171 @@
 
          // Call it once on load
          fetchFirmwareInfo();
+
+         // ====== Motors Tab Logic ======
+         // Global state for the motors tab (accessible from updateDashboard)
+         window._motorTab = {
+            enabled: false,
+            armed: false,
+            lastEsc: [{},{},{},{}],
+            testTimestamps: {1:0, 2:0, 3:0, 4:0}
+         };
+
+         (function() {
+            const MT = window._motorTab;
+            const enableToggle = document.getElementById('motorEnableToggle');
+            const enableLabel = document.getElementById('motorEnableLabel');
+            const armedWarning = document.getElementById('motorArmedWarning');
+
+            function setMotorControlsEnabled(enabled) {
+               for (let m = 1; m <= 4; m++) {
+                  document.getElementById('motorSlider' + m).disabled = !enabled;
+                  document.getElementById('motorDur' + m).disabled = !enabled;
+                  document.getElementById('motorTestBtn' + m).disabled = !enabled;
+                  document.getElementById('motorStopBtn' + m).disabled = !enabled;
+               }
+            }
+
+            window._motorTab.updateSafety = function() {
+               const canTest = MT.enabled && !MT.armed;
+               setMotorControlsEnabled(canTest);
+               armedWarning.style.display = MT.armed ? 'block' : 'none';
+               if (MT.armed) {
+                  enableLabel.textContent = 'ARMED — motor test blocked';
+                  enableLabel.style.color = 'var(--danger-color)';
+               } else if (MT.enabled) {
+                  enableLabel.textContent = 'Motor Test ENABLED';
+                  enableLabel.style.color = 'var(--success-color)';
+               } else {
+                  enableLabel.textContent = 'Motor Test DISABLED';
+                  enableLabel.style.color = 'var(--danger-color)';
+               }
+            };
+
+            enableToggle.addEventListener('change', function() {
+               MT.enabled = this.checked;
+               MT.updateSafety();
+            });
+
+            // Slider value display
+            for (let m = 1; m <= 4; m++) {
+               (function(motor) {
+                  const slider = document.getElementById('motorSlider' + motor);
+                  const valDisplay = document.getElementById('motorSliderVal' + motor);
+                  slider.addEventListener('input', function() {
+                     valDisplay.textContent = this.value + '%';
+                  });
+               })(m);
+            }
+
+            // Test and stop button handlers
+            for (let m = 1; m <= 4; m++) {
+               (function(motor) {
+                  document.getElementById('motorTestBtn' + motor).addEventListener('click', function() {
+                     const throttle = parseInt(document.getElementById('motorSlider' + motor).value);
+                     const duration = parseInt(document.getElementById('motorDur' + motor).value) || 3;
+                     sendMotorTest(motor, throttle, duration);
+                  });
+                  document.getElementById('motorStopBtn' + motor).addEventListener('click', function() {
+                     sendMotorTest(motor, 0, 1);
+                  });
+               })(m);
+            }
+
+            async function sendMotorTest(motor, throttle, duration) {
+               const respEl = document.getElementById('motorResp' + motor);
+               respEl.textContent = 'Sending...';
+               respEl.className = 'motor-response-status';
+               try {
+                  const res = await fetch('/api/motor_test', {
+                     method: 'POST',
+                     headers: {'Content-Type': 'application/json'},
+                     body: JSON.stringify({motor, throttle, duration})
+                  });
+                  const data = await res.json();
+                  if (data.status === 'success') {
+                     respEl.textContent = 'CMD SENT';
+                     respEl.className = 'motor-response-status';
+                     if (throttle > 0) {
+                        MT.testTimestamps[motor] = Date.now();
+                        setTimeout(function() {
+                           const esc = MT.lastEsc[motor - 1];
+                           const diagEl = document.getElementById('motorDiag' + motor);
+                           // Check RPM (real ESC telem) or servo_raw > 1050 (SITL fallback)
+                           const isActive = esc && (esc.rpm > 0 || (esc.servo_raw !== undefined && esc.servo_raw > 1050));
+                           if (isActive) {
+                              respEl.textContent = 'RESPONDING';
+                              respEl.className = 'motor-response-status responding';
+                              if (diagEl) diagEl.setAttribute('fill', 'var(--success-color)');
+                           } else {
+                              respEl.textContent = 'NO RESPONSE';
+                              respEl.className = 'motor-response-status no-response';
+                              if (diagEl) diagEl.setAttribute('fill', 'var(--danger-color)');
+                           }
+                        }, 2500);
+                     }
+                  } else {
+                     respEl.textContent = data.message || 'FAILED';
+                     respEl.className = 'motor-response-status no-response';
+                  }
+               } catch(e) {
+                  respEl.textContent = 'ERROR';
+                  respEl.className = 'motor-response-status no-response';
+               }
+            }
+
+            // Called from updateDashboard via global hook
+            window._motorTab.onSystemStatus = function(data) {
+               // Update armed state
+               if (data.armed !== undefined) {
+                  MT.armed = data.armed;
+                  MT.updateSafety();
+               }
+               // Update ESC protocol badge
+               const protoBadge = document.getElementById('escProtocolBadge');
+               if (protoBadge && data.esc_protocol) {
+                  protoBadge.textContent = data.esc_protocol;
+               }
+               // Update ESC telemetry table and diagram
+               if (data.esc_telemetry && Array.isArray(data.esc_telemetry)) {
+                  MT.lastEsc = data.esc_telemetry;
+                  // Detect if we're in fallback mode (servo_raw present)
+                  const isFallback = data.esc_telemetry.length > 0 && data.esc_telemetry[0].servo_raw !== undefined;
+                  for (let i = 0; i < data.esc_telemetry.length; i++) {
+                     const esc = data.esc_telemetry[i];
+                     const m = i + 1;
+                     const rpmEl = document.getElementById('escRpm' + m);
+                     const tempEl = document.getElementById('escTemp' + m);
+                     const voltEl = document.getElementById('escVolt' + m);
+                     const currEl = document.getElementById('escCurr' + m);
+                     const statEl = document.getElementById('escStatus' + m);
+                     if (rpmEl) {
+                        if (isFallback) {
+                           rpmEl.textContent = (esc.servo_raw || 1000) + ' \u00B5s';
+                        } else {
+                           rpmEl.textContent = esc.rpm || 0;
+                        }
+                     }
+                     if (tempEl) tempEl.textContent = esc.temperature || (isFallback ? 'N/A' : 0);
+                     if (voltEl) voltEl.textContent = esc.voltage ? esc.voltage.toFixed(2) : (isFallback ? 'N/A' : '0.00');
+                     if (currEl) currEl.textContent = esc.current ? esc.current.toFixed(2) : (isFallback ? 'N/A' : '0.00');
+                     if (statEl) {
+                        const isActive = isFallback ? (esc.servo_raw > 1050) : (esc.rpm > 0);
+                        if (isActive) {
+                           statEl.innerHTML = '<span class="status-badge status-ok">ACTIVE</span>';
+                        } else {
+                           statEl.innerHTML = '<span class="status-badge" style="background:#555;">IDLE</span>';
+                        }
+                     }
+                     const diagEl = document.getElementById('motorDiag' + m);
+                     if (diagEl) {
+                        const isActive = isFallback ? (esc.servo_raw > 1050) : (esc.rpm > 0);
+                        diagEl.setAttribute('fill', isActive ? 'var(--success-color)' : '#444');
+                     }
+                  }
+               }
+            };
+         })();
       </script>
    </body>
 </html>

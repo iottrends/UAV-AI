@@ -7,7 +7,6 @@ import glob
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
-from collections import deque
 
 # Default logger that will be replaced if loggers are provided
 logger = logging.getLogger('web_server')
@@ -25,7 +24,7 @@ llm_ai_module = None  # Will hold the llm_ai_v5 module
 stt_module = None # Will hold the STT recorder instance
 telemetry_thread = None  # Will hold the telemetry update thread
 connected_clients = set()  # Track connected WebSocket clients
-mavlink_buffer = deque(maxlen=10)  # Local buffer of recent MAVLink messages
+mavlink_buffer = {}  # dict keyed by message type → latest msg of each type
 
 # Connection parameters storage
 connection_params = {
@@ -488,6 +487,52 @@ def calibrate():
 
 
 ####################################################################################
+@app.route('/api/motor_test', methods=['POST'])
+def motor_test():
+    """API endpoint to send a motor test command (disarmed only)."""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+
+    if not validator.is_connected:
+        return jsonify({"status": "error", "message": "Drone not connected"}), 400
+
+    # Check armed state from HEARTBEAT
+    hb = mavlink_buffer.get("HEARTBEAT")
+    if hb and (hb.get("base_mode", 0) & 128):
+        return jsonify({"status": "error", "message": "Drone is ARMED — motor test blocked. Disarm first."}), 400
+
+    data = request.get_json(force=True)
+    motor = data.get("motor")      # 1-4
+    throttle = data.get("throttle") # 0-100
+    duration = data.get("duration") # 1-10 seconds
+
+    # Validate inputs
+    if motor not in (1, 2, 3, 4):
+        return jsonify({"status": "error", "message": "motor must be 1-4"}), 400
+    if not isinstance(throttle, (int, float)) or throttle < 0 or throttle > 100:
+        return jsonify({"status": "error", "message": "throttle must be 0-100"}), 400
+    if not isinstance(duration, (int, float)) or duration < 1 or duration > 10:
+        return jsonify({"status": "error", "message": "duration must be 1-10 seconds"}), 400
+
+    command_json = {
+        "command": "MAV_CMD_DO_MOTOR_TEST",
+        "param1": motor,           # motor instance (1-based)
+        "param2": 1,               # throttle type = percentage
+        "param3": throttle,        # throttle 0-100
+        "param4": duration,        # duration in seconds
+        "param5": 0,               # motor count (0 = single motor)
+        "param6": 0,
+        "param7": 0,
+    }
+
+    success = validator.send_mavlink_command_from_json(command_json)
+    if success:
+        return jsonify({"status": "success", "message": f"Motor {motor} test started at {throttle}% for {duration}s"})
+    else:
+        return jsonify({"status": "error", "message": f"Motor {motor} test command rejected or timed out"}), 500
+
+
+####################################################################################
 @app.route('/api/query', methods=['POST'])
 def process_query():
     """API endpoint to process a query through both AI systems"""
@@ -574,8 +619,12 @@ def handle_chat_message(data):
         try:
                 # Process through JARVIS
             #jarvis_response = jarvis_module.ask_gemini(query)
-            jarvis_response = jarvis_module.ask_gemini(query, validator.categorized_params)
-            print("Abhinav jarvis rep*****")
+            import time as _time
+            _jarvis_start = _time.time()
+            print(f">>> JARVIS query sent: \"{query}\"")
+            jarvis_response = jarvis_module.ask_gemini(query, validator.categorized_params, validator.ai_mavlink_ctx)
+            _jarvis_elapsed = _time.time() - _jarvis_start
+            print(f"<<< JARVIS response received in {_jarvis_elapsed:.2f}s")
             print(jarvis_response)
                 # Send JARVIS response immediately
             socketio.emit('chat_response', {
@@ -583,10 +632,32 @@ def handle_chat_message(data):
                     "response": jarvis_response
                 }, room=client_id)
 
+            # Execute fix_command if JARVIS included one (supports single dict or list of dicts)
+            if jarvis_response and 'fix_command' in jarvis_response and jarvis_response['fix_command']:
+                fix_command_raw = jarvis_response['fix_command']
+                # Normalize to a list
+                commands = fix_command_raw if isinstance(fix_command_raw, list) else [fix_command_raw]
+                for fix_command_json in commands:
+                    logger.info(f"Attempting to execute fix command from JARVIS: {fix_command_json}")
+                    try:
+                        if isinstance(fix_command_json, dict):
+                            command_name = fix_command_json.get('command', 'unknown')
+                            if validator.send_mavlink_command_from_json(fix_command_json):
+                                socketio.emit('chat_response', {'message': f"Command '{command_name}' initiated and acknowledged by drone."}, room=client_id)
+                            else:
+                                socketio.emit('chat_response', {'error': f"Command '{command_name}' failed to be acknowledged by drone or timed out."}, room=client_id)
+                                break  # Stop executing remaining commands if one fails
+                        else:
+                            logger.error(f"Invalid fix_command format from JARVIS: {fix_command_json}")
+                            socketio.emit('chat_response', {'error': f"Invalid command format: {fix_command_json}"}, room=client_id)
+                    except Exception as e:
+                        logger.error(f"Error sending MAVLink command: {e}")
+                        socketio.emit('chat_response', {'error': f"Error sending command: {e}"}, room=client_id)
+
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}")
             socketio.emit('chat_response', {"error": str(e)}, room=client_id)
-       
+
     except Exception as e:
         logger.error(f"Error handling chat message: {str(e)}")
         emit('chat_response', {"error": str(e)}, room=client_id)
@@ -644,7 +715,12 @@ def process_voice_command(client_id, query):
     logger.info(f"Voice command from {client_id}: {query}")
 
     try:
-        jarvis_response = jarvis_module.ask_gemini(query, validator.categorized_params)
+        import time as _time
+        _jarvis_start = _time.time()
+        print(f">>> JARVIS voice query sent: \"{query}\"")
+        jarvis_response = jarvis_module.ask_gemini(query, validator.categorized_params, validator.ai_mavlink_ctx)
+        _jarvis_elapsed = _time.time() - _jarvis_start
+        print(f"<<< JARVIS voice response received in {_jarvis_elapsed:.2f}s")
         logger.info(f"JARVIS response to voice command: {jarvis_response}")
         
         socketio.emit('voice_response', {
@@ -653,24 +729,25 @@ def process_voice_command(client_id, query):
         }, room=client_id)
 
         if jarvis_response and 'fix_command' in jarvis_response and jarvis_response['fix_command']:
-            fix_command_json = jarvis_response['fix_command']
-            logger.info(f"Attempting to execute fix command from JARVIS: {fix_command_json}")
-            try:
-                if isinstance(fix_command_json, dict): # Ensure it's a dict
-                    command_name = fix_command_json.get('command', 'unknown')
-                    if validator.send_mavlink_command_from_json(fix_command_json):
-                        # The `send_mavlink_command_from_json` now handles logging the ACK/NACK/timeout details
-                        # We can just confirm it was initiated and (eventually) ACKed/in_progress
-                        socketio.emit('voice_response', {'message': f"Command '{command_name}' initiated and acknowledged by drone."}, room=client_id)
+            fix_command_raw = jarvis_response['fix_command']
+            # Normalize to a list
+            commands = fix_command_raw if isinstance(fix_command_raw, list) else [fix_command_raw]
+            for fix_command_json in commands:
+                logger.info(f"Attempting to execute fix command from JARVIS: {fix_command_json}")
+                try:
+                    if isinstance(fix_command_json, dict):
+                        command_name = fix_command_json.get('command', 'unknown')
+                        if validator.send_mavlink_command_from_json(fix_command_json):
+                            socketio.emit('voice_response', {'message': f"Command '{command_name}' initiated and acknowledged by drone."}, room=client_id)
+                        else:
+                            socketio.emit('voice_response', {'error': f"Command '{command_name}' failed to be acknowledged by drone or timed out."}, room=client_id)
+                            break  # Stop executing remaining commands if one fails
                     else:
-                        # If send_mavlink_command_from_json returns False, it means NACK or timeout
-                        socketio.emit('voice_response', {'error': f"Command '{command_name}' failed to be acknowledged by drone or timed out."}, room=client_id)
-                else:
-                    logger.error(f"Invalid fix_command format from JARVIS: {fix_command_json}")
-                    socketio.emit('voice_response', {'error': f"Invalid command format: {fix_command_json}"}, room=client_id)
-            except Exception as e:
-                logger.error(f"Error sending MAVLink command: {e}")
-                socketio.emit('voice_response', {'error': f"Error sending command: {e}"}, room=client_id)
+                        logger.error(f"Invalid fix_command format from JARVIS: {fix_command_json}")
+                        socketio.emit('voice_response', {'error': f"Invalid command format: {fix_command_json}"}, room=client_id)
+                except Exception as e:
+                    logger.error(f"Error sending MAVLink command: {e}")
+                    socketio.emit('voice_response', {'error': f"Error sending command: {e}"}, room=client_id)
 
     except Exception as e:
         logger.error(f"Error processing voice command with JARVIS: {str(e)}")
@@ -704,21 +781,17 @@ def update_system_health():
         battery_crit_threshold = battery_params.get("BATT_CRT_VOLT", 10.0)
         
         # Look for battery status in MAVLink messages
-        for msg in mavlink_buffer:
-            if msg.get("mavpackettype") == "SYS_STATUS":
-                # SYS_STATUS contains basic battery info
-                battery_voltage = msg.get("voltage_battery", 0) / 1000.0  # Convert from millivolts to volts
-                battery_current = msg.get("current_battery", 0) / 1000.0   # Convert from centiamps to amps
-                battery_remaining = msg.get("battery_remaining", -1)      # Percentage remaining, -1 if unknown
-                #print(f"Battery data from SYS_STATUS: voltage={battery_voltage}V, current={battery_current}A")
-                break
-            elif msg.get("mavpackettype") == "BATTERY_STATUS":
-                # BATTERY_STATUS has more detailed info
-                battery_voltage = msg.get("voltages", [0])[0] / 1000.0  # First cell or total voltage
+        msg = mavlink_buffer.get("SYS_STATUS")
+        if msg:
+            battery_voltage = msg.get("voltage_battery", 0) / 1000.0
+            battery_current = msg.get("current_battery", 0) / 1000.0
+            battery_remaining = msg.get("battery_remaining", -1)
+        else:
+            msg = mavlink_buffer.get("BATTERY_STATUS")
+            if msg:
+                battery_voltage = msg.get("voltages", [0])[0] / 1000.0
                 battery_current = msg.get("current_battery", 0) / 1000.0
                 battery_remaining = msg.get("battery_remaining", -1)
-                #print(f"Battery data from BATTERY_STATUS: voltage={battery_voltage}V, current={battery_current}A")
-                break
         
         # Determine battery status based on voltage thresholds
         if battery_voltage <= 0:
@@ -764,11 +837,10 @@ def update_system_health():
         satellites = 0
 
         # Get GPS data from MAVLink messages
-        for msg in mavlink_buffer:
-            if msg.get("mavpackettype") == "GPS_RAW_INT":
-                gps_fix = msg.get("fix_type", 0)
-                satellites = msg.get("satellites_visible", 0)
-                break
+        msg = mavlink_buffer.get("GPS_RAW_INT")
+        if msg:
+            gps_fix = msg.get("fix_type", 0)
+            satellites = msg.get("satellites_visible", 0)
 
         gps_status = "CRITICAL" if gps_fix == 0 else "OK"
 
@@ -811,12 +883,9 @@ def update_system_health():
         imu_temp = 41.07  # Default value
 
         # Get IMU data from MAVLink messages
-        for msg in mavlink_buffer:
-            if msg.get("mavpackettype") == "SCALED_IMU":
-                # Process IMU data if available
-                imu_temp = msg.get("temperature", 41.07) / 100.0  # Typically in centidegrees
-                print(f"IMU data found: temp={imu_temp}°C")
-                break
+        msg = mavlink_buffer.get("SCALED_IMU")
+        if msg:
+            imu_temp = msg.get("temperature", 41.07) / 100.0
 
         subsystems.append({
             "component": "IMU",
@@ -831,31 +900,17 @@ def update_system_health():
         baro_pressure = 0
         baro_temperature = 0
         
-        # Debug the mavlink buffer
-        #print(f"Mavlink buffer contains {len(mavlink_buffer)} messages")
-        message_types = [msg.get("mavpackettype", "unknown") for msg in mavlink_buffer]
-        #print(f"Message types in buffer: {message_types}")
-        
-        if mavlink_buffer:
-            sample_msg = mavlink_buffer[0]
-           # print(f"Sample message keys: {sample_msg.keys()}")
-           # print(f"Sample message content: {sample_msg}")
-        
         # Get barometer data from MAVLink messages
-        for msg in mavlink_buffer:
-            if msg.get("mavpackettype") == "SCALED_PRESSURE":
-                baro_pressure = msg.get("press_abs", 0)  # Absolute pressure in hectopascals/millibars
-                baro_temperature = msg.get("temperature", 0) / 100.0  # Temperature in degrees C
-                baro_status = "OK"
-                #print(f"Barometer data: Pressure={baro_pressure}, Temperature={baro_temperature}")
-                break
-                
-        # Check for altitude data which might come from different messages
-        for msg in mavlink_buffer:
-            if msg.get("mavpackettype") == "VFR_HUD":
-                baro_altitude = msg.get("alt", 0)  # Altitude in meters
-                #print(f"Altitude data from VFR_HUD: {baro_altitude}m")
-                break
+        msg = mavlink_buffer.get("SCALED_PRESSURE")
+        if msg:
+            baro_pressure = msg.get("press_abs", 0)
+            baro_temperature = msg.get("temperature", 0) / 100.0
+            baro_status = "OK"
+
+        # Check for altitude data
+        msg = mavlink_buffer.get("VFR_HUD")
+        if msg:
+            baro_altitude = msg.get("alt", 0)
         
         # Check if barometer is enabled in parameters (some systems allow disabling)
         baro_enabled = True
@@ -915,39 +970,33 @@ def update_system_health():
         motor_output_found = False
         
         # Process through SERVO_OUTPUT_RAW message which contains motor outputs
-        for msg in mavlink_buffer:
-            if msg.get("mavpackettype") == "SERVO_OUTPUT_RAW":
-                motor_output_found = True
-                #print(f"SERVO_OUTPUT_RAW message found: {msg}")
-                # Map servo outputs to motor values (typically 1000-2000)
-                for i in range(1, 5):  # Assuming quad copter with 4 motors
-                    servo_key = f"servo{i}_raw"
-                    output_raw = msg.get(servo_key, 1000)
-                    # Convert to percentage (1000-2000 → 0-100%)
-                    output_percent = max(0, min(100, (output_raw - 1000) / 10))
-                    motors.append({
-                        "id": i,
-                        "output": int(output_percent),
-                        "status": "OK" if output_raw > 1010 else "OFF"
-                    })
-                break
-        
+        msg = mavlink_buffer.get("SERVO_OUTPUT_RAW")
+        if msg:
+            motor_output_found = True
+            for i in range(1, 5):  # Assuming quad copter with 4 motors
+                servo_key = f"servo{i}_raw"
+                output_raw = msg.get(servo_key, 1000)
+                # Convert to percentage (1000-2000 → 0-100%)
+                output_percent = max(0, min(100, (output_raw - 1000) / 10))
+                motors.append({
+                    "id": i,
+                    "output": int(output_percent),
+                    "status": "OK" if output_raw > 1010 else "OFF"
+                })
+
         # Also check for RC_CHANNELS message for stick inputs
         if not motor_output_found:
-            for msg in mavlink_buffer:
-                if msg.get("mavpackettype") == "RC_CHANNELS":
-                 #   print(f"RC_CHANNELS message found: {msg}")
-                    throttle_value = msg.get("chan3_raw", 1000)  # Typically throttle
-                    # Map throttle to all motors for visualization
-                    throttle_percent = max(0, min(100, (throttle_value - 1000) / 10))
-                    for i in range(1, 5):
-                        motors.append({
-                            "id": i,
-                            "output": int(throttle_percent),
-                            "status": "OK" if throttle_value > 1010 else "OFF"
-                        })
-                    motor_output_found = True
-                    break
+            msg = mavlink_buffer.get("RC_CHANNELS")
+            if msg:
+                throttle_value = msg.get("chan3_raw", 1000)
+                throttle_percent = max(0, min(100, (throttle_value - 1000) / 10))
+                for i in range(1, 5):
+                    motors.append({
+                        "id": i,
+                        "output": int(throttle_percent),
+                        "status": "OK" if throttle_value > 1010 else "OFF"
+                    })
+                motor_output_found = True
         
         # If no motor data found, use default values but make it obvious they're not real
         if not motor_output_found or not motors:
@@ -966,11 +1015,58 @@ def update_system_health():
         else:
             battery_percentage = 0
         
+        # Determine armed state from HEARTBEAT
+        is_armed = False
+        hb_msg = mavlink_buffer.get("HEARTBEAT")
+        if hb_msg:
+            is_armed = bool(hb_msg.get("base_mode", 0) & 128)
+
+        # Extract ESC telemetry from ESC_TELEMETRY_1_TO_4 (real hardware)
+        # or fall back to SERVO_OUTPUT_RAW (SITL / no ESC telemetry)
+        esc_telemetry = []
+        esc_msg = mavlink_buffer.get("ESC_TELEMETRY_1_TO_4")
+        servo_msg = mavlink_buffer.get("SERVO_OUTPUT_RAW")
+        if esc_msg:
+            for i in range(4):
+                esc_telemetry.append({
+                    "motor": i + 1,
+                    "rpm": esc_msg.get("rpm", [0]*4)[i] if isinstance(esc_msg.get("rpm"), list) else 0,
+                    "temperature": esc_msg.get("temperature", [0]*4)[i] if isinstance(esc_msg.get("temperature"), list) else 0,
+                    "voltage": (esc_msg.get("voltage", [0]*4)[i] if isinstance(esc_msg.get("voltage"), list) else 0) / 100.0,
+                    "current": (esc_msg.get("current", [0]*4)[i] if isinstance(esc_msg.get("current"), list) else 0) / 100.0,
+                })
+        elif servo_msg:
+            # Fallback: use SERVO_OUTPUT_RAW for motor output detection
+            for i in range(4):
+                servo_raw = servo_msg.get(f"servo{i+1}_raw", 1000)
+                # Estimate "active" as RPM proxy: PWM > 1050 means motor is spinning
+                esc_telemetry.append({
+                    "motor": i + 1,
+                    "rpm": servo_raw if servo_raw > 1050 else 0,
+                    "temperature": 0,
+                    "voltage": 0,
+                    "current": 0,
+                    "servo_raw": servo_raw,
+                })
+        else:
+            for i in range(4):
+                esc_telemetry.append({"motor": i + 1, "rpm": 0, "temperature": 0, "voltage": 0, "current": 0})
+
+        # Determine ESC protocol from MOT_PWM_TYPE parameter
+        mot_pwm_type_map = {
+            0: "Normal PWM", 1: "OneShot", 2: "OneShot125", 3: "Brushed",
+            4: "DShot150", 5: "DShot300", 6: "DShot600", 7: "DShot1200",
+            8: "PWMRange", 9: "PWMAngle",
+        }
+        mot_pwm_type_val = int(params.get("Motors", {}).get("MOT_PWM_TYPE", 0))
+        esc_protocol = mot_pwm_type_map.get(mot_pwm_type_val, f"Unknown ({mot_pwm_type_val})")
+
         # Update system health
         last_system_health = {
             "score": health_score,
             "critical_issues": critical_issues,
             "readiness": readiness,
+            "armed": is_armed,
             "battery": {
                 "voltage": battery_voltage,
                 "threshold": battery_low_threshold,
@@ -984,6 +1080,8 @@ def update_system_health():
                 "status": gps_status
             },
             "motors": motors,
+            "esc_telemetry": esc_telemetry,
+            "esc_protocol": esc_protocol,
             "subsystems": subsystems
         }
 
@@ -1022,22 +1120,27 @@ def telemetry_update_loop():
     param_update_counter = 0
     
     while True:
-        print("Total number of threads:", threading.active_count())
         try:
             # Update system health from validator data
             if validator and validator.hardware_validated and connected_clients:
-                # Copy recent MAVLink messages to our buffer
-                if hasattr(validator, 'ai_mavlink_ctx'):
-                    global mavlink_buffer
-                    mavlink_buffer = validator.ai_mavlink_ctx.copy()
+                # Snapshot the 100-msg queue and build ai_mavlink_ctx
+                validator.snapshot_rx_queue()
+
+                # Copy the snapshot context to our local buffer
+                global mavlink_buffer
+                mavlink_buffer = validator.ai_mavlink_ctx.copy()
 
                 # Update and broadcast system health
                 update_system_health()
+
+                # Flush the queue after we're done processing
+                validator.flush_rx_queue()
+
                 time.sleep(1)  # Sleep to avoid excessive updates
-            
+
             else:
                 time.sleep(2)  # Sleep to avoid excessive updates
-            
+
         except Exception as e:
             logger.error(f"Error in telemetry update loop: {str(e)}")
             time.sleep(5)  # Sleep longer on error
@@ -1045,7 +1148,7 @@ def telemetry_update_loop():
 #########################################################################
 def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=False, loggers=None, stt_recorder=None):
     """Start the Flask+SocketIO server in a new thread"""
-    global validator, jarvis_module, llm_ai_module, telemetry_thread, logger
+    global validator, jarvis_module, llm_ai_module, telemetry_thread, logger, stt_module
     
     # Use provided logger if available
     if loggers and 'web_server' in loggers:
