@@ -39,6 +39,10 @@
                <i class="fas fa-tachometer-alt"></i>
                Dashboard
             </div>
+            <div class="menu-item" data-tab="serial-ports">
+               <i class="fas fa-plug"></i>
+               Serial Ports
+            </div>
             <div class="menu-item" data-tab="parameters">
                <i class="fas fa-sliders-h"></i>
                Parameters
@@ -223,6 +227,34 @@
                         </tr>
                      </tbody>
                   </table>
+               </div>
+            </div>
+            <!-- Serial Ports Tab -->
+            <div class="tab-content" id="serial-ports-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+               <h2 class="dashboard-title">Serial Port Configuration</h2>
+               <div class="card">
+                  <div class="card-title">UART ASSIGNMENT</div>
+                  <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1rem;">
+                     Assign peripherals to serial ports. Changes require Save &amp; Reboot.
+                  </p>
+                  <div style="overflow-x:auto;">
+                     <table class="serial-port-table" id="serialPortTable">
+                        <thead>
+                           <tr>
+                              <th>Port</th>
+                              <th>Label</th>
+                              <th>Protocol</th>
+                              <th>Baud Rate</th>
+                           </tr>
+                        </thead>
+                        <tbody id="serialPortBody"></tbody>
+                     </table>
+                  </div>
+                  <div style="margin-top:1rem; display:flex; gap:0.5rem; justify-content:flex-end;">
+                     <button class="modal-button cancel-button" id="serialRefreshBtn">Refresh</button>
+                     <button class="modal-button connect-button" id="serialSaveBtn">Save &amp; Reboot</button>
+                  </div>
+                  <div id="serialStatus" style="margin-top:0.5rem; font-size:0.85rem;"></div>
                </div>
             </div>
             <!-- Parameters Tab -->
@@ -774,6 +806,7 @@
       <script defer src="/static/js/tabs/configs.js"></script>
       <script defer src="/static/js/tabs/calibration.js"></script>
       <script defer src="/static/js/tabs/logs.js"></script>
+      <script defer src="/static/js/tabs/serial-ports.js"></script>
       <script defer src="/static/js/tabs/drone-view.js"></script>
    </body>
 </html>

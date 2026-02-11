@@ -1067,6 +1067,21 @@ padding: 0.5rem;
    50% { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
 }
 
+/* ===== Serial Port Table ===== */
+.serial-port-table { width: 100%; border-collapse: collapse; }
+.serial-port-table th {
+   text-align: left; padding: 0.6rem 0.8rem;
+   border-bottom: 2px solid var(--primary-color); font-size: 0.8rem;
+   text-transform: uppercase; color: var(--text-muted);
+}
+.serial-port-table td { padding: 0.5rem 0.8rem; border-bottom: 1px solid #eee; }
+.serial-port-table tr:hover { background: rgba(52,152,219,0.05); }
+.serial-port-table select {
+   padding: 0.3rem 0.5rem; border: 1px solid #ddd;
+   border-radius: 4px; font-size: 0.85rem; min-width: 140px;
+}
+.serial-port-label { font-size: 0.75rem; color: var(--text-muted); }
+
 @media (max-width: 768px) {
 .main-content {
 flex-direction: column;
