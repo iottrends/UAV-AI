@@ -302,3 +302,161 @@ def ask_gemini(query, parameter_context=None, mavlink_ctx=None):
 
     except Exception as e:
         return {"error": f"Unexpected error: {str(e)}"}
+
+
+# ============================================================================
+# Log Analysis
+# ============================================================================
+
+LOG_ANALYSIS_SYSTEM_PROMPT = """You are an expert ArduPilot flight log analyst.
+You analyze .bin (dataflash) and .tlog (telemetry) log files to help pilots understand their flights.
+
+You know all ArduPilot log message types and their fields:
+- ATT: Attitude (Roll, Pitch, Yaw, DesRoll, DesPitch, DesYaw)
+- GPS: GPS data (Lat, Lng, Alt, Spd, NSats, HDop)
+- CTUN: Control tuning (ThI, ThO, DAlt, Alt, BAlt, DSAlt, SAlt)
+- VIBE: Vibration levels (VibeX, VibeY, VibeZ, Clip0, Clip1, Clip2)
+- MOT: Motor outputs (Mot1-Mot4 or more)
+- BAT/CURR: Battery (Volt, Curr, CurrTot, EnrgTot)
+- BARO: Barometer (Alt, Press, Temp)
+- GYR: Gyroscope (GyrX, GyrY, GyrZ)
+- ACC: Accelerometer (AccX, AccY, AccZ)
+- MAG: Magnetometer (MagX, MagY, MagZ)
+- MODE: Flight mode changes (Mode, ModeNum, Rsn)
+- MSG: Text messages from autopilot
+- ERR: Error events (Subsys, ECode)
+- RCIN: RC input channels
+- RCOU: RC output (servo/motor PWM)
+- PARM: Parameter values
+- NKF1/NKF2: EKF state estimates
+- IMU: IMU data (GyrX-Z, AccX-Z)
+- POWR: Power board voltage/flags
+- EV: Events
+- PM: Performance monitoring
+
+### Response Format
+You MUST respond in strict JSON format:
+{
+    "analysis": "Your analysis in markdown format. Use headers, bullet points, and bold for clarity.",
+    "charts": [
+        {
+            "title": "Chart Title",
+            "type": "line",
+            "msg_type": "ATT",
+            "x_field": "TimeUS",
+            "y_fields": ["Roll", "Pitch"],
+            "y_label": "Degrees"
+        }
+    ],
+    "need_data": ["MSG_TYPE1", "MSG_TYPE2"]
+}
+
+### Rules:
+- "analysis" is always required with markdown-formatted analysis text
+- "charts" is a list of chart configs (can be empty [])
+- Chart "type" can be: "line", "bar", "scatter"
+- "need_data" is a list of message types you need to see actual data for (use ONLY on first call when you only have the summary)
+- If you already have the data you need, set "need_data" to []
+- When suggesting charts, use msg_type and field names that exist in the log summary
+- Keep analysis concise but informative — focus on anomalies, safety issues, and actionable insights
+- For vibration analysis: VibeX/Y/Z > 30 m/s/s is concerning, > 60 is problematic. Clip counts > 0 indicate clipping.
+- For battery: voltage sag under load, capacity consumed, estimated flight time
+- For attitude: compare desired vs actual (DesRoll vs Roll) — large errors indicate tuning issues
+"""
+
+_log_model = None
+
+
+def _ensure_log_model():
+    """Create the log analysis model on first use."""
+    global _log_model
+    if _log_model is None:
+        _log_model = genai.GenerativeModel(
+            "gemini-2.5-flash",
+            system_instruction=LOG_ANALYSIS_SYSTEM_PROMPT
+        )
+        agent_logger.info("Created JARVIS log analysis model")
+    return _log_model
+
+
+def ask_gemini_log_analysis(query, log_summary, message_data=None):
+    """Analyze a flight log using Gemini AI.
+
+    Args:
+        query: User's analysis question.
+        log_summary: Dict from LogParser.get_summary().
+        message_data: Optional dict of {msg_type: [list of dicts]} with actual data.
+
+    Returns:
+        Dict with 'analysis', 'charts', and 'need_data' keys.
+    """
+    global _total_input_tokens, _total_output_tokens, _total_requests, _request_timestamps
+
+    model = _ensure_log_model()
+
+    # Build prompt
+    prompt_parts = [f'### Log Summary:\n```json\n{json.dumps(log_summary, indent=1, default=str)}\n```\n']
+
+    if message_data:
+        prompt_parts.append("### Message Data:\n")
+        for msg_type, data in message_data.items():
+            prompt_parts.append(f"**{msg_type}** ({len(data)} points):\n```json\n{json.dumps(data[:5], indent=1, default=str)}\n... ({len(data)} total)\n```\n")
+            # Include statistical summary for large datasets
+            if len(data) > 10:
+                fields = [k for k in data[0].keys() if isinstance(data[0].get(k), (int, float))]
+                if fields:
+                    stats = {}
+                    for f in fields[:6]:  # limit to 6 fields for brevity
+                        vals = [d[f] for d in data if isinstance(d.get(f), (int, float))]
+                        if vals:
+                            stats[f] = {"min": round(min(vals), 2), "max": round(max(vals), 2),
+                                        "avg": round(sum(vals)/len(vals), 2)}
+                    prompt_parts.append(f"Stats: {json.dumps(stats, default=str)}\n")
+
+    prompt_parts.append(f'\n### User Query:\n"{query}"')
+    prompt = "\n".join(prompt_parts)
+
+    try:
+        agent_logger.info(f"Log analysis query: {query}")
+        print(f">>> JARVIS log analysis query: \"{query}\" (prompt {len(prompt)} chars)")
+
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+
+        # Track tokens
+        _total_requests += 1
+        now = time.time()
+        _request_timestamps.append(now)
+        _request_timestamps = [t for t in _request_timestamps if now - t <= 60]
+
+        input_tok = 0
+        output_tok = 0
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            input_tok = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+            output_tok = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+            _total_input_tokens += input_tok
+            _total_output_tokens += output_tok
+
+        print(f"<<< JARVIS log analysis response: in={input_tok} out={output_tok}")
+
+        # Extract JSON
+        json_start = response_text.find("{")
+        json_end = response_text.rfind("}") + 1
+        if json_start == -1 or json_end == 0:
+            return {"analysis": response_text, "charts": [], "need_data": []}
+
+        result = json.loads(response_text[json_start:json_end])
+
+        # Ensure required keys exist
+        result.setdefault("analysis", "No analysis provided.")
+        result.setdefault("charts", [])
+        result.setdefault("need_data", [])
+
+        return result
+
+    except json.JSONDecodeError as e:
+        agent_logger.error(f"Log analysis JSON error: {e}")
+        return {"analysis": response_text, "charts": [], "need_data": []}
+    except Exception as e:
+        agent_logger.error(f"Log analysis error: {e}")
+        return {"analysis": f"Error analyzing log: {str(e)}", "charts": [], "need_data": []}

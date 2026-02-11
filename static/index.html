@@ -5,488 +5,9 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>UAV-AI Assistant</title>
       <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+      <link rel="stylesheet" href="/static/css/style.css">
       <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
-      <style>
-         :root {
-         --primary-color: #3498db;
-         --dark-color: #2c3e50;
-         --darker-color: #34495e;
-         --light-color: #ecf0f1;
-         --white-color: #ffffff;
-         --success-color: #2ecc71;
-         --warning-color: #f1c40f;
-         --danger-color: #e74c3c;
-         --text-color: #2c3e50;
-         --text-muted: #7f8c8d;
-         --border-radius: 10px;
-         --card-shadow: 0 2px 5px rgba(0,0,0,0.1);
-         }
-         * {
-         margin: 0;
-         padding: 0;
-         box-sizing: border-box;
-         font-family: Arial, sans-serif;
-         }
-         body {
-         background-color: var(--light-color);
-         color: var(--text-color);
-         height: 100vh;
-         display: flex;
-         flex-direction: column;
-         }
-         /* Header styling */
-         header {
-         background-color: var(--dark-color);
-         color: var(--white-color);
-         padding: 0.5rem 1rem;
-         height: 70px;
-         display: flex;
-         justify-content: space-between;
-         align-items: center;
-         }
-         .logo {
-         font-size: 1.5rem;
-         font-weight: bold;
-         }
-         .connection-status {
-         display: flex;
-         align-items: center;
-         gap: 10px;
-         }
-         .status-indicator {
-         width: 12px;
-         height: 12px;
-         border-radius: 50%;
-         background-color: var(--danger-color); /* Default to red/disconnected */
-         }
-         /* Main layout */
-         .container {
-         display: flex;
-         flex: 1;
-         overflow: hidden;
-         }
-         /* Sidebar styling */
-         .sidebar {
-         background-color: var(--darker-color);
-         width: 240px;
-         color: var(--white-color);
-         padding: 1rem;
-         overflow-y: auto;
-         }
-         .drone-selector {
-         background-color: var(--primary-color);
-         border-radius: 5px;
-         padding: 0.75rem 1rem;
-         display: flex;
-         justify-content: space-between;
-         align-items: center;
-         cursor: pointer;
-         margin-bottom: 2rem;
-         }
-         .menu-item {
-         background-color: var(--dark-color);
-         border-radius: 5px;
-         padding: 0.75rem 1rem;
-         margin: 0.5rem 0;
-         cursor: pointer;
-         border: 2px solid var(--primary-color);
-         }
-         /* Main content area */
-         .main-content {
-         flex: 1;
-         display: flex;
-         overflow: hidden;
-         padding: 1rem;
-         gap: 1rem;
-         }
-         /* Dashboard styling */
-         .dashboard {
-         background-color: var(--white-color);
-         border-radius: var(--border-radius);
-         padding: 1.5rem;
-         box-shadow: var(--card-shadow);
-         width: 65%;
-         overflow-y: auto;
-         }
-         .dashboard-title {
-         font-size: 1.2rem;
-         font-weight: bold;
-         margin-bottom: 1rem;
-         }
-         .cards-row {
-         display: flex;
-         gap: 1rem;
-         margin-bottom: 1rem;
-         }
-         .card {
-         background-color: var(--white-color);
-         border-radius: var(--border-radius);
-         padding: 1rem;
-         box-shadow: var(--card-shadow);
-         flex:  1;
-         border: 1px solid #e0e0e0;
-         }
-         .card-title {
-         font-size: 0.9rem;
-         font-weight: bold;
-         margin-bottom: 1rem;
-         }
-         .system-health {
-         display: flex;
-         flex-direction: column;
-         align-items: center;
-         }
-         .health-score {
-         position: relative;
-         width: 80px;
-         height: 80px;
-         margin: 0.5rem 0;
-         }
-         .health-score svg {
-         width: 100%;
-         height: 100%;
-         }
-         .health-score-text {
-         position: absolute;
-         top: 50%;
-         left: 50%;
-         transform: translate(-50%, -50%);
-         font-size: 1.25rem;
-         font-weight: bold;
-         color: var(--danger-color);
-         }
-         .health-issues {
-         font-size: 0.75rem;
-         color: var(--text-muted);
-         text-align: center;
-         }
-         .flight-readiness {
-         display: flex;
-         flex-direction: column;
-         align-items: center;
-         }
-         .readiness-indicator {
-         background-color: var(--warning-color);
-         color: var(--white-color);
-         padding: 0.25rem 1rem;
-         border-radius: 10px;
-         font-size: 0.85rem;
-         font-weight: bold;
-         margin: 1rem 0;
-         }
-         .readiness-message {
-         font-size: 0.75rem;
-         color: var(--text-muted);
-         text-align: center;
-         }
-         .status-bar {
-         display: flex;
-         align-items: center;
-         background-color: var(--light-color);
-         height: 25px;
-         border-radius: 5px;
-         margin: 1rem 0;
-         }
-         .status-indicator-bar {
-         width: 25px;
-         height: 25px;
-         border-radius: 5px 0 0 5px;
-         }
-         .status-text {
-         padding: 0 0.5rem;
-         font-size: 0.75rem;
-         color: var(--text-muted);
-         }
-         .critical-text {
-         font-size: 0.75rem;
-         color: var(--danger-color);
-         font-weight: bold;
-         }
-         /* Motors grid */
-         .motors-grid {
-         display: flex;
-         justify-content: space-between;
-         flex-wrap: wrap;
-         gap: 0.5rem;
-         margin: 0.5rem 0;
-         }
-         .motor-card {
-         background-color: #f9f9f9;
-         border-radius: 5px;
-         padding: 0.5rem;
-         flex: 1;
-         min-width: 85px;
-         max-width: 100px;
-         text-align: center;
-         }
-         .motor-title {
-         font-size: 0.8rem;
-         font-weight: bold;
-         margin-bottom: 0.5rem;
-         }
-         .motor-gauge {
-         width: 50px;
-         height: 50px;
-         margin: 0 auto;
-         position: relative;
-         }
-         .motor-output {
-         position: absolute;
-         top: 50%;
-         left: 50%;
-         transform: translate(-50%, -50%);
-         font-size: 0.9rem;
-         font-weight: bold;
-         }
-         .motor-label {
-         font-size: 0.7rem;
-         color: var(--text-muted);
-         margin: 0.25rem 0;
-         }
-         .motor-status {
-         font-size: 0.7rem;
-         color: var(--success-color);
-         font-weight: bold;
-         }
-         /* Table styling */
-         .subsystem-table {
-         width: 100%;
-         border-collapse: collapse;
-         }
-         .subsystem-table th {
-         background-color: var(--light-color);
-         padding: 0.5rem;
-         text-align: left;
-         font-size: 0.75rem;
-         color: var(--text-muted);
-         font-weight: bold;
-         }
-         .subsystem-table td {
-         padding: 0.5rem;
-         font-size: 0.75rem;
-         border-bottom: 1px solid #f0f0f0;
-         }
-         .subsystem-table tr:nth-child(even) {
-         background-color: #f9f9f9;
-         }
-         .status-badge {
-         display: inline-block;
-         padding: 0.15rem 0.5rem;
-         border-radius: 10px;
-         color: var(--white-color);
-         font-size: 0.65rem;
-         font-weight: bold;
-         text-align: center;
-         min-width: 70px;
-         }
-         .status-critical {
-         background-color: var(--danger-color);
-         }
-         .status-warning {
-         background-color: var(--warning-color);
-         }
-         .status-ok {
-         background-color: var(--success-color);
-         }
-         /* Chat interface styling */
-         .chat-container {
-         background-color: var(--white-color);
-         border-radius: var(--border-radius);
-         padding: 1.5rem;
-         box-shadow: var(--card-shadow);
-         width: 35%;
-         display: flex;
-         flex-direction: column;
-         }
-         .chat-title {
-         font-size: 1.2rem;
-         font-weight: bold;
-         margin-bottom: 1rem;
-         }
-         .chat-messages {
-         flex: 1;
-         overflow-y: auto;
-         background-color: #f7f9fa;
-         border-radius: 5px;
-         padding: 1rem;
-         margin-bottom: 1rem;
-         }
-         .message {
-         margin-bottom: 1rem;
-         max-width: 80%;
-         }
-         .user-message {
-         margin-left: auto;
-         }
-         .ai-message {
-         margin-right: auto;
-         }
-         .message-bubble {
-         padding: 0.75rem 1rem;
-         border-radius: 15px;
-         position: relative;
-         margin-bottom: 0.25rem;
-         }
-         .user-message .message-bubble {
-         background-color: #e8f5fe;
-         color: var(--text-color);
-         border-bottom-right-radius: 5px;
-         }
-         .ai-message .message-bubble {
-         background-color: #f0f2f5;
-         color: var(--text-color);
-         border-bottom-left-radius: 5px;
-         }
-         .message-time {
-         font-size: 0.65rem;
-         color: var(--text-muted);
-         text-align: right;
-         }
-         .message-text {
-         font-size: 0.8rem;
-         line-height: 1.4;
-         }
-         .message-text strong {
-         font-weight: bold;
-         }
-         .message-list {
-         list-style-type: none;
-         padding-left: 1rem;
-         }
-         .message-list li {
-         position: relative;
-         padding-left: 0.75rem;
-         margin-bottom: 0.35rem;
-         }
-         .message-list li:before {
-         content: "•";
-         position: absolute;
-         left: 0;
-         }
-         .chat-input {
-         display: flex;
-         align-items: center;
-         gap: 0.5rem;
-         }
-         .chat-input-field {
-         flex: 1;
-         padding: 0.75rem 1rem;
-         border-radius: 20px;
-         border: 1px solid #e0e0e0;
-         background-color: #f7f9fa;
-         font-size: 0.9rem;
-         }
-         .chat-input-field:focus {
-         outline: none;
-         border-color: var(--primary-color);
-         }
-         .send-button {
-         width: 40px;
-         height: 40px;
-         border-radius: 50%;
-         background-color: var(--primary-color);
-         display: flex;
-         justify-content: center;
-         align-items: center;
-         color: var(--white-color);
-         border: none;
-         cursor: pointer;
-         }
-         .send-button:hover {
-         background-color: #2980b9;
-         }
-         .voice-button {
-         width: 40px;
-         height: 40px;
-         border-radius: 50%;
-         background-color: var(--success-color); /* Green for voice */
-         display: flex;
-         justify-content: center;
-         align-items: center;
-         color: var(--white-color);
-         border: none;
-         cursor: pointer;
-         transition: background-color 0.2s;
-         }
-         .voice-button:hover {
-         background-color: #27ae60;
-         }
-         .voice-button.active {
-         background-color: var(--danger-color); /* Red when active/recording */
-         }
-         .voice-status-indicator {
-         display: none; /* Hidden by default */
-         position: absolute;
-         bottom: 15px;
-         right: 15px;
-         padding: 8px 12px;
-         border-radius: 20px;
-         background-color: rgba(0, 0, 0, 0.7);
-         color: var(--white-color);
-         font-size: 0.8rem;
-         z-index: 1001;
-         }
-         /* Connection modal */
-         .modal {
-         display: none;
-         position: fixed;
-         z-index: 1000;
-         left: 0;
-         top: 0;
-         width: 100%;
-         height: 100%;
-         background-color: rgba(0, 0, 0, 0.5);
-         justify-content: center;
-         align-items: center;
-         }
-         .modal-content {
-         background-color: white;
-         padding: 20px;
-         border-radius: 10px;
-         width: 400px;
-         max-width: 90%;
-         }
-         .modal-title {
-         font-size: 1.2rem;
-         font-weight: bold;
-         margin-bottom: 15px;
-         }
-         .form-group {
-         margin-bottom: 15px;
-         }
-         .form-group label {
-         display: block;
-         margin-bottom: 5px;
-         font-weight: bold;
-         font-size: 0.9rem;
-         }
-         .form-group input {
-         width: 100%;
-         padding: 8px 12px;
-         border-radius: 5px;
-         border: 1px solid #ddd;
-         }
-         .modal-buttons {
-         display: flex;
-         justify-content: flex-end;
-         gap: 10px;
-         }
-         .modal-button {
-         padding: 8px 16px;
-         border-radius: 5px;
-         border: none;
-         cursor: pointer;
-         font-weight: bold;
-         }
-         .cancel-button {
-         background-color: #e0e0e0;
-         color: #333;
-         }
-         .connect-button {
-         background-color: var(--primary-color);
-         color: white;
-         }
-      </style>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
    </head>
    <body>
       <!-- Header -->
@@ -507,7 +28,6 @@
                <span>Connect Drone</span>
                <i class="fas fa-chevron-down"></i>
             </div>
-<!-- Disconnect Button (Initially Hidden) -->
             <div class="drone-selector" id="disconnectButton" style="display: none; background-color: var(--danger-color); cursor: pointer;">
                <span>Disconnect Drone</span>
                <i class="fas fa-times"></i>
@@ -540,6 +60,14 @@
                <i class="fas fa-cog"></i>
                Motors
             </div>
+            <div class="menu-item" data-tab="receiver">
+               <i class="fas fa-broadcast-tower"></i>
+               RC & Modes
+            </div>
+            <div class="menu-item" data-tab="drone-view">
+               <i class="fas fa-plane"></i>
+               Drone View
+            </div>
          </div>
          <!-- Main Content -->
          <div class="main-content">
@@ -548,7 +76,6 @@
                <h2 class="dashboard-title">System Overview</h2>
                <!-- Top Cards -->
                <div class="cards-row">
-                  <!-- System Health Card -->
                   <div class="card">
                      <div class="card-title">SYSTEM HEALTH</div>
                      <div class="system-health">
@@ -574,7 +101,6 @@
                         <div class="health-issues" id="healthIssues">-- CRITICAL ISSUES</div>
                      </div>
                   </div>
-                  <!-- Flight Readiness Card -->
                   <div class="card">
                      <div class="card-title">FLIGHT READINESS</div>
                      <div class="flight-readiness">
@@ -585,7 +111,6 @@
                </div>
                <!-- Status Cards -->
                <div class="cards-row">
-                  <!-- Battery Status Card -->
                   <div class="card">
                      <div class="card-title">BATTERY STATUS</div>
                      <div class="status-bar">
@@ -594,7 +119,6 @@
                      </div>
                      <div class="critical-text" id="batteryStatus">--</div>
                   </div>
-                  <!-- GPS Status Card -->
                   <div class="card">
                      <div class="card-title">GPS STATUS</div>
                      <div class="status-bar">
@@ -608,7 +132,6 @@
                <div class="card">
                   <div class="card-title">MOTORS STATUS</div>
                   <div class="motors-grid">
-                     <!-- Motor 1 -->
                      <div class="motor-card">
                         <div class="motor-title">Motor 1</div>
                         <div class="motor-gauge">
@@ -620,7 +143,6 @@
                         <div class="motor-label">Output</div>
                         <div class="motor-status" id="motor1Status">--</div>
                      </div>
-                     <!-- Motor 2 -->
                      <div class="motor-card">
                         <div class="motor-title">Motor 2</div>
                         <div class="motor-gauge">
@@ -632,7 +154,6 @@
                         <div class="motor-label">Output</div>
                         <div class="motor-status" id="motor2Status">--</div>
                      </div>
-                     <!-- Motor 3 -->
                      <div class="motor-card">
                         <div class="motor-title">Motor 3</div>
                         <div class="motor-gauge">
@@ -644,7 +165,6 @@
                         <div class="motor-label">Output</div>
                         <div class="motor-status" id="motor3Status">--</div>
                      </div>
-                     <!-- Motor 4 -->
                      <div class="motor-card">
                         <div class="motor-title">Motor 4</div>
                         <div class="motor-gauge">
@@ -670,7 +190,6 @@
                         </tr>
                      </thead>
                      <tbody>
-                        <!-- This will be populated dynamically -->
                      </tbody>
                   </table>
                </div>
@@ -763,25 +282,43 @@
                         </tr>
                      </thead>
                      <tbody id="parametersTableBody">
-                        <!-- Parameters will be loaded here dynamically -->
                      </tbody>
                   </table>
                </div>
             </div>
             <!-- Logs Tab -->
-            <div class="tab-content" id="logs-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow);">
-               <h2 class="dashboard-title">Logs</h2>
-               <button id="fetchLogsButton" class="action-button" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; margin-bottom: 1rem;">
-               <i class="fas fa-download"></i> Fetch Logs
-               </button>
-               <div id="logContent" style="background-color: #f0f0f0; padding: 1rem; border-radius: 5px; max-height: 400px; overflow-y: auto;">
-                  <p style="color: var(--text-muted);">Click "Fetch Logs" to request blackbox logs from the flight controller.</p>
+            <div class="tab-content" id="logs-tab" style="display: none; flex: 1; background-color: var(--dark-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px); color: #e0e0e0;">
+
+               <!-- Top: Upload + FC Fetch -->
+               <div style="display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1rem; flex-wrap: wrap;">
+                  <!-- Upload area -->
+                  <div class="log-upload-area" id="logUploadArea">
+                     <i class="fas fa-cloud-upload-alt" style="font-size: 1.5rem; color: var(--primary-color);"></i>
+                     <p style="margin: 0.5rem 0 0.25rem; font-weight: bold;">Upload Log File</p>
+                     <p style="font-size: 0.75rem; color: #888;">Drag & drop .bin or .tlog, or click to browse</p>
+                     <input type="file" id="logFileInput" accept=".bin,.tlog" style="display:none;">
+                  </div>
+                  <!-- FC Fetch -->
+                  <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                     <button id="fetchLogsButton" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-download"></i> Fetch FC Logs
+                     </button>
+                     <div id="logContent" style="font-size: 0.8rem; color: #aaa;"></div>
+                  </div>
                </div>
+
+               <!-- Status bar -->
+               <div class="log-status-bar" id="logStatusBar" style="display:none;">
+                  <span id="logStatusText"></span>
+               </div>
+
+               <!-- Visualization area -->
+               <div class="log-viz-area" id="logVizArea"></div>
+
             </div>
             <!-- Latency & Parameters Tab -->
             <div class="tab-content" id="latency-params-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
                <h2 class="dashboard-title">Latency & Parameters</h2>
-               <!-- Latency Section -->
                <div class="card">
                   <div class="card-title">LATENCY MONITOR</div>
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
@@ -802,21 +339,17 @@
                         <div style="font-size: 0.8rem; color: var(--text-muted);">Minimum</div>
                      </div>
                   </div>
-                  <!-- Latency Graph -->
                   <div style="height: 200px; background-color: #f7f9fa; border-radius: 5px; padding: 1rem; position: relative; margin-bottom: 1rem;">
                      <canvas id="latencyChart" width="100%" height="100%"></canvas>
                      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted); font-size: 0.9rem; display: none;" id="noLatencyData">No latency data available</div>
                   </div>
-                  <!-- Latency Status -->
                   <div style="display: flex; align-items: center; gap: 0.5rem;">
                      <div style="width: 12px; height: 12px; border-radius: 50%;" id="latencyStatusIndicator"></div>
                      <div id="latencyStatusText">Latency Status: Unknown</div>
                   </div>
                </div>
-               <!-- Parameters Download Progress Section -->
                <div class="card" style="margin-top: 1rem;">
                   <div class="card-title">PARAMETERS DOWNLOAD PROGRESS</div>
-                  <!-- Progress Bar -->
                   <div style="margin: 1.5rem 0;">
                      <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
                         <div style="font-size: 0.9rem; font-weight: bold;" id="paramPercentage">0%</div>
@@ -826,7 +359,6 @@
                         <div id="paramProgressBar" style="height: 100%; width: 0%; background-color: var(--primary-color); border-radius: 10px; transition: width 0.3s ease;"></div>
                      </div>
                   </div>
-                  <!-- Parameter Download Stats -->
                   <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                      <div style="flex: 1; min-width: 200px;">
                         <div style="font-size: 0.8rem; color: var(--text-muted);">Download Status</div>
@@ -841,7 +373,6 @@
                         <div style="font-size: 1rem; font-weight: bold;" id="paramTimeRemaining">--:--</div>
                      </div>
                   </div>
-                  <!-- Parameter Categories Progress -->
                   <div style="margin-top: 1.5rem;">
                      <div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 0.5rem;">Category Progress</div>
                      <table style="width: 100%; border-collapse: collapse;">
@@ -853,22 +384,18 @@
                            </tr>
                         </thead>
                         <tbody id="paramCategoriesTable">
-                           <!-- Will be populated dynamically -->
                         </tbody>
                      </table>
                   </div>
                </div>
             </div>
-            <!-- Flight Plan Tab removed as requested -->
             <!-- Configs Tab -->
             <div class="tab-content" id="configs-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
                <h2 class="dashboard-title">Golden Config Snapshots</h2>
                <p style="color: var(--text-muted); margin-bottom: 1rem;">Save and restore up to 5 named parameter configurations for different quads or tunes.</p>
-               <!-- Save Config Button -->
                <button id="saveConfigBtn" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.6rem 1.2rem; cursor: pointer; font-size: 0.9rem; margin-bottom: 1.5rem;">
                   <i class="fas fa-plus"></i> Save Current Config
                </button>
-               <!-- Save Config Modal -->
                <div id="saveConfigModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
                   <div style="background: white; border-radius: 10px; padding: 2rem; width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
                      <h3 style="margin-bottom: 1rem;">Save Config Snapshot</h3>
@@ -879,7 +406,6 @@
                      </div>
                   </div>
                </div>
-               <!-- Config List -->
                <div id="configList" style="display: flex; flex-direction: column; gap: 1rem;">
                   <div style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading configs...</div>
                </div>
@@ -889,7 +415,6 @@
                <h2 class="dashboard-title">Field Calibration</h2>
                <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Trigger on-board calibration routines directly from the web UI.</p>
                <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
-                  <!-- Gyro -->
                   <div class="card cal-card" data-cal="gyro" style="min-width: 200px; flex: 1;">
                      <div class="card-title"><i class="fas fa-sync-alt"></i> Gyro Calibration</div>
                      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Keep the drone still on a flat surface. Takes ~2 seconds.</p>
@@ -898,7 +423,6 @@
                      </button>
                      <div class="cal-status" data-cal="gyro" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
                   </div>
-                  <!-- Level -->
                   <div class="card cal-card" data-cal="level" style="min-width: 200px; flex: 1;">
                      <div class="card-title"><i class="fas fa-balance-scale"></i> Level Calibration</div>
                      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Place drone on a level surface. Calibrates accelerometer level.</p>
@@ -907,7 +431,6 @@
                      </button>
                      <div class="cal-status" data-cal="level" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
                   </div>
-                  <!-- Accel -->
                   <div class="card cal-card" data-cal="accel" style="min-width: 200px; flex: 1;">
                      <div class="card-title"><i class="fas fa-arrows-alt"></i> Accelerometer Calibration</div>
                      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Multi-step: you will need to place the drone in 6 orientations.</p>
@@ -916,7 +439,6 @@
                      </button>
                      <div class="cal-status" data-cal="accel" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
                   </div>
-                  <!-- Compass -->
                   <div class="card cal-card" data-cal="compass" style="min-width: 200px; flex: 1;">
                      <div class="card-title"><i class="fas fa-compass"></i> Compass Calibration</div>
                      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Rotate drone in all orientations during calibration.</p>
@@ -925,7 +447,6 @@
                      </button>
                      <div class="cal-status" data-cal="compass" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
                   </div>
-                  <!-- Baro -->
                   <div class="card cal-card" data-cal="baro" style="min-width: 200px; flex: 1;">
                      <div class="card-title"><i class="fas fa-thermometer-half"></i> Barometer Calibration</div>
                      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Calibrate barometer ground pressure. Keep drone stationary.</p>
@@ -939,8 +460,6 @@
             <!-- Motors Tab -->
             <div class="tab-content" id="motors-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
                <h2 class="dashboard-title">Motor Testing</h2>
-
-               <!-- Safety Gate -->
                <div id="motorSafetyBanner" class="motor-safety-banner">
                   <div class="motor-safety-warning">
                      <i class="fas fa-exclamation-triangle"></i>
@@ -957,12 +476,8 @@
                      <i class="fas fa-shield-alt"></i> ARM DETECTED — motor test disabled
                   </div>
                </div>
-
-               <!-- Motor Sliders + Quad Diagram -->
                <div class="motor-test-layout">
-                  <!-- Motor Sliders -->
                   <div class="motor-sliders-row">
-                     <!-- Motor 1 -->
                      <div class="motor-test-card" id="motorTestCard1">
                         <div class="motor-test-title">Motor 1</div>
                         <div class="motor-slider-wrap">
@@ -977,7 +492,6 @@
                         </div>
                         <div class="motor-response-status" id="motorResp1">--</div>
                      </div>
-                     <!-- Motor 2 -->
                      <div class="motor-test-card" id="motorTestCard2">
                         <div class="motor-test-title">Motor 2</div>
                         <div class="motor-slider-wrap">
@@ -992,19 +506,13 @@
                         </div>
                         <div class="motor-response-status" id="motorResp2">--</div>
                      </div>
-
-                     <!-- Quad Diagram -->
                      <div class="motor-quad-diagram">
                         <svg viewBox="0 0 200 200" width="160" height="160">
-                           <!-- Arms -->
                            <line x1="40" y1="40" x2="160" y2="160" stroke="#555" stroke-width="3"/>
                            <line x1="160" y1="40" x2="40" y2="160" stroke="#555" stroke-width="3"/>
-                           <!-- Center body -->
                            <rect x="80" y="80" width="40" height="40" rx="6" fill="var(--dark-color)"/>
                            <text x="100" y="105" text-anchor="middle" fill="white" font-size="12" font-weight="bold">FC</text>
-                           <!-- Direction arrow -->
                            <polygon points="100,70 94,82 106,82" fill="var(--danger-color)"/>
-                           <!-- Motor circles -->
                            <circle id="motorDiag1" cx="40" cy="40" r="22" fill="#444" stroke="#666" stroke-width="2"/>
                            <text x="40" y="44" text-anchor="middle" fill="white" font-size="11" font-weight="bold">M1</text>
                            <circle id="motorDiag2" cx="160" cy="40" r="22" fill="#444" stroke="#666" stroke-width="2"/>
@@ -1015,8 +523,6 @@
                            <text x="160" y="164" text-anchor="middle" fill="white" font-size="11" font-weight="bold">M4</text>
                         </svg>
                      </div>
-
-                     <!-- Motor 3 -->
                      <div class="motor-test-card" id="motorTestCard3">
                         <div class="motor-test-title">Motor 3</div>
                         <div class="motor-slider-wrap">
@@ -1031,7 +537,6 @@
                         </div>
                         <div class="motor-response-status" id="motorResp3">--</div>
                      </div>
-                     <!-- Motor 4 -->
                      <div class="motor-test-card" id="motorTestCard4">
                         <div class="motor-test-title">Motor 4</div>
                         <div class="motor-slider-wrap">
@@ -1048,8 +553,6 @@
                      </div>
                   </div>
                </div>
-
-               <!-- ESC Telemetry Table -->
                <div class="card" style="margin-top: 1rem;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                      <div class="card-title" style="margin-bottom: 0;">ESC TELEMETRY</div>
@@ -1078,11 +581,107 @@
                   </table>
                </div>
             </div>
+            <!-- RC & Modes Tab -->
+            <div class="tab-content" id="receiver-tab" style="display: none; flex: 1; background-color: #16162b; border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+               <h2 class="dashboard-title" style="color: #e0e0e0;"><i class="fas fa-broadcast-tower"></i> RC & Modes</h2>
+               <div class="rc-section">
+                  <div class="rc-section-header">
+                     <span class="rc-section-title">Receiver</span>
+                     <div class="rc-rssi-badge" id="rcRssiBadge">RSSI: --</div>
+                     <div class="rc-chancount-badge" id="rcChancountBadge">CH: --</div>
+                     <div class="rc-rssi-badge" id="rcProtocolBadge">Protocol: --</div>
+                     <div class="rc-rssi-badge" id="rcUartBadge">UART: --</div>
+                  </div>
+                  <div class="rc-bars-container" id="rcBarsContainer">
+                  </div>
+               </div>
+               <div class="rc-section" style="margin-top: 1.5rem;">
+                  <div class="rc-section-header">
+                     <span class="rc-section-title">Flight Modes</span>
+                     <div class="rc-mode-badge" id="rcCurrentModeBadge">-- (--)</div>
+                  </div>
+                  <table class="rc-mode-table" id="rcModeTable">
+                     <thead>
+                        <tr>
+                           <th>Slot</th>
+                           <th>Mode</th>
+                           <th>PWM Range</th>
+                           <th>Active</th>
+                        </tr>
+                     </thead>
+                     <tbody id="rcModeTableBody">
+                        <tr><td>1</td><td>--</td><td>&lt; 1230</td><td></td></tr>
+                        <tr><td>2</td><td>--</td><td>1230 – 1360</td><td></td></tr>
+                        <tr><td>3</td><td>--</td><td>1360 – 1490</td><td></td></tr>
+                        <tr><td>4</td><td>--</td><td>1490 – 1620</td><td></td></tr>
+                        <tr><td>5</td><td>--</td><td>1620 – 1749</td><td></td></tr>
+                        <tr><td>6</td><td>--</td><td>&ge; 1749</td><td></td></tr>
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+
+            <!-- Drone View Tab -->
+            <div class="tab-content" id="drone-view-tab" style="display: none; flex: 1; background-color: #0d0d1a; border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+               <div class="drone-view-container">
+                  <!-- Top bar: mode + armed + heading -->
+                  <div class="drone-top-bar">
+                     <div class="drone-hud-badge drone-mode-badge" id="dvModeBadge">STABILIZE</div>
+                     <div class="drone-heading-display">HDG <span id="dvHeading">0</span>&deg;</div>
+                     <div class="drone-hud-badge drone-armed-badge disarmed" id="dvArmedBadge">DISARMED</div>
+                  </div>
+                  <!-- Main area: altitude | canvas | climb -->
+                  <div class="drone-main-area">
+                     <div class="drone-altitude-panel">
+                        <div class="drone-altitude-label">ALT</div>
+                        <div class="drone-altitude-value" id="dvAltitude">0.0</div>
+                        <div class="drone-altitude-unit">m</div>
+                     </div>
+                     <div class="drone-canvas-wrapper" id="dvCanvasWrapper">
+                        <canvas id="dvCanvas" width="400" height="400"></canvas>
+                     </div>
+                     <div class="drone-altitude-panel">
+                        <div class="drone-altitude-label">V/S</div>
+                        <div class="drone-altitude-value" id="dvClimb">0.0</div>
+                        <div class="drone-altitude-unit">m/s</div>
+                     </div>
+                  </div>
+                  <!-- Attitude readout -->
+                  <div class="drone-attitude-readout">
+                     <span>R: <span id="dvRoll">0.0</span>&deg;</span>
+                     <span>P: <span id="dvPitch">0.0</span>&deg;</span>
+                     <span>Y: <span id="dvYaw">0.0</span>&deg;</span>
+                  </div>
+                  <!-- Motor bars -->
+                  <div class="drone-motor-bars">
+                     <div class="drone-motor-bar-item">
+                        <div class="drone-motor-label">M1</div>
+                        <div class="drone-motor-bar-track"><div class="drone-motor-bar-fill" id="dvMotor1"></div></div>
+                        <div class="drone-motor-pct" id="dvMotor1Pct">0%</div>
+                     </div>
+                     <div class="drone-motor-bar-item">
+                        <div class="drone-motor-label">M2</div>
+                        <div class="drone-motor-bar-track"><div class="drone-motor-bar-fill" id="dvMotor2"></div></div>
+                        <div class="drone-motor-pct" id="dvMotor2Pct">0%</div>
+                     </div>
+                     <div class="drone-motor-bar-item">
+                        <div class="drone-motor-label">M3</div>
+                        <div class="drone-motor-bar-track"><div class="drone-motor-bar-fill" id="dvMotor3"></div></div>
+                        <div class="drone-motor-pct" id="dvMotor3Pct">0%</div>
+                     </div>
+                     <div class="drone-motor-bar-item">
+                        <div class="drone-motor-label">M4</div>
+                        <div class="drone-motor-bar-track"><div class="drone-motor-bar-fill" id="dvMotor4"></div></div>
+                        <div class="drone-motor-pct" id="dvMotor4Pct">0%</div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+
             <!-- Chat Interface -->
             <div class="chat-container" id="chat-container">
                <h2 class="chat-title">AI Assistant</h2>
                <div class="chat-messages" id="chatMessages">
-                  <!-- Messages will be added here dynamically -->
                </div>
                <div class="chat-input">
                   <input type="text" class="chat-input-field" id="chatInput" placeholder="Ask a question about your drone...">
@@ -1131,1865 +730,16 @@
             </div>
          </div>
       </div>
-      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-      <script>
-         function toggleConnFields() {
-            const isSerial = document.querySelector('input[name="connType"][value="serial"]').checked;
-            document.getElementById('serialFields').style.display = isSerial ? '' : 'none';
-            document.getElementById('ipFields').style.display = isSerial ? 'none' : '';
-         }
-         // Variables for browser-to-server latency measurement (WebSocket ping/pong)
-         let pingInterval = null;
-         let lastPingTime = 0;
-         
-         document.addEventListener('DOMContentLoaded', function() {
-          // DOM elements
-          const connectionModal = document.getElementById('connectionModal');
-          const connectButton = document.getElementById('connectButton');
-          const cancelConnect = document.getElementById('cancelConnect');
-          const confirmConnect = document.getElementById('confirmConnect');
-          const portInput = document.getElementById('portInput');
-          const baudInput = document.getElementById('baudInput');
-          const connectionIndicator = document.getElementById('connectionIndicator');
-          const connectionText = document.getElementById('connectionText');
-          const chatMessages = document.getElementById('chatMessages');
-          const chatInput = document.getElementById('chatInput');
-          const sendButton = document.getElementById('sendButton');
-          const voiceButton = document.getElementById('voiceButton');
-          const voiceStatusIndicator = document.getElementById('voiceStatusIndicator');
-          
-          // Latency & Parameters tab elements
-          const currentLatency = document.getElementById('currentLatency');
-          const avgLatency = document.getElementById('avgLatency');
-          const maxLatency = document.getElementById('maxLatency');
-          const minLatency = document.getElementById('minLatency');
-          const latencyStatusIndicator = document.getElementById('latencyStatusIndicator');
-          const latencyStatusText = document.getElementById('latencyStatusText');
-          const paramPercentage = document.getElementById('paramPercentage');
-          const paramCount = document.getElementById('paramCount');
-          const paramProgressBar = document.getElementById('paramProgressBar');
-          const paramStatus = document.getElementById('paramStatus');
-          const paramTimeElapsed = document.getElementById('paramTimeElapsed');
-          const paramTimeRemaining = document.getElementById('paramTimeRemaining');
-          const paramCategoriesTable = document.getElementById('paramCategoriesTable');
-         
-          // Dashboard elements
-          const healthScoreText = document.getElementById('healthScoreText');
-          const healthScoreArc = document.getElementById('healthScoreArc');
-          const healthIssues = document.getElementById('healthIssues');
-          const readinessIndicator = document.getElementById('readinessIndicator');
-          const readinessMessage = document.getElementById('readinessMessage');
-          const batteryIndicator = document.getElementById('batteryIndicator');
-          const batteryText = document.getElementById('batteryText');
-          const batteryStatus = document.getElementById('batteryStatus');
-          const gpsIndicator = document.getElementById('gpsIndicator');
-          const gpsText = document.getElementById('gpsText');
-          const gpsSatellites = document.getElementById('gpsSatellites');
-          const motor1Output = document.getElementById('motor1Output');
-          const motor1Status = document.getElementById('motor1Status');
-          const motor2Output = document.getElementById('motor2Output');
-          const motor2Status = document.getElementById('motor2Status');
-          const motor3Output = document.getElementById('motor3Output');
-          const motor3Status = document.getElementById('motor3Status');
-          const motor4Output = document.getElementById('motor4Output');
-          const motor4Status = document.getElementById('motor4Status');
-          
-          // Fix for subsystemTable - check if it exists first
-          const subsystemTable = document.getElementById('subsystemTable');
-          const subsystemTableBody = subsystemTable ? subsystemTable.querySelector('tbody') : null;
-         
-          // Connection status
-          let isConnected = false;
-          let socket = null;
-         // Initialize WebSocket connection
-         initWebSocket();
-         function initWebSocket() {
-              // Get the current host
-              const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-              const host = window.location.host;
-              const socketUrl = `${protocol}//${host}`;
-         
-              console.log(`Connecting to WebSocket at ${socketUrl}`);
-              socket = io(socketUrl);
-         
-              socket.on('connect', function() {
-                  console.log('WebSocket connected');
-              });
-              
-              // Handle pong response for browser-to-server latency measurement
-              socket.on('pong', function() {
-                  const latency = Date.now() - lastPingTime;
-                  const headerLatencyValue = document.getElementById('headerLatencyValue');
-                  if (headerLatencyValue) {
-                      headerLatencyValue.textContent = `${latency}ms`;
-                  }
-
-                  // Also update the system status data
-                  if (socket) {
-                      socket.emit('update_latency', { latency: latency });
-                  }
-              });
-         
-              socket.on('disconnect', function() {
-                  console.log('WebSocket disconnected');
-                  updateConnectionStatus(false);
-              });
-         
-              // Listen for system status updates
-              socket.on('system_status', function(data) {
-                  updateDashboard(data);
-                  updateLatencyAndParams(data);
-                  
-                  // Update parameter progress in header
-                  const headerParamsValue = document.getElementById('headerParamsValue');
-                  if (data.params && headerParamsValue) {
-                      headerParamsValue.textContent = `${data.params.percentage.toFixed(1)}%`;
-                      console.log("Received parameter_progress (system_status) data:", data.params);
-                  }
-              });
-              
-              // Listen for parameter progress updates
-              socket.on('param_progress', function(data) {
-                  // Update parameter progress in header
-                  const headerParamsValue = document.getElementById('headerParamsValue');
-                  if (data.params && headerParamsValue) {
-                      headerParamsValue.textContent = `${data.params.percentage.toFixed(1)}%`;
-                      console.log("Abhinav:Received parameter_progress (param_progress) data:", data.params);
-                  }
-
-                  // Also update the parameter progress in the Parameters tab
-                  updateLatencyAndParams(data);
-              });
-         
-              // Listen for chat responses
-              socket.on('chat_processing', function(data) {
-                  console.log('Processing message:', data);
-                  // Could add a typing indicator here
-              });
-         
-              socket.on('chat_response', function(data) {
-                  if (data.error) {
-                      addMessage({
-                          text: `Error: ${data.error}`,
-                          time: getCurrentTime()
-                      });
-                      return;
-                  }
-         
-                  let messageText = '';
-                  //formatting code start
-                  function formatResponse(obj) {
-                      let formattedText = '';
-         
-                      for (const key in obj) {
-                          if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                              const value = obj[key];
-         
-                              // Skip 'message', 'intent', and any null/undefined fields
-                              if (value === null || value === undefined || key === 'message' || key === 'intent') {
-                                  continue;
-                              }
-         
-                              formattedText += `<strong>${key}:</strong> `;
-         
-                              if (Array.isArray(value)) {
-                                  formattedText += '<br>';
-                                  value.forEach(item => {
-                                      if (typeof item === 'object' && item !== null) {
-                                          formattedText += '<div style="margin-left: 15px; margin-bottom:5px;">';
-                                          for (const itemKey in item) {
-                                              if (Object.prototype.hasOwnProperty.call(item, itemKey)) {
-                                                  formattedText += `<strong>${itemKey}:</strong> ${item[itemKey]}<br>`;
-                                              }
-                                          }
-                                          formattedText += '</div>';
-                                      } else {
-                                          formattedText += `- ${item}<br>`;
-                                      }
-                                  });
-                              } else if (typeof value === 'object') {
-                                  formattedText += '<br><div style="margin-left: 15px;">';
-                                  for (const nestedKey in value) {
-                                      if (Object.prototype.hasOwnProperty.call(value, nestedKey)) {
-                                          formattedText += `<strong>${nestedKey}:</strong> ${value[nestedKey]}<br>`;
-                                      }
-                                  }
-                                  formattedText += '</div>';
-                              } else {
-                                  formattedText += `${value}<br>`;
-                              }
-                          }
-                      }
-         
-                      return formattedText;
-                  }
-         
-                  // formating code end
-                  if (data.source === 'jarvis') {
-          const response = data.response;
-          console.log("JARVIS response object:", response);
-         
-          let messageStr = '';
-         
-          if (response?.message) {
-              messageStr += `${response.message}<br><br>`;
-          }
-          if (response?.intent) {
-              messageStr += `<strong>Intent:</strong> ${response.intent}<br><br>`;
-          }
-         
-          messageStr += formatResponse(response);
-         
-          messageText = `<strong>JARVIS:</strong><br><br>${messageStr}`;
-         } else {
-          console.log("AI Pipeline response:", data.response);
-          messageText = `<strong>AI Pipeline:</strong><br><br>${data.response}`;
-         }
-         
-                  addMessage({
-                      text: messageText,
-                      time: getCurrentTime()
-                  });
-              });
-         
-              // Listen for voice command responses
-              socket.on('voice_status', function(data) {
-                  const voiceStatusIndicator = document.getElementById('voiceStatusIndicator');
-                  if (voiceStatusIndicator) {
-                      voiceStatusIndicator.style.display = 'block';
-                      if (data.status === 'listening') {
-                          voiceStatusIndicator.textContent = 'Listening...';
-                          voiceButton.classList.add('active');
-                      } else if (data.status === 'processing') {
-                          voiceStatusIndicator.textContent = 'Processing...';
-                          voiceButton.classList.remove('active');
-                      } else {
-                          voiceStatusIndicator.style.display = 'none';
-                          voiceButton.classList.remove('active');
-                      }
-                  }
-              });
-         
-              socket.on('voice_response', function(data) {
-                  const voiceStatusIndicator = document.getElementById('voiceStatusIndicator');
-                  if (voiceStatusIndicator) {
-                      voiceStatusIndicator.style.display = 'none';
-                      voiceButton.classList.remove('active');
-                  }
-         
-                  if (data.error) {
-                      addMessage({
-                          text: `<strong>Voice Error:</strong> ${data.error}`,
-                          time: getCurrentTime()
-                      });
-                      return;
-                  }
-                  if (data.message) {
-                      addMessage({
-                          text: `<strong>System:</strong> ${data.message}`,
-                          time: getCurrentTime()
-                      });
-                  }
-                  if (data.response) { // Response from JARVIS
-                    let messageStr = '';
-                    if (data.response?.message) {
-                        messageStr += `${data.response.message}<br><br>`;
-                    }
-                    if (data.response?.intent) {
-                        messageStr += `<strong>Intent:</strong> ${data.response.intent}<br><br>`;
-                    }
-                    messageStr += formatResponse(data.response);
-         
-                    addMessage({
-                        text: `<strong>JARVIS (Voice):</strong><br><br>${messageStr}`,
-                        time: getCurrentTime()
-                    });
-                  }
-              });
-          }
-         
-          // Connect to the drone
-          async function connectToDrone() {
-              const connType = document.querySelector('input[name="connType"]:checked').value;
-              let body, connLabel;
-
-              if (connType === 'ip') {
-                  const ip = document.getElementById('ipAddressInput').value.trim() || '0.0.0.0';
-                  const udpPort = document.getElementById('udpPortInput').value.trim() || '14550';
-                  body = { type: 'udp', ip: ip, port: udpPort };
-                  connLabel = `UDP ${ip}:${udpPort}`;
-              } else {
-                  const port = document.getElementById('portInput').value.trim() || 'COM3';
-                  const baud = document.getElementById('baudInput').value.trim() || '115200';
-                  body = { type: 'serial', port: port, baud: baud };
-                  connLabel = `${port} at ${baud} baud`;
-              }
-
-              try {
-                  console.log(`Attempting to connect to drone via ${connLabel}`);
-
-                  const response = await fetch('/api/connect', {
-                      method: 'POST',
-                      headers: {
-                          'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify(body)
-                  });
-
-                  const data = await response.json();
-
-                  if (data.status === 'success') {
-                      updateConnectionStatus(true);
-                      addMessage({
-                          text: `<strong>System:</strong> Successfully connected to drone via ${connLabel}. Initializing drone parameters...`,
-                          time: getCurrentTime()
-                      });
-// Initialize WebSocket connection after successful API connection
-//initWebSocket();
-} else {
-                      updateConnectionStatus(false);
-                      addMessage({
-                          text: `<strong>Error:</strong> Failed to connect to drone: ${data.message}`,
-                          time: getCurrentTime()
-                      });
-                  }
-              } catch(error) {
-                  console.error('Connection error:', error);
-                  updateConnectionStatus(false);
-                  addMessage({
-                      text: `<strong>Error:</strong> Connection failed. Server may be offline or unreachable.`,
-                      time: getCurrentTime()
-                  });
-              }
-          }
-          
-          // Disconnect from the drone
-          async function disconnectFromDrone() {
-              try {
-                  console.log('Attempting to disconnect from drone');
-                  
-                  const response = await fetch('/api/disconnect', {
-                      method: 'POST',
-                      headers: {
-                          'Content-Type': 'application/json'
-                      }
-                  });
-          
-                  const data = await response.json();
-                  
-                  if (data.status === 'success') {
-                      updateConnectionStatus(false);
-                      addMessage({
-                          text: `<strong>System:</strong> Successfully disconnected from drone.`,
-                          time: getCurrentTime()
-                      });
-                      
-                      // Close WebSocket connection
-                      if (socket) {
-                          socket.disconnect();
-                          socket = null;
-                      }
-                  } else {
-                      addMessage({
-                          text: `<strong>Error:</strong> Failed to disconnect from drone: ${data.message}`,
-                          time: getCurrentTime()
-                      });
-                  }
-              } catch(error) {
-                  console.error('Disconnection error:', error);
-                  addMessage({
-                      text: `<strong>Error:</strong> Disconnection failed. Server may be offline or unreachable.`,
-                      time: getCurrentTime()
-                  });
-              }
-          }
-         
-          // Update connection status UI
-          function updateConnectionStatus(connected) {
-              isConnected = connected;
-              
-              // Check if elements exist before updating them
-              if (connectionIndicator) {
-                  connectionIndicator.style.backgroundColor = connected ? 'var(--success-color)' : 'var(--danger-color)';
-              }
-              
-              if (connectionText) {
-                  connectionText.textContent = connected ? 'Connected' : 'Disconnected';
-              }
-              
-              // Toggle visibility of connect and disconnect buttons
-              const disconnectButton = document.getElementById('disconnectButton');
-              
-              if (connectButton) {
-                  connectButton.style.display = connected ? 'none' : 'flex';
-              }
-              
-              if (disconnectButton) {
-                  disconnectButton.style.display = connected ? 'flex' : 'none';
-              }
-              
-              // Show/hide header params and latency indicators
-              const headerParamsText = document.getElementById('headerParamsText');
-              const headerLatencyText = document.getElementById('headerLatencyText');
-              
-              if (headerParamsText) {
-                  headerParamsText.style.display = connected ? 'inline' : 'none';
-              }
-              
-              if (headerLatencyText) {
-                  headerLatencyText.style.display = connected ? 'inline' : 'none';
-              }
-
-              // Start/stop browser-to-server latency measurement
-              if (connected) {
-                  startLatencyMeasurement();
-              } else if (pingInterval) {
-                  clearInterval(pingInterval);
-                  pingInterval = null;
-              }
-          }
-
-          // Function to measure browser-to-server latency via WebSocket
-          function startLatencyMeasurement() {
-              if (pingInterval) {
-                  clearInterval(pingInterval);
-              }
-
-              pingInterval = setInterval(() => {
-                  if (socket && isConnected) {
-                      lastPingTime = Date.now();
-                      socket.emit('ping');
-                  }
-              }, 2000); // Ping every 2 seconds
-          }
-
-          // Update dashboard with system status
-          function updateDashboard(data) {
-              // Update header params and latency values
-              const headerParamsValue = document.getElementById('headerParamsValue');
-              const headerLatencyValue = document.getElementById('headerLatencyValue');
-              
-              if (headerParamsValue && data.params && data.params.percentage !== undefined) {
-                  headerParamsValue.textContent = `${data.params.percentage}%`;
-              }
-              
-              if (headerLatencyValue && data.latency !== undefined) {
-                  headerLatencyValue.textContent = `${data.latency}ms`;
-              }
-              
-              // Only update elements if they exist
-              if (healthScoreText) {
-                  healthScoreText.textContent = data.score;
-              }
-              
-              if (healthScoreArc) {
-                  healthScoreArc.setAttribute('stroke-dasharray', `${data.score}, 100`);
-                  healthScoreArc.setAttribute('stroke', data.score < 70 ? 'var(--danger-color)' : 'var(--success-color)');
-              }
-         
-              if (healthIssues) {
-                  healthIssues.textContent = `${data.critical_issues} CRITICAL ISSUES`;
-              }
-         
-              if (readinessIndicator) {
-                  readinessIndicator.textContent = data.readiness;
-                  readinessIndicator.style.backgroundColor =
-                      data.readiness === 'READY' ? 'var(--success-color)' :
-                      data.readiness === 'CAUTION' ? 'var(--warning-color)' : 'var(--danger-color)';
-              }
-              
-              if (readinessMessage) {
-                  readinessMessage.textContent = data.critical_issues > 0 ? 'PREFLIGHT CHECK REQUIRED' : 'READY TO FLY';
-              }
-         
-              if (batteryIndicator) {
-                  batteryIndicator.style.backgroundColor =
-                      data.battery.status === 'CRITICAL' ? 'var(--danger-color)' :
-                      data.battery.status === 'WARNING' ? 'var(--warning-color)' : 'var(--success-color)';
-              }
-              
-              if (batteryText) {
-                  batteryText.textContent = `${data.battery.percentage}% / ${data.battery.threshold} Threshold`;
-              }
-              
-              if (batteryStatus) {
-                  batteryStatus.textContent = data.battery.status === 'CRITICAL' ? 'CRITICAL: LAND IMMEDIATELY' : '';
-              }
-         
-              if (gpsIndicator) {
-                  gpsIndicator.style.backgroundColor =
-                      data.gps.fix_type < 2 ? 'var(--danger-color)' :
-                      data.gps.fix_type < 3 ? 'var(--warning-color)' : 'var(--success-color)';
-              }
-              
-              if (gpsText) {
-                  gpsText.textContent = `Fix Type: ${data.gps.fix_type} (${data.gps.fix_type < 2 ? 'No Fix' : data.gps.fix_type < 3 ? '2D Fix' : '3D Fix'})`;
-              }
-              
-              if (gpsSatellites) {
-                  gpsSatellites.textContent = `${data.gps.satellites_visible} SATELLITES VISIBLE`;
-              }
-         /*
-              // Update motors if elements exist
-              if (motor1Output) motor1Output.textContent = `${data.motors.motor1.output}%`;
-              if (motor1Status) motor1Status.textContent = data.motors.motor1.status;
-              if (motor2Output) motor2Output.textContent = `${data.motors.motor2.output}%`;
-              if (motor2Status) motor2Status.textContent = data.motors.motor2.status;
-              if (motor3Output) motor3Output.textContent = `${data.motors.motor3.output}%`;
-              if (motor3Status) motor3Status.textContent = data.motors.motor3.status;
-              if (motor4Output) motor4Output.textContent = `${data.motors.motor4.output}%`;
-              if (motor4Status) motor4Status.textContent = data.motors.motor4.status;
-         */
-         
-              // Update motors if elements exist
-              if (data.motors && Array.isArray(data.motors)) {
-                  // Find motors by their id
-                  const motor1 = data.motors.find(motor => motor.id === 1);
-                  const motor2 = data.motors.find(motor => motor.id === 2);
-                  const motor3 = data.motors.find(motor => motor.id === 3);
-                  const motor4 = data.motors.find(motor => motor.id === 4);
-                  
-                  if (motor1 && motor1Output) motor1Output.textContent = `${motor1.output}%`;
-                  if (motor1 && motor1Status) motor1Status.textContent = motor1.status;
-                  
-                  if (motor2 && motor2Output) motor2Output.textContent = `${motor2.output}%`;
-                  if (motor2 && motor2Status) motor2Status.textContent = motor2.status;
-                  
-                  if (motor3 && motor3Output) motor3Output.textContent = `${motor3.output}%`;
-                  if (motor3 && motor3Status) motor3Status.textContent = motor3.status;
-                  
-                  if (motor4 && motor4Output) motor4Output.textContent = `${motor4.output}%`;
-                  if (motor4 && motor4Status) motor4Status.textContent = motor4.status;
-              }
-         
-              // Update subsystem table
-              if (subsystemTableBody) {
-                  subsystemTableBody.innerHTML = '';
-                  data.subsystems.forEach(subsystem => {
-                      const row = document.createElement('tr');
-         
-                      const componentCell = document.createElement('td');
-                      componentCell.textContent = subsystem.component;
-         
-                      const statusCell = document.createElement('td');
-                      const statusBadge = document.createElement('span');
-                      statusBadge.classList.add('status-badge');
-                      statusBadge.classList.add(
-                          subsystem.status === 'CRITICAL' ? 'status-critical' :
-                          subsystem.status === 'WARNING' ? 'status-warning' : 'status-ok'
-                      );
-                      statusBadge.textContent = subsystem.status;
-                      statusCell.appendChild(statusBadge);
-         
-                      const detailsCell = document.createElement('td');
-                      detailsCell.textContent = subsystem.details;
-         
-                      row.appendChild(componentCell);
-                      row.appendChild(statusCell);
-                      row.appendChild(detailsCell);
-         
-                      subsystemTableBody.appendChild(row);
-                  });
-              }
-
-              // Update Motors tab (ESC telemetry + armed state)
-              if (window._motorTab && window._motorTab.onSystemStatus) {
-                  window._motorTab.onSystemStatus(data);
-              }
-          }
-          
-          // Update latency and parameters tab
-          function updateLatencyAndParams(data) {
-              // Update latency information if available
-              if (data.latency !== undefined) {
-                  if (currentLatency) currentLatency.textContent = `${data.latency} ms`;
-                  
-                  // Update latency status indicator
-                  if (latencyStatusIndicator && latencyStatusText) {
-                      let statusColor, statusText;
-                      
-                      if (data.latency < 100) {
-                          statusColor = 'var(--success-color)';
-                          statusText = 'Excellent';
-                      } else if (data.latency < 200) {
-                          statusColor = 'var(--success-color)';
-                          statusText = 'Good';
-                      } else if (data.latency < 300) {
-                          statusColor = 'var(--warning-color)';
-                          statusText = 'Fair';
-                      } else {
-                          statusColor = 'var(--danger-color)';
-                          statusText = 'Poor';
-                      }
-                      
-                      latencyStatusIndicator.style.backgroundColor = statusColor;
-                      latencyStatusText.textContent = `Latency Status: ${statusText}`;
-                  }
-                  
-                  // Update latency statistics
-                  if (data.latency_stats) {
-                      if (avgLatency) avgLatency.textContent = `${data.latency_stats.avg} ms`;
-                      if (maxLatency) maxLatency.textContent = `${data.latency_stats.max} ms`;
-                      if (minLatency) minLatency.textContent = `${data.latency_stats.min} ms`;
-                  }
-                  
-                  // Update latency chart if it exists
-                  updateLatencyChart(data.latency);
-              }
-              
-              // Update parameter download progress if available
-              if (data.params !== undefined) {
-                  const percentage = data.params.percentage || 0;
-                  const downloaded = data.params.downloaded || 0;
-                  const total = data.params.total || 0;
-                  const status = data.params.status || 'Not Started';
-                  const timeElapsed = data.params.time_elapsed || '00:00';
-                  const timeRemaining = data.params.time_remaining || '--:--';
-                  
-                  if (paramPercentage) paramPercentage.textContent = `${percentage}%`;
-                  if (paramProgressBar) paramProgressBar.style.width = `${percentage}%`;
-                  if (paramCount) paramCount.textContent = `${downloaded}/${total} Parameters`;
-                  if (paramStatus) paramStatus.textContent = status;
-                  if (paramTimeElapsed) paramTimeElapsed.textContent = timeElapsed;
-                  if (paramTimeRemaining) paramTimeRemaining.textContent = timeRemaining;
-                  
-                  // Update parameter categories table if available
-                  if (data.params.categories && paramCategoriesTable) {
-                      paramCategoriesTable.innerHTML = '';
-                      
-                      Object.entries(data.params.categories).forEach(([category, info]) => {
-                          const row = document.createElement('tr');
-                          
-                          const categoryCell = document.createElement('td');
-                          categoryCell.style.padding = '0.5rem';
-                          categoryCell.style.borderBottom = '1px solid #f0f0f0';
-                          categoryCell.textContent = category;
-                          
-                          const progressCell = document.createElement('td');
-                          progressCell.style.padding = '0.5rem';
-                          progressCell.style.borderBottom = '1px solid #f0f0f0';
-                          
-                          const progressBar = document.createElement('div');
-                          progressBar.style.height = '10px';
-                          progressBar.style.backgroundColor = '#f0f0f0';
-                          progressBar.style.borderRadius = '5px';
-                          progressBar.style.overflow = 'hidden';
-                          
-                          const progressFill = document.createElement('div');
-                          progressFill.style.height = '100%';
-                          progressFill.style.width = `${info.percentage}%`;
-                          progressFill.style.backgroundColor = 'var(--primary-color)';
-                          progressFill.style.borderRadius = '5px';
-                          
-                          progressBar.appendChild(progressFill);
-                          progressCell.appendChild(progressBar);
-                          
-                          const countCell = document.createElement('td');
-                          countCell.style.padding = '0.5rem';
-                          countCell.style.borderBottom = '1px solid #f0f0f0';
-                          countCell.textContent = `${info.downloaded}/${info.total}`;
-                          
-                          row.appendChild(categoryCell);
-                          row.appendChild(progressCell);
-                          row.appendChild(countCell);
-                          
-                          paramCategoriesTable.appendChild(row);
-                      });
-                  }
-              }
-          }
-          
-          // Latency chart initialization and update
-          let latencyChart = null;
-          let latencyData = [];
-          const MAX_DATA_POINTS = 60; // Show last 60 data points
-          
-          function initLatencyChart() {
-              const ctx = document.getElementById('latencyChart');
-              if (!ctx) return;
-              
-              latencyChart = new Chart(ctx, {
-                  type: 'line',
-                  data: {
-                      labels: Array(MAX_DATA_POINTS).fill(''),
-                      datasets: [{
-                          label: 'Latency (ms)',
-                          data: Array(MAX_DATA_POINTS).fill(null),
-                          borderColor: 'var(--primary-color)',
-                          backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                          borderWidth: 2,
-                          fill: true,
-                          tension: 0.4
-                      }]
-                  },
-                  options: {
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: {
-                          legend: {
-                              display: false
-                          },
-                          tooltip: {
-                              mode: 'index',
-                              intersect: false
-                          }
-                      },
-                      scales: {
-                          y: {
-                              beginAtZero: true,
-                              title: {
-                                  display: true,
-                                  text: 'Milliseconds'
-                              }
-                          },
-                          x: {
-                              display: false
-                          }
-                      }
-                  }
-              });
-          }
-          
-          function updateLatencyChart(newLatency) {
-              if (!latencyChart) {
-                  initLatencyChart();
-                  if (!latencyChart) return; // Exit if chart initialization failed
-              }
-              
-              // Add new data point
-              latencyData.push(newLatency);
-              
-              // Keep only the last MAX_DATA_POINTS data points
-              if (latencyData.length > MAX_DATA_POINTS) {
-                  latencyData = latencyData.slice(-MAX_DATA_POINTS);
-              }
-              
-              // Update chart data
-              latencyChart.data.datasets[0].data = latencyData;
-              
-              // Update labels (just for proper spacing)
-              latencyChart.data.labels = Array(latencyData.length).fill('');
-              
-              // Update chart
-              latencyChart.update();
-              
-              // Show/hide "no data" message
-              const noDataMsg = document.getElementById('noLatencyData');
-              if (noDataMsg) {
-                  noDataMsg.style.display = latencyData.length > 0 ? 'none' : 'block';
-              }
-          }
-         
-          // Helper function to get current time
-          function getCurrentTime() {
-              const now = new Date();
-              let hours = now.getHours();
-              let minutes = now.getMinutes();
-              const ampm = hours >= 12 ? 'PM' : 'AM';
-         
-              hours = hours % 12;
-              hours = hours ? hours : 12;
-              minutes = minutes < 10 ? '0'+minutes : minutes;
-         
-              return `${hours}:${minutes} ${ampm}`;
-          }
-         
-          // Add a message to the chat
-          function addMessage(message, isUser = false) {
-              if (!chatMessages) return;
-              
-              const messageDiv = document.createElement('div');
-              messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
-         
-              const messageBubble = document.createElement('div');
-              messageBubble.className = 'message-bubble';
-              messageBubble.innerHTML = message.text;
-         
-              const messageTime = document.createElement('div');
-              messageTime.className = 'message-time';
-              messageTime.textContent = message.time;
-         
-              messageDiv.appendChild(messageBubble);
-              messageDiv.appendChild(messageTime);
-         
-              chatMessages.appendChild(messageDiv);
-              chatMessages.scrollTop = chatMessages.scrollHeight;
-          }
-         
-          // Send a message
-          function sendMessage() {
-              if (!chatInput) return;
-              
-              const message = chatInput.value.trim();
-              if (!message) return;
-         
-              addMessage({
-                  text: message,
-                  time: getCurrentTime()
-              }, true);
-         
-              chatInput.value = '';
-         
-              if (socket && isConnected) {
-                  socket.emit('chat_message', { message: message });
-              } else {
-                  addMessage({
-                      text: "<strong>System:</strong> Please connect to a drone first.",
-                      time: getCurrentTime()
-                  });
-              }
-          }
-         
-          // Initialize event listeners
-          if (connectButton) {
-              connectButton.addEventListener('click', function() {
-                  console.log('Connect button clicked');
-                  if (connectionModal) {
-                      connectionModal.style.display = 'flex';
-                  }
-              });
-          }
-          
-          // Add event listener for disconnect button
-          const disconnectButton = document.getElementById('disconnectButton');
-          if (disconnectButton) {
-              disconnectButton.addEventListener('click', function() {
-                  console.log('Disconnect button clicked');
-                  disconnectFromDrone();
-              });
-          }
-         
-          if (cancelConnect) {
-              cancelConnect.addEventListener('click', function() {
-                  if (connectionModal) {
-                      connectionModal.style.display = 'none';
-                  }
-              });
-          }
-         
-          if (confirmConnect) {
-              confirmConnect.addEventListener('click', function() {
-                  if (connectionModal) {
-                      connectionModal.style.display = 'none';
-                  }
-                  connectToDrone();
-              });
-          }
-         
-          // Set up chat input
-          if (chatInput) {
-              chatInput.addEventListener('keypress', function(e) {
-                  if (e.key === 'Enter') {
-                      sendMessage();
-                  }
-              });
-          }
-         
-          if (sendButton) {
-              sendButton.addEventListener('click', sendMessage);
-          }
-         
-          // Voice button PTT functionality
-          if (voiceButton) {
-              let voiceRecordingTimeout;
-              const MAX_RECORDING_TIME = 10000; // 10 seconds max recording time
-         
-              voiceButton.addEventListener('mousedown', function() {
-                  console.log("Voice button pressed - starting recording");
-                  if (socket && isConnected) {
-                      socket.emit('start_voice_input');
-                      voiceRecordingTimeout = setTimeout(() => {
-                          console.log("Max recording time reached, stopping voice input.");
-                          socket.emit('stop_voice_input');
-                      }, MAX_RECORDING_TIME);
-                  } else {
-                      addMessage({
-                          text: "<strong>System:</strong> Please connect to a drone first to use voice commands.",
-                          time: getCurrentTime()
-                      });
-                  }
-              });
-         
-              voiceButton.addEventListener('mouseup', function() {
-                  console.log("Voice button released - stopping recording");
-                  if (voiceRecordingTimeout) {
-                      clearTimeout(voiceRecordingTimeout);
-                  }
-                  if (socket && isConnected) {
-                      socket.emit('stop_voice_input');
-                  }
-              });
-         
-              // For touch devices
-              voiceButton.addEventListener('touchstart', function(e) {
-                  e.preventDefault(); // Prevent scrolling
-                  if (socket && isConnected) {
-                      socket.emit('start_voice_input');
-                      voiceRecordingTimeout = setTimeout(() => {
-                          console.log("Max recording time reached, stopping voice input.");
-                          socket.emit('stop_voice_input');
-                      }, MAX_RECORDING_TIME);
-                  } else {
-                      addMessage({
-                          text: "<strong>System:</strong> Please connect to a drone first to use voice commands.",
-                          time: getCurrentTime()
-                      });
-                  }
-              });
-         
-              voiceButton.addEventListener('touchend', function(e) {
-                  e.preventDefault(); // Prevent scrolling
-                  if (voiceRecordingTimeout) {
-                      clearTimeout(voiceRecordingTimeout);
-                  }
-                  if (socket && isConnected) {
-                      socket.emit('stop_voice_input');
-                  }
-              });
-          }
-         
-          // Add welcome message
-          addMessage({
-              text: '<strong>System:</strong> Welcome to UAV-AI Assistant. Please connect to your drone to begin.',
-              time: getCurrentTime()
-          });
-          
-          // Tab switching functionality
-          document.querySelectorAll('.menu-item').forEach(item => {
-              item.addEventListener('click', function() {
-                  // Remove active class from all menu items and tab contents
-                  document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
-                  document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
-                  
-                  // Add active class to clicked menu item
-                  this.classList.add('active');
-                  
-                  // Show corresponding tab content
-                  const tabId = this.getAttribute('data-tab');
-                  const tabContent = document.getElementById(`${tabId}-tab`);
-                  if (tabContent) {
-                      tabContent.style.display = 'block';
-                      
-                      // Keep chat window visible in all tabs
-                      document.getElementById('chat-container').style.display = 'flex';
-                      
-                      // Adjust width of the active tab content to make room for chat
-                      const activeTab = document.getElementById(`${tabId}-tab`);
-                      if (activeTab) {
-                          activeTab.style.width = '65%';
-                      }
-                  }
-              });
-          });
-          
-          // Parameters functionality
-          let allParameters = {};
-          let modifiedParameters = {}; // Track modified parameters
-          
-          // Function to fetch parameters from the server
-          async function fetchParameters() {
-              try {
-                  const response = await fetch('/api/parameters');
-                  if (!response.ok) {
-                      throw new Error(`Failed to fetch parameters: ${response.status}`);
-                  }
-                  
-                  allParameters = await response.json();
-                  modifiedParameters = {}; // Reset modified parameters
-                  displayParameters();
-                  return allParameters;
-              } catch (error) {
-                  console.error('Error fetching parameters:', error);
-                  addMessage({
-                      text: `<strong>Error:</strong> Failed to fetch parameters: ${error.message}`,
-                      time: getCurrentTime()
-                  });
-                  return {};
-              }
-          }
-          
-          // Function to display parameters in the table
-          function displayParameters() {
-              const tableBody = document.getElementById('parametersTableBody');
-              if (!tableBody) return;
-              
-              tableBody.innerHTML = '';
-              
-              // Get selected category
-              const categoryFilter = document.getElementById('categoryFilter').value;
-              
-              // Get search term
-              const searchTerm = document.getElementById('paramSearch').value.toLowerCase();
-              
-              // Filter parameters based on category and search term
-              let filteredParams = {};
-              
-              if (categoryFilter === 'All Categories') {
-                  // Include all categories but still filter by search term
-                  for (const category in allParameters) {
-                      filteredParams[category] = {};
-                      for (const param in allParameters[category]) {
-                          if (param.toLowerCase().includes(searchTerm)) {
-                              filteredParams[category][param] = allParameters[category][param];
-                          }
-                      }
-                  }
-              } else {
-                  // Only include the selected category
-                  if (allParameters[categoryFilter]) {
-                      filteredParams[categoryFilter] = {};
-                      for (const param in allParameters[categoryFilter]) {
-                          if (param.toLowerCase().includes(searchTerm)) {
-                              filteredParams[categoryFilter][param] = allParameters[categoryFilter][param];
-                          }
-                      }
-                  }
-              }
-              
-              // Display parameters
-              for (const category in filteredParams) {
-                  for (const param in filteredParams[category]) {
-                      const value = filteredParams[category][param];
-                      
-                      // Create row
-                      const row = document.createElement('tr');
-                      
-                      // Parameter name
-                      const nameCell = document.createElement('td');
-                      nameCell.style.padding = '0.75rem';
-                      nameCell.style.borderBottom = '1px solid #ddd';
-                      nameCell.textContent = param;
-                      
-                      // Parameter value
-                      const valueCell = document.createElement('td');
-                      valueCell.style.padding = '0.75rem';
-                      valueCell.style.borderBottom = '1px solid #ddd';
-                      
-                      // Create editable input for value
-                      const valueInput = document.createElement('input');
-                      valueInput.type = 'text';
-                      valueInput.value = modifiedParameters[param] !== undefined ? modifiedParameters[param] : value;
-                      valueInput.style.width = '100%';
-                      valueInput.style.padding = '0.25rem';
-                      valueInput.style.border = '1px solid #ddd';
-                      valueInput.style.borderRadius = '3px';
-                      
-                      // If this parameter has been modified, highlight the input
-                      if (modifiedParameters[param] !== undefined) {
-                          valueInput.style.backgroundColor = '#fff8e1';
-                          valueInput.style.borderColor = 'var(--warning-color)';
-                      }
-                      
-                      // Add event listener to track changes
-                      valueInput.addEventListener('change', function() {
-                          const newValue = this.value.trim();
-                          if (newValue !== value.toString()) {
-                              modifiedParameters[param] = newValue;
-                              this.style.backgroundColor = '#fff8e1';
-                              this.style.borderColor = 'var(--warning-color)';
-                          } else {
-                              delete modifiedParameters[param];
-                              this.style.backgroundColor = '';
-                              this.style.borderColor = '#ddd';
-                          }
-                          
-                          // Enable/disable save button based on whether there are changes
-                          document.getElementById('saveParams').disabled = Object.keys(modifiedParameters).length === 0;
-                      });
-                      
-                      valueCell.appendChild(valueInput);
-                      
-                      // Description
-                      const descCell = document.createElement('td');
-                      descCell.style.padding = '0.75rem';
-                      descCell.style.borderBottom = '1px solid #ddd';
-                      
-                      // Get description based on parameter name
-                      let description = getParameterDescription(param);
-                      descCell.textContent = description;
-                      
-                      // Range
-                      const rangeCell = document.createElement('td');
-                      rangeCell.style.padding = '0.75rem';
-                      rangeCell.style.borderBottom = '1px solid #ddd';
-                      
-                      // Get range based on parameter name
-                      let range = getParameterRange(param);
-                      rangeCell.textContent = range;
-                      
-                      // Actions
-                      const actionsCell = document.createElement('td');
-                      actionsCell.style.padding = '0.75rem';
-                      actionsCell.style.borderBottom = '1px solid #ddd';
-                      
-                      // Reset button
-                      const resetButton = document.createElement('button');
-                      resetButton.innerHTML = '<i class="fas fa-undo"></i>';
-                      resetButton.title = 'Reset to default';
-                      resetButton.style.backgroundColor = 'transparent';
-                      resetButton.style.border = 'none';
-                      resetButton.style.cursor = 'pointer';
-                      resetButton.style.color = 'var(--primary-color)';
-                      resetButton.style.borderRadius = '50%';
-                      resetButton.style.width = '30px';
-                      resetButton.style.height = '30px';
-                      resetButton.style.display = 'flex';
-                      resetButton.style.justifyContent = 'center';
-                      resetButton.style.alignItems = 'center';
-                      
-                      resetButton.addEventListener('click', function() {
-                          valueInput.value = value;
-                          delete modifiedParameters[param];
-                          valueInput.style.backgroundColor = '';
-                          valueInput.style.borderColor = '#ddd';
-                          
-                          // Enable/disable save button based on whether there are changes
-                          document.getElementById('saveParams').disabled = Object.keys(modifiedParameters).length === 0;
-                      });
-                      
-                      actionsCell.appendChild(resetButton);
-                      
-                      // Add cells to row
-                      row.appendChild(nameCell);
-                      row.appendChild(valueCell);
-                      row.appendChild(descCell);
-                      row.appendChild(rangeCell);
-                      row.appendChild(actionsCell);
-                      
-                      // Add row to table
-                      tableBody.appendChild(row);
-                  }
-              }
-          }
-          
-          // Function to save modified parameters
-          async function saveParameters() {
-              if (Object.keys(modifiedParameters).length === 0) {
-                  return; // Nothing to save
-              }
-              
-              try {
-                  const response = await fetch('/api/parameters', {
-                      method: 'POST',
-                      headers: {
-                          'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify(modifiedParameters)
-                  });
-                  
-                  if (!response.ok) {
-                      throw new Error(`Failed to save parameters: ${response.status}`);
-                  }
-                  
-                  const result = await response.json();
-                  
-                  if (result.status === 'success') {
-                      // Show success message
-                      addMessage({
-                          text: `<strong>Success:</strong> Parameters saved successfully.`,
-                          time: getCurrentTime()
-                      });
-                      
-                      // Refresh parameters to get updated values
-                      fetchParameters();
-                  } else {
-                      throw new Error(result.message || 'Unknown error');
-                  }
-              } catch (error) {
-                  console.error('Error saving parameters:', error);
-                  addMessage({
-                      text: `<strong>Error:</strong> Failed to save parameters: ${error.message}`,
-                      time: getCurrentTime()
-                  });
-              }
-          }
-          
-          // Function to get parameter description
-          function getParameterDescription(param) {
-              // This is a simplified mapping - in a real implementation, you would have a more comprehensive database
-              const descriptions = {
-                  'BATT_CAPACITY': 'Battery capacity in mAh',
-                  'BATT_CRT_VOLT': 'Battery critical voltage threshold',
-                  'BATT_LOW_VOLT': 'Battery low voltage threshold',
-                  'BATT_MONITOR': 'Battery monitoring type',
-                  'AHRS_GPS_USE': 'Use GPS for attitude estimation',
-                  'GPS_HDOP_GOOD': 'GPS HDOP good threshold',
-                  'GPS_TYPE': 'GPS type/provider',
-                  'MOT_PWM_TYPE': 'Motor PWM output type',
-                  'MOT_SPIN_MAX': 'Maximum motor output',
-                  'MOT_SPIN_MIN': 'Throttle minimum when armed'
-              };
-              
-              return descriptions[param] || '';
-          }
-          
-          // Function to get parameter range
-          function getParameterRange(param) {
-              // This is a simplified mapping - in a real implementation, you would have a more comprehensive database
-              const ranges = {
-                  'BATT_CAPACITY': '0-50000 mAh',
-                  'BATT_CRT_VOLT': '-',
-                  'BATT_LOW_VOLT': '-',
-                  'BATT_MONITOR': '-',
-                  'AHRS_GPS_USE': '-',
-                  'GPS_HDOP_GOOD': '-',
-                  'GPS_TYPE': 'Various',
-                  'MOT_PWM_TYPE': 'Various',
-                  'MOT_SPIN_MAX': '0.7-1.0',
-                  'MOT_SPIN_MIN': '0.0-0.3'
-              };
-              
-              return ranges[param] || '-';
-          }
-          
-          // Event listeners for parameter functionality
-          document.getElementById('refreshParams')?.addEventListener('click', fetchParameters);
-          document.getElementById('saveParams')?.addEventListener('click', saveParameters);
-          document.getElementById('searchBtn')?.addEventListener('click', displayParameters);
-          document.getElementById('categoryFilter')?.addEventListener('change', displayParameters);
-          document.getElementById('paramSearch')?.addEventListener('keyup', function(e) {
-              if (e.key === 'Enter') {
-                  displayParameters();
-              }
-          });
-          
-          // Fetch parameters when the parameters tab is first shown
-          document.querySelector('.menu-item[data-tab="parameters"]')?.addEventListener('click', function() {
-              if (Object.keys(allParameters).length === 0) {
-                  fetchParameters();
-              }
-          });
-          
-          // Initially disable save button
-          if (document.getElementById('saveParams')) {
-              document.getElementById('saveParams').disabled = true;
-          }
-
-          // ========== Golden Config Snapshots ==========
-          function loadConfigList() {
-              fetch('/api/configs')
-                  .then(r => r.json())
-                  .then(data => {
-                      const list = document.getElementById('configList');
-                      if (!list) return;
-                      if (data.status !== 'success' || !data.configs.length) {
-                          list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:2rem;">No saved configs yet.</div>';
-                          return;
-                      }
-                      list.innerHTML = data.configs.map(c => `
-                          <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
-                              <div>
-                                  <div style="font-weight:bold;font-size:1rem;">${c.name}</div>
-                                  <div style="font-size:0.8rem;color:var(--text-muted);">${c.saved_at} &bull; ${c.param_count} params</div>
-                              </div>
-                              <div style="display:flex;gap:0.5rem;">
-                                  <button onclick="applyConfig('${c.filename}')" style="background:var(--success-color);color:white;border:none;border-radius:5px;padding:0.4rem 0.8rem;cursor:pointer;font-size:0.8rem;">
-                                      <i class="fas fa-upload"></i> Apply
-                                  </button>
-                                  <button onclick="deleteConfig('${c.filename}')" style="background:var(--danger-color);color:white;border:none;border-radius:5px;padding:0.4rem 0.8rem;cursor:pointer;font-size:0.8rem;">
-                                      <i class="fas fa-trash"></i>
-                                  </button>
-                              </div>
-                          </div>
-                      `).join('');
-                  })
-                  .catch(() => {
-                      const list = document.getElementById('configList');
-                      if (list) list.innerHTML = '<div style="text-align:center;color:var(--danger-color);padding:2rem;">Failed to load configs.</div>';
-                  });
-          }
-
-          document.getElementById('saveConfigBtn')?.addEventListener('click', () => {
-              const modal = document.getElementById('saveConfigModal');
-              modal.style.display = 'flex';
-              document.getElementById('configNameInput').value = '';
-              document.getElementById('configNameInput').focus();
-          });
-
-          document.getElementById('cancelConfigBtn')?.addEventListener('click', () => {
-              document.getElementById('saveConfigModal').style.display = 'none';
-          });
-
-          document.getElementById('confirmSaveConfigBtn')?.addEventListener('click', () => {
-              const name = document.getElementById('configNameInput').value.trim();
-              if (!name) { alert('Please enter a config name.'); return; }
-              fetch('/api/configs', {
-                  method: 'POST',
-                  headers: {'Content-Type': 'application/json'},
-                  body: JSON.stringify({name})
-              })
-              .then(r => r.json())
-              .then(data => {
-                  document.getElementById('saveConfigModal').style.display = 'none';
-                  if (data.status === 'success') {
-                      addMessage({text: `<strong>Config:</strong> ${data.message}`, time: getCurrentTime()});
-                      loadConfigList();
-                  } else {
-                      alert(data.message || 'Failed to save config');
-                  }
-              })
-              .catch(e => alert('Error saving config: ' + e.message));
-          });
-
-          window.applyConfig = function(filename) {
-              if (!confirm('Apply this config? Changed parameters will be written to the flight controller.')) return;
-              const btn = event.target.closest('button');
-              btn.disabled = true;
-              btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Applying...';
-              fetch('/api/configs/apply', {
-                  method: 'POST',
-                  headers: {'Content-Type': 'application/json'},
-                  body: JSON.stringify({filename})
-              })
-              .then(r => r.json())
-              .then(data => {
-                  btn.disabled = false;
-                  btn.innerHTML = '<i class="fas fa-upload"></i> Apply';
-                  addMessage({text: `<strong>Config:</strong> ${data.message}`, time: getCurrentTime()});
-                  if (data.failed && data.failed.length) {
-                      addMessage({text: `<strong>Warning:</strong> Failed params: ${data.failed.join(', ')}`, time: getCurrentTime()});
-                  }
-              })
-              .catch(e => {
-                  btn.disabled = false;
-                  btn.innerHTML = '<i class="fas fa-upload"></i> Apply';
-                  alert('Error applying config: ' + e.message);
-              });
-          };
-
-          window.deleteConfig = function(filename) {
-              if (!confirm('Delete this config snapshot?')) return;
-              fetch('/api/configs/' + filename, {method: 'DELETE'})
-              .then(r => r.json())
-              .then(data => {
-                  if (data.status === 'success') {
-                      loadConfigList();
-                  } else {
-                      alert(data.message || 'Failed to delete config');
-                  }
-              })
-              .catch(e => alert('Error deleting config: ' + e.message));
-          };
-
-          // Load configs when Configs tab is clicked
-          document.querySelector('.menu-item[data-tab="configs"]')?.addEventListener('click', loadConfigList);
-
-          // ========== Field Calibration ==========
-          document.querySelectorAll('.cal-btn').forEach(btn => {
-              btn.addEventListener('click', function() {
-                  const calType = this.getAttribute('data-cal');
-                  const statusEl = document.querySelector(`.cal-status[data-cal="${calType}"]`);
-                  this.disabled = true;
-                  this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Calibrating...';
-                  statusEl.textContent = 'Calibrating...';
-                  statusEl.style.color = 'var(--primary-color)';
-
-                  fetch('/api/calibrate', {
-                      method: 'POST',
-                      headers: {'Content-Type': 'application/json'},
-                      body: JSON.stringify({type: calType})
-                  })
-                  .then(r => r.json())
-                  .then(data => {
-                      this.disabled = false;
-                      this.innerHTML = `<i class="fas fa-play"></i> Start ${calType.charAt(0).toUpperCase() + calType.slice(1)} Cal`;
-                      if (data.status === 'success') {
-                          statusEl.textContent = 'Success';
-                          statusEl.style.color = 'var(--success-color)';
-                      } else {
-                          statusEl.textContent = data.message || 'Failed';
-                          statusEl.style.color = 'var(--danger-color)';
-                      }
-                  })
-                  .catch(e => {
-                      this.disabled = false;
-                      this.innerHTML = `<i class="fas fa-play"></i> Start ${calType.charAt(0).toUpperCase() + calType.slice(1)} Cal`;
-                      statusEl.textContent = 'Error: ' + e.message;
-                      statusEl.style.color = 'var(--danger-color)';
-                  });
-              });
-          });
-
-          // Logs functionality
-          const fetchLogsButton = document.getElementById('fetchLogsButton');
-          const logContent = document.getElementById('logContent');
-
-          if (fetchLogsButton) {
-              fetchLogsButton.addEventListener('click', async function() {
-                  if (!isConnected) {
-                      addMessage({
-                          text: "<strong>System:</strong> Please connect to a drone first to fetch logs.",
-                          time: getCurrentTime()
-                      });
-                      return;
-                  }
-
-                  logContent.textContent = 'Fetching logs...';
-                  fetchLogsButton.disabled = true;
-
-                  try {
-                      const response = await fetch('/api/fc_logs');
-                      if (!response.ok) {
-                          throw new Error(`Failed to fetch logs: ${response.status}`);
-                      }
-                      const data = await response.json();
-                      if (data.status === 'success') {
-                          if (data.log_count === 0) {
-                              logContent.innerHTML = `<p style="color:var(--text-muted);">${data.message}</p>`;
-                          } else {
-                              let html = `<p style="margin-bottom:0.5rem;"><strong>${data.message}</strong></p>`;
-                              html += '<table style="width:100%;border-collapse:collapse;">';
-                              html += '<tr style="background:var(--light-color);text-align:left;"><th style="padding:0.4rem;">Log ID</th><th style="padding:0.4rem;">File</th><th style="padding:0.4rem;">Size</th></tr>';
-                              data.logs.forEach(log => {
-                                  const sizeKB = (log.size_bytes / 1024).toFixed(1);
-                                  html += `<tr style="border-bottom:1px solid #ddd;"><td style="padding:0.4rem;">${log.id}</td><td style="padding:0.4rem;">${log.filename}</td><td style="padding:0.4rem;">${sizeKB} KB</td></tr>`;
-                              });
-                              html += '</table>';
-                              logContent.innerHTML = html;
-                          }
-                          addMessage({
-                              text: `<strong>System:</strong> ${data.message}`,
-                              time: getCurrentTime()
-                          });
-                      } else {
-                          logContent.innerHTML = `<p style="color:var(--danger-color);">${data.message || 'Failed to fetch logs.'}</p>`;
-                          addMessage({
-                              text: `<strong>Error:</strong> ${data.message || 'Failed to fetch logs.'}`,
-                              time: getCurrentTime()
-                          });
-                      }
-                  } catch (error) {
-                      console.error('Error fetching logs:', error);
-                      logContent.innerHTML = `<p style="color:var(--danger-color);">Error fetching logs: ${error.message}</p>`;
-                      addMessage({
-                          text: `<strong>Error:</strong> Error fetching logs: ${error.message}`,
-                          time: getCurrentTime()
-                      });
-                  } finally {
-                      fetchLogsButton.disabled = false;
-                  }
-              });
-          }
-         });
-         
-          
-      </script>
-      <style>
-         /* Additional styles for the new tabs */
-         .menu-item {
-         display: flex;
-         align-items: center;
-         gap: 10px;
-         }
-         .menu-item.active {
-         background-color: var(--primary-color);
-         }
-         .tab-content {
-         display: none;
-         height: 100%;
-         }
-         .tab-content.active {
-         display: block;
-         }
-         /* Style for parameter inputs */
-         #parametersTable input {
-         transition: background-color 0.3s;
-         }
-         /* ===== Motors Tab Styles ===== */
-         .motor-safety-banner {
-         background-color: #1a1a2e;
-         border: 2px solid var(--danger-color);
-         border-radius: var(--border-radius);
-         padding: 1rem 1.5rem;
-         margin-bottom: 1rem;
-         }
-         .motor-safety-warning {
-         color: var(--danger-color);
-         font-size: 0.9rem;
-         font-weight: bold;
-         display: flex;
-         align-items: center;
-         gap: 0.5rem;
-         }
-         .motor-armed-warning {
-         margin-top: 0.75rem;
-         padding: 0.5rem 1rem;
-         background-color: var(--danger-color);
-         color: white;
-         border-radius: 5px;
-         font-weight: bold;
-         font-size: 0.85rem;
-         text-align: center;
-         }
-         /* Toggle switch */
-         .motor-safety-toggle {
-         position: relative;
-         display: inline-block;
-         width: 48px;
-         height: 24px;
-         }
-         .motor-safety-toggle input { opacity: 0; width: 0; height: 0; }
-         .motor-toggle-slider {
-         position: absolute; cursor: pointer;
-         top: 0; left: 0; right: 0; bottom: 0;
-         background-color: #555;
-         border-radius: 24px;
-         transition: 0.3s;
-         }
-         .motor-toggle-slider:before {
-         content: "";
-         position: absolute;
-         height: 18px; width: 18px;
-         left: 3px; bottom: 3px;
-         background-color: white;
-         border-radius: 50%;
-         transition: 0.3s;
-         }
-         .motor-safety-toggle input:checked + .motor-toggle-slider {
-         background-color: var(--success-color);
-         }
-         .motor-safety-toggle input:checked + .motor-toggle-slider:before {
-         transform: translateX(24px);
-         }
-         /* Motor test layout */
-         .motor-test-layout {
-         margin-top: 0.5rem;
-         }
-         .motor-sliders-row {
-         display: flex;
-         justify-content: center;
-         align-items: flex-start;
-         gap: 1rem;
-         flex-wrap: wrap;
-         }
-         .motor-test-card {
-         background-color: #1a1a2e;
-         border-radius: var(--border-radius);
-         padding: 1rem;
-         width: 130px;
-         display: flex;
-         flex-direction: column;
-         align-items: center;
-         border: 1px solid #333;
-         }
-         .motor-test-title {
-         color: white;
-         font-weight: bold;
-         font-size: 0.9rem;
-         margin-bottom: 0.5rem;
-         }
-         .motor-slider-wrap {
-         display: flex;
-         flex-direction: column;
-         align-items: center;
-         height: 160px;
-         justify-content: center;
-         }
-         .motor-slider-value {
-         color: var(--primary-color);
-         font-weight: bold;
-         font-size: 1.1rem;
-         margin-bottom: 0.5rem;
-         }
-         /* Vertical slider styling */
-         .motor-vslider {
-         -webkit-appearance: none;
-         appearance: none;
-         width: 120px;
-         height: 6px;
-         background: #333;
-         border-radius: 3px;
-         outline: none;
-         transform: rotate(-90deg);
-         transform-origin: center center;
-         margin: 50px 0;
-         }
-         .motor-vslider::-webkit-slider-thumb {
-         -webkit-appearance: none;
-         appearance: none;
-         width: 20px;
-         height: 20px;
-         background: var(--primary-color);
-         border-radius: 50%;
-         cursor: pointer;
-         border: 2px solid white;
-         }
-         .motor-vslider::-moz-range-thumb {
-         width: 20px;
-         height: 20px;
-         background: var(--primary-color);
-         border-radius: 50%;
-         cursor: pointer;
-         border: 2px solid white;
-         }
-         .motor-vslider:disabled {
-         opacity: 0.4;
-         cursor: not-allowed;
-         }
-         .motor-vslider:disabled::-webkit-slider-thumb { cursor: not-allowed; }
-         .motor-vslider:disabled::-moz-range-thumb { cursor: not-allowed; }
-         .motor-test-controls {
-         display: flex;
-         flex-direction: column;
-         align-items: center;
-         gap: 0.35rem;
-         width: 100%;
-         }
-         .motor-duration-input {
-         width: 60px;
-         padding: 0.25rem;
-         border-radius: 4px;
-         border: 1px solid #555;
-         background: #2a2a3e;
-         color: white;
-         text-align: center;
-         font-size: 0.8rem;
-         }
-         .motor-duration-input:disabled { opacity: 0.4; }
-         .motor-test-btn, .motor-stop-btn {
-         width: 100%;
-         padding: 0.4rem;
-         border: none;
-         border-radius: 4px;
-         cursor: pointer;
-         font-size: 0.75rem;
-         font-weight: bold;
-         color: white;
-         }
-         .motor-test-btn { background-color: var(--primary-color); }
-         .motor-test-btn:hover:not(:disabled) { background-color: #2980b9; }
-         .motor-stop-btn { background-color: var(--danger-color); }
-         .motor-stop-btn:hover:not(:disabled) { background-color: #c0392b; }
-         .motor-test-btn:disabled, .motor-stop-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-         .motor-response-status {
-         margin-top: 0.5rem;
-         font-size: 0.75rem;
-         font-weight: bold;
-         color: var(--text-muted);
-         text-align: center;
-         }
-         .motor-response-status.responding { color: var(--success-color); }
-         .motor-response-status.no-response { color: var(--danger-color); }
-         /* Quad diagram */
-         .motor-quad-diagram {
-         display: flex;
-         align-items: center;
-         justify-content: center;
-         padding: 0.5rem;
-         }
-         /* Responsive adjustments */
-         @media (max-width: 768px) {
-         .main-content {
-         flex-direction: column;
-         }
-         .dashboard, .chat-container, .tab-content {
-         width: 100% !important;
-         margin-bottom: 1rem;
-         }
-         }
-      </style>
-      <script>
-         // Function to fetch firmware information
-         function fetchFirmwareInfo() {
-            fetch('/api/firmware')
-               .then(response => response.json())
-               .then(data => {
-                  if (data.status === 'success') {
-                     const firmware = data.firmware;
-                     document.getElementById('firmwareVersion').textContent = firmware.firmware_version || '--';
-                     document.getElementById('customVersion').textContent = firmware.flight_custom_version || '--';
-                     document.getElementById('boardVersion').textContent = firmware.board_version || '--';
-                     document.getElementById('vendorProductId').textContent = `Vendor ID: ${firmware.vendor_id || '--'} / Product ID: ${firmware.product_id || '--'}`;
-                     document.getElementById('capabilities').textContent = firmware.capabilities ? firmware.capabilities.join(', ') : '--';
-                  } else {
-                     console.error('Failed to fetch firmware info:', data.message);
-                     document.getElementById('firmwareVersion').textContent = 'Error';
-                     document.getElementById('customVersion').textContent = 'Error';
-                     document.getElementById('boardVersion').textContent = 'Error';
-                     document.getElementById('vendorProductId').textContent = 'Error';
-                     document.getElementById('capabilities').textContent = 'Error';
-                  }
-               })
-               .catch(error => {
-                  console.error('Error fetching firmware info:', error);
-                  document.getElementById('firmwareVersion').textContent = 'Error';
-                  document.getElementById('customVersion').textContent = 'Error';
-                  document.getElementById('boardVersion').textContent = 'Error';
-                  document.getElementById('vendorProductId').textContent = 'Error';
-                  document.getElementById('capabilities').textContent = 'Error';
-               });
-         }
-
-         // Fetch firmware info every 5 seconds
-         setInterval(fetchFirmwareInfo, 5000);
-
-         // Call it once on load
-         fetchFirmwareInfo();
-
-         // ====== Motors Tab Logic ======
-         // Global state for the motors tab (accessible from updateDashboard)
-         window._motorTab = {
-            enabled: false,
-            armed: false,
-            lastEsc: [{},{},{},{}],
-            testTimestamps: {1:0, 2:0, 3:0, 4:0}
-         };
-
-         (function() {
-            const MT = window._motorTab;
-            const enableToggle = document.getElementById('motorEnableToggle');
-            const enableLabel = document.getElementById('motorEnableLabel');
-            const armedWarning = document.getElementById('motorArmedWarning');
-
-            function setMotorControlsEnabled(enabled) {
-               for (let m = 1; m <= 4; m++) {
-                  document.getElementById('motorSlider' + m).disabled = !enabled;
-                  document.getElementById('motorDur' + m).disabled = !enabled;
-                  document.getElementById('motorTestBtn' + m).disabled = !enabled;
-                  document.getElementById('motorStopBtn' + m).disabled = !enabled;
-               }
-            }
-
-            window._motorTab.updateSafety = function() {
-               const canTest = MT.enabled && !MT.armed;
-               setMotorControlsEnabled(canTest);
-               armedWarning.style.display = MT.armed ? 'block' : 'none';
-               if (MT.armed) {
-                  enableLabel.textContent = 'ARMED — motor test blocked';
-                  enableLabel.style.color = 'var(--danger-color)';
-               } else if (MT.enabled) {
-                  enableLabel.textContent = 'Motor Test ENABLED';
-                  enableLabel.style.color = 'var(--success-color)';
-               } else {
-                  enableLabel.textContent = 'Motor Test DISABLED';
-                  enableLabel.style.color = 'var(--danger-color)';
-               }
-            };
-
-            enableToggle.addEventListener('change', function() {
-               MT.enabled = this.checked;
-               MT.updateSafety();
-            });
-
-            // Slider value display
-            for (let m = 1; m <= 4; m++) {
-               (function(motor) {
-                  const slider = document.getElementById('motorSlider' + motor);
-                  const valDisplay = document.getElementById('motorSliderVal' + motor);
-                  slider.addEventListener('input', function() {
-                     valDisplay.textContent = this.value + '%';
-                  });
-               })(m);
-            }
-
-            // Test and stop button handlers
-            for (let m = 1; m <= 4; m++) {
-               (function(motor) {
-                  document.getElementById('motorTestBtn' + motor).addEventListener('click', function() {
-                     const throttle = parseInt(document.getElementById('motorSlider' + motor).value);
-                     const duration = parseInt(document.getElementById('motorDur' + motor).value) || 3;
-                     sendMotorTest(motor, throttle, duration);
-                  });
-                  document.getElementById('motorStopBtn' + motor).addEventListener('click', function() {
-                     sendMotorTest(motor, 0, 1);
-                  });
-               })(m);
-            }
-
-            async function sendMotorTest(motor, throttle, duration) {
-               const respEl = document.getElementById('motorResp' + motor);
-               respEl.textContent = 'Sending...';
-               respEl.className = 'motor-response-status';
-               try {
-                  const res = await fetch('/api/motor_test', {
-                     method: 'POST',
-                     headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({motor, throttle, duration})
-                  });
-                  const data = await res.json();
-                  if (data.status === 'success') {
-                     respEl.textContent = 'CMD SENT';
-                     respEl.className = 'motor-response-status';
-                     if (throttle > 0) {
-                        MT.testTimestamps[motor] = Date.now();
-                        setTimeout(function() {
-                           const esc = MT.lastEsc[motor - 1];
-                           const diagEl = document.getElementById('motorDiag' + motor);
-                           // Check RPM (real ESC telem) or servo_raw > 1050 (SITL fallback)
-                           const isActive = esc && (esc.rpm > 0 || (esc.servo_raw !== undefined && esc.servo_raw > 1050));
-                           if (isActive) {
-                              respEl.textContent = 'RESPONDING';
-                              respEl.className = 'motor-response-status responding';
-                              if (diagEl) diagEl.setAttribute('fill', 'var(--success-color)');
-                           } else {
-                              respEl.textContent = 'NO RESPONSE';
-                              respEl.className = 'motor-response-status no-response';
-                              if (diagEl) diagEl.setAttribute('fill', 'var(--danger-color)');
-                           }
-                        }, 2500);
-                     }
-                  } else {
-                     respEl.textContent = data.message || 'FAILED';
-                     respEl.className = 'motor-response-status no-response';
-                  }
-               } catch(e) {
-                  respEl.textContent = 'ERROR';
-                  respEl.className = 'motor-response-status no-response';
-               }
-            }
-
-            // Called from updateDashboard via global hook
-            window._motorTab.onSystemStatus = function(data) {
-               // Update armed state
-               if (data.armed !== undefined) {
-                  MT.armed = data.armed;
-                  MT.updateSafety();
-               }
-               // Update ESC protocol badge
-               const protoBadge = document.getElementById('escProtocolBadge');
-               if (protoBadge && data.esc_protocol) {
-                  protoBadge.textContent = data.esc_protocol;
-               }
-               // Update ESC telemetry table and diagram
-               if (data.esc_telemetry && Array.isArray(data.esc_telemetry)) {
-                  MT.lastEsc = data.esc_telemetry;
-                  // Detect if we're in fallback mode (servo_raw present)
-                  const isFallback = data.esc_telemetry.length > 0 && data.esc_telemetry[0].servo_raw !== undefined;
-                  for (let i = 0; i < data.esc_telemetry.length; i++) {
-                     const esc = data.esc_telemetry[i];
-                     const m = i + 1;
-                     const rpmEl = document.getElementById('escRpm' + m);
-                     const tempEl = document.getElementById('escTemp' + m);
-                     const voltEl = document.getElementById('escVolt' + m);
-                     const currEl = document.getElementById('escCurr' + m);
-                     const statEl = document.getElementById('escStatus' + m);
-                     if (rpmEl) {
-                        if (isFallback) {
-                           rpmEl.textContent = (esc.servo_raw || 1000) + ' \u00B5s';
-                        } else {
-                           rpmEl.textContent = esc.rpm || 0;
-                        }
-                     }
-                     if (tempEl) tempEl.textContent = esc.temperature || (isFallback ? 'N/A' : 0);
-                     if (voltEl) voltEl.textContent = esc.voltage ? esc.voltage.toFixed(2) : (isFallback ? 'N/A' : '0.00');
-                     if (currEl) currEl.textContent = esc.current ? esc.current.toFixed(2) : (isFallback ? 'N/A' : '0.00');
-                     if (statEl) {
-                        const isActive = isFallback ? (esc.servo_raw > 1050) : (esc.rpm > 0);
-                        if (isActive) {
-                           statEl.innerHTML = '<span class="status-badge status-ok">ACTIVE</span>';
-                        } else {
-                           statEl.innerHTML = '<span class="status-badge" style="background:#555;">IDLE</span>';
-                        }
-                     }
-                     const diagEl = document.getElementById('motorDiag' + m);
-                     if (diagEl) {
-                        const isActive = isFallback ? (esc.servo_raw > 1050) : (esc.rpm > 0);
-                        diagEl.setAttribute('fill', isActive ? 'var(--success-color)' : '#444');
-                     }
-                  }
-               }
-            };
-         })();
-      </script>
+      <!-- Scripts: core first, then tab modules -->
+      <script defer src="/static/js/core.js"></script>
+      <script defer src="/static/js/tabs/latency.js"></script>
+      <script defer src="/static/js/tabs/motors.js"></script>
+      <script defer src="/static/js/tabs/rc-modes.js"></script>
+      <script defer src="/static/js/tabs/chat.js"></script>
+      <script defer src="/static/js/tabs/parameters.js"></script>
+      <script defer src="/static/js/tabs/configs.js"></script>
+      <script defer src="/static/js/tabs/calibration.js"></script>
+      <script defer src="/static/js/tabs/logs.js"></script>
+      <script defer src="/static/js/tabs/drone-view.js"></script>
    </body>
 </html>

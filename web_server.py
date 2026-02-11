@@ -1,12 +1,15 @@
 import os
 import json
 import logging
+import math
 import threading
 import time
 import glob
+import tempfile
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
+from log_parser import LogParser
 
 # Default logger that will be replaced if loggers are provided
 logger = logging.getLogger('web_server')
@@ -25,6 +28,9 @@ stt_module = None # Will hold the STT recorder instance
 telemetry_thread = None  # Will hold the telemetry update thread
 connected_clients = set()  # Track connected WebSocket clients
 mavlink_buffer = {}  # dict keyed by message type → latest msg of each type
+log_parser_instance = None  # Will hold the current LogParser instance
+LOG_UPLOAD_DIR = os.path.join(tempfile.gettempdir(), 'uav-ai-logs')
+os.makedirs(LOG_UPLOAD_DIR, exist_ok=True)
 
 # Connection parameters storage
 connection_params = {
@@ -600,25 +606,60 @@ def handle_latency_update(data):
 
 @socketio.on('chat_message')
 def handle_chat_message(data):
-    """Handle chat messages from clients"""
+    """Handle chat messages from clients.
+
+    Routes to drone assistant (JARVIS) when connected, or to log analysis
+    when a log file is loaded. Drone queries take priority if both are available.
+    """
     query = data.get('message', '')
     client_id = request.sid
-    if not validator or not validator.hardware_validated:
-        emit('chat_response', {"error": "Drone not connected or not validated"}, room=client_id)
-        return
-    
+
     if not query:
         emit('chat_response', {"error": "Empty message"}, room=client_id)
         return
 
+    drone_available = validator and validator.hardware_validated
+    log_available = log_parser_instance and log_parser_instance._is_parsed
+
+    if not drone_available and not log_available:
+        emit('chat_response', {"error": "No drone connected and no log file loaded."}, room=client_id)
+        return
+
     logger.info(f"Query from {client_id}: {query}")
 
+    # --- Route to log analysis if no drone but log is loaded ---
+    if not drone_available and log_available:
+        emit('chat_processing', {"status": "processing"}, room=client_id)
+        try:
+            summary = log_parser_instance.get_summary()
+            result = jarvis_module.ask_gemini_log_analysis(query, summary)
+
+            # Phase 2: fetch data if Gemini requested it
+            need_data = result.get('need_data', [])
+            if need_data:
+                message_data = {}
+                for msg_type in need_data:
+                    md = log_parser_instance.get_message_data(msg_type)
+                    if md:
+                        message_data[msg_type] = md
+                if message_data:
+                    result = jarvis_module.ask_gemini_log_analysis(query, summary, message_data)
+
+            socketio.emit('chat_response', {
+                "source": "log_analysis",
+                "analysis": result.get("analysis", ""),
+                "charts": result.get("charts", []),
+            }, room=client_id)
+        except Exception as e:
+            logger.error(f"Log analysis error: {e}")
+            socketio.emit('chat_response', {"error": str(e)}, room=client_id)
+        return
+
+    # --- Route to drone assistant (JARVIS) ---
     try:
         # Send acknowledgment first
-        emit('chat_processing', {"status": "processing"}, room=client_id)  
+        emit('chat_processing', {"status": "processing"}, room=client_id)
         try:
-                # Process through JARVIS
-            #jarvis_response = jarvis_module.ask_gemini(query)
             import time as _time
             _jarvis_start = _time.time()
             print(f">>> JARVIS query sent: \"{query}\"")
@@ -626,7 +667,6 @@ def handle_chat_message(data):
             _jarvis_elapsed = _time.time() - _jarvis_start
             print(f"<<< JARVIS response received in {_jarvis_elapsed:.2f}s")
             print(jarvis_response)
-                # Send JARVIS response immediately
             socketio.emit('chat_response', {
                     "source": "jarvis",
                     "response": jarvis_response
@@ -752,6 +792,88 @@ def process_voice_command(client_id, query):
     except Exception as e:
         logger.error(f"Error processing voice command with JARVIS: {str(e)}")
         socketio.emit('voice_response', {"error": str(e)}, room=client_id)
+
+####################################################################################
+# Log Analysis
+####################################################################################
+
+ALLOWED_LOG_EXTENSIONS = {'.bin', '.tlog'}
+MAX_LOG_SIZE = 500 * 1024 * 1024  # 500 MB
+
+
+@app.route('/api/upload_log', methods=['POST'])
+def upload_log():
+    """Upload and parse a .bin or .tlog log file."""
+    global log_parser_instance
+
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file provided"}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({"status": "error", "message": "No file selected"}), 400
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_LOG_EXTENSIONS:
+        return jsonify({"status": "error", "message": f"Unsupported file type: {ext}. Use .bin or .tlog"}), 400
+
+    try:
+        # Save to temp directory
+        safe_name = os.path.basename(file.filename)
+        filepath = os.path.join(LOG_UPLOAD_DIR, safe_name)
+        file.save(filepath)
+
+        file_size = os.path.getsize(filepath)
+        if file_size > MAX_LOG_SIZE:
+            os.remove(filepath)
+            return jsonify({"status": "error", "message": f"File too large ({file_size // (1024*1024)} MB). Max is {MAX_LOG_SIZE // (1024*1024)} MB"}), 400
+
+        # Parse the log
+        parser = LogParser()
+        summary = parser.parse(filepath)
+        log_parser_instance = parser
+
+        logger.info(f"Log uploaded and parsed: {safe_name} ({file_size} bytes, {summary['total_messages']} messages)")
+
+        return jsonify({
+            "status": "success",
+            "message": f"Parsed {safe_name}: {summary['total_messages']} messages across {len(summary['message_types'])} types",
+            "summary": summary,
+        })
+
+    except Exception as e:
+        logger.error(f"Error parsing log: {e}")
+        return jsonify({"status": "error", "message": f"Failed to parse log: {str(e)}"}), 500
+
+
+@app.route('/api/log_status', methods=['GET'])
+def get_log_status():
+    """Check if a log file is currently loaded."""
+    if log_parser_instance and log_parser_instance._is_parsed:
+        return jsonify({"loaded": True, "filename": log_parser_instance.filename})
+    return jsonify({"loaded": False})
+
+
+@app.route('/api/log_message/<msg_type>', methods=['GET'])
+def get_log_message_data(msg_type):
+    """Return parsed data for a specific message type."""
+    if not log_parser_instance or not log_parser_instance._is_parsed:
+        return jsonify({"status": "error", "message": "No log file loaded"}), 400
+
+    max_points = request.args.get('max_points', 500, type=int)
+    data = log_parser_instance.get_message_data(msg_type, max_points=max_points)
+
+    if not data:
+        return jsonify({"status": "error", "message": f"No data for message type: {msg_type}"}), 404
+
+    return jsonify({
+        "status": "success",
+        "msg_type": msg_type,
+        "count": len(data),
+        "fields": log_parser_instance.get_fields_for_type(msg_type),
+        "data": data,
+    })
+
 
 ########################################################################
 
@@ -939,14 +1061,36 @@ def update_system_health():
                 "details": f"{baro_pressure:.1f} hPa, {baro_temperature:.1f}°C, Alt: {baro_altitude:.1f}m"
             })
 
-        # Check RC status
+        # Check RC status from RC_CHANNELS message
         rc_params = params.get("RC", {})
-        rc_status = "WARNING"  # Assume warning for demo
+        rc_msg = mavlink_buffer.get("RC_CHANNELS")
+        rc_channels = []
+        rc_rssi = 0
+        rc_chancount = 0
+        if rc_msg:
+            for i in range(1, 17):
+                rc_channels.append(rc_msg.get(f"chan{i}_raw", 0))
+            rc_rssi = rc_msg.get("rssi", 0)
+            rc_chancount = rc_msg.get("chancount", 0)
+        else:
+            rc_channels = [0] * 16
+
+        # Determine RC status based on actual channel data
+        rc_nonzero = sum(1 for v in rc_channels[:8] if v > 0)
+        if rc_nonzero == 0:
+            rc_status = "WARNING"
+            rc_details = "No RC input detected"
+        elif rc_nonzero < 4:
+            rc_status = "WARNING"
+            rc_details = f"{rc_nonzero}/8 channels active"
+        else:
+            rc_status = "OK"
+            rc_details = f"{rc_chancount} channels, RSSI {rc_rssi}"
 
         subsystems.append({
             "component": "RC Channels",
             "status": rc_status,
-            "details": "All channels reading 0"
+            "details": rc_details
         })
 
         # Check flight controller status
@@ -1061,6 +1205,51 @@ def update_system_health():
         mot_pwm_type_val = int(params.get("Motors", {}).get("MOT_PWM_TYPE", 0))
         esc_protocol = mot_pwm_type_map.get(mot_pwm_type_val, f"Unknown ({mot_pwm_type_val})")
 
+        # Decode RC protocol from RC_PROTOCOLS bitmask
+        rc_protocol_map = {
+            1: "All", 2: "PPM", 4: "IBUS", 8: "SBUS",
+            32: "CRSF", 64: "FPORT", 256: "SRXL2", 512: "GHST",
+        }
+        rc_protocols_val = int(params.get("RC", {}).get("RC_PROTOCOLS", 1))
+        rc_protocol_names = []
+        for bit, name in rc_protocol_map.items():
+            if rc_protocols_val & bit:
+                rc_protocol_names.append(name)
+        rc_protocol = ", ".join(rc_protocol_names) if rc_protocol_names else "Not configured"
+
+        # Scan SERIAL0-7_PROTOCOL for RCIN (value 23) to identify the UART
+        serial_params = params.get("Serial", {})
+        rc_uart = "Not configured"
+        for i in range(8):
+            proto_val = int(serial_params.get(f"SERIAL{i}_PROTOCOL", -1))
+            if proto_val == 23:
+                rc_uart = f"SERIAL{i}"
+                break
+
+        # Extract ATTITUDE data (roll/pitch/yaw in degrees)
+        attitude_msg = mavlink_buffer.get("ATTITUDE")
+        if attitude_msg:
+            attitude_roll = round(math.degrees(attitude_msg.get("roll", 0)), 1)
+            attitude_pitch = round(math.degrees(attitude_msg.get("pitch", 0)), 1)
+            attitude_yaw = round(math.degrees(attitude_msg.get("yaw", 0)), 1)
+        else:
+            attitude_roll = attitude_pitch = attitude_yaw = 0.0
+
+        # Extract VFR_HUD data for altitude, heading, climb
+        vfr_hud = mavlink_buffer.get("VFR_HUD")
+        vfr_altitude = vfr_hud.get("alt", 0) if vfr_hud else 0
+        vfr_heading = vfr_hud.get("heading", 0) if vfr_hud else 0
+        vfr_climb = vfr_hud.get("climb", 0) if vfr_hud else 0
+
+        # Extract servo outputs for motor visualization
+        servo_raw = mavlink_buffer.get("SERVO_OUTPUT_RAW")
+        servo_outputs = []
+        if servo_raw:
+            for i in range(1, 5):
+                servo_outputs.append(servo_raw.get(f"servo{i}_raw", 1000))
+        else:
+            servo_outputs = [1000, 1000, 1000, 1000]
+
         # Update system health
         last_system_health = {
             "score": health_score,
@@ -1082,7 +1271,28 @@ def update_system_health():
             "motors": motors,
             "esc_telemetry": esc_telemetry,
             "esc_protocol": esc_protocol,
-            "subsystems": subsystems
+            "subsystems": subsystems,
+            "rc_channels": rc_channels,
+            "rc_rssi": rc_rssi,
+            "rc_chancount": rc_chancount,
+            "current_mode": hb_msg.get("custom_mode", 0) if hb_msg else 0,
+            "fltmode_ch": int(params.get("Flight Modes", {}).get("FLTMODE_CH", 5)),
+            "fltmodes": {i: int(params.get("Flight Modes", {}).get(f"FLTMODE{i}", 0)) for i in range(1, 7)},
+            "rcmap": {
+                "roll": int(rc_params.get("RCMAP_ROLL", 1)),
+                "pitch": int(rc_params.get("RCMAP_PITCH", 2)),
+                "throttle": int(rc_params.get("RCMAP_THROTTLE", 3)),
+                "yaw": int(rc_params.get("RCMAP_YAW", 4)),
+            },
+            "rc_protocol": rc_protocol,
+            "rc_uart": rc_uart,
+            "attitude_roll": attitude_roll,
+            "attitude_pitch": attitude_pitch,
+            "attitude_yaw": attitude_yaw,
+            "altitude": vfr_altitude,
+            "heading": vfr_heading,
+            "climb": vfr_climb,
+            "servo_outputs": servo_outputs,
         }
 
         # Add MAVLink link latency from TIMESYNC
@@ -1120,6 +1330,7 @@ def telemetry_update_loop():
     param_update_counter = 0
     
     while True:
+        start = time.perf_counter()   # high-resolution timer
         try:
             # Update system health from validator data
             if validator and validator.hardware_validated and connected_clients:
@@ -1135,11 +1346,13 @@ def telemetry_update_loop():
 
                 # Flush the queue after we're done processing
                 validator.flush_rx_queue()
-
-                time.sleep(1)  # Sleep to avoid excessive updates
+                elapsed_ms = (time.perf_counter() - start) * 1000
+#                print(f"[Telemetry Loop] {elapsed_ms:.2f} ms", flush=True)
+                
+                time.sleep(0.2)  # Sleep to avoid excessive updates
 
             else:
-                time.sleep(2)  # Sleep to avoid excessive updates
+                time.sleep(1)  # Sleep to avoid excessive updates
 
         except Exception as e:
             logger.error(f"Error in telemetry update loop: {str(e)}")
