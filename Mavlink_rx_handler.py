@@ -45,6 +45,13 @@ class MavlinkHandler:
         self.latency_ms = 0  # most recent RTT in ms
         self.latency_history = deque(maxlen=60)  # last 60 samples (~1 per second)
 
+        # MAVLink packet/byte rate counters
+        self._pkt_count = 0        # total packets since last rate calc
+        self._byte_count = 0       # total bytes since last rate calc
+        self._rate_timestamp = time.time()
+        self._pkt_rate = 0.0       # packets/sec
+        self._byte_rate = 0.0      # bytes/sec
+
     def connect(self, port_name, baudrate):
         """Establish connection to flight controller."""
         try:
@@ -131,6 +138,13 @@ class MavlinkHandler:
         msg_dict = msg.to_dict()  # Create dict from message for processing
         msg_dict["_rx_timestamp"] = time.time()  # arrival timestamp
         msg_type = msg_dict.get("mavpackettype", "UNKNOWN")
+
+        # Count packets and bytes for rate calculation
+        self._pkt_count += 1
+        try:
+            self._byte_count += len(msg.get_msgbuf())
+        except Exception:
+            self._byte_count += 32  # fallback estimate
 
         # Push into the 100-msg circular buffer (thread-safe)
         with self._rx_mav_lock:
@@ -297,6 +311,19 @@ class MavlinkHandler:
             "min": round(min(history), 1),
             "max": round(max(history), 1),
         }
+
+    def get_link_stats(self):
+        """Calculate and return MAVLink packet rate and link speed since last call."""
+        now = time.time()
+        elapsed = now - self._rate_timestamp
+        if elapsed < 0.1:
+            return {"pkt_rate": self._pkt_rate, "byte_rate": self._byte_rate}
+        self._pkt_rate = round(self._pkt_count / elapsed, 1)
+        self._byte_rate = round(self._byte_count / elapsed, 1)
+        self._pkt_count = 0
+        self._byte_count = 0
+        self._rate_timestamp = now
+        return {"pkt_rate": self._pkt_rate, "byte_rate": self._byte_rate}
 
 ############################################################################################
     # Command sending methods

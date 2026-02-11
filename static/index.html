@@ -18,6 +18,9 @@
             <div class="status-indicator" id="connectionIndicator"></div>
             <span id="headerParamsText" style="margin-left: 15px; display: none;">Params: <span id="headerParamsValue">0%</span></span>
             <span id="headerLatencyText" style="margin-left: 15px; display: none;">Latency: <span id="headerLatencyValue">0ms</span></span>
+            <div id="copilotBadge" class="copilot-badge" style="display:none;" title="Click to toggle co-pilot mode. Shift+click for auto mode.">
+               <i class="fas fa-robot"></i> CO-PILOT
+            </div>
          </div>
       </header>
       <!-- Main Container -->
@@ -349,6 +352,19 @@
                   </div>
                </div>
                <div class="card" style="margin-top: 1rem;">
+                  <div class="card-title">MAVLINK LINK STATS</div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                     <div>
+                        <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);" id="linkPktRate">-- pkt/s</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">Incoming Packet Rate</div>
+                     </div>
+                     <div>
+                        <div style="font-size: 1.2rem; font-weight: bold;" id="linkByteRate">-- B/s</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">Link Speed</div>
+                     </div>
+                  </div>
+               </div>
+               <div class="card" style="margin-top: 1rem;">
                   <div class="card-title">PARAMETERS DOWNLOAD PROGRESS</div>
                   <div style="margin: 1.5rem 0;">
                      <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
@@ -674,6 +690,24 @@
                         <div class="drone-motor-bar-track"><div class="drone-motor-bar-fill" id="dvMotor4"></div></div>
                         <div class="drone-motor-pct" id="dvMotor4Pct">0%</div>
                      </div>
+                  </div>
+                  <!-- Configurable OSD -->
+                  <div class="drone-osd-container" id="dvOsdContainer"></div>
+                  <button class="drone-osd-config-btn" id="dvOsdConfigBtn" title="Configure OSD fields">
+                     <i class="fas fa-cog"></i> OSD
+                  </button>
+               </div>
+            </div>
+
+            <!-- OSD Configuration Modal -->
+            <div class="modal" id="osdConfigModal">
+               <div class="modal-content" style="max-width: 500px; background: #1a1a2e; color: #e0e0e0;">
+                  <div class="modal-title" style="color: #e0e0e0;">Configure OSD</div>
+                  <p style="font-size: 0.8rem; color: #888; margin-bottom: 1rem;">Select fields to display on the drone view.</p>
+                  <div id="osdFieldList"></div>
+                  <div class="modal-buttons" style="margin-top: 1rem;">
+                     <button class="modal-button cancel-button" id="osdConfigClose">Close</button>
+                     <button class="modal-button connect-button" id="osdConfigClear">Clear All</button>
                   </div>
                </div>
             </div>

@@ -15,6 +15,7 @@ window._app = {
    socket: null,
    isConnected: false,
    logLoaded: false,
+   copilotActive: false,
    systemStatusHooks: [],
 
    addMessage: function(msg, isUser) {
@@ -229,6 +230,19 @@ document.addEventListener('DOMContentLoaded', function() {
          if (data.params && headerParamsValue) {
             headerParamsValue.textContent = data.params.percentage.toFixed(1) + '%';
             console.log("Received parameter_progress (system_status) data:", data.params);
+         }
+
+         // Update co-pilot badge
+         if (data.copilot_active !== undefined) {
+            var wasActive = window._app.copilotActive;
+            window._app.copilotActive = data.copilot_active;
+            updateCopilotBadge(data.copilot_active);
+            if (!wasActive && data.copilot_active) {
+               window._app.addMessage({
+                  text: '<strong>System:</strong> Co-pilot mode auto-activated (drone armed). Fast commands enabled.',
+                  time: window._app.getCurrentTime()
+               });
+            }
          }
       });
 
@@ -522,6 +536,45 @@ document.addEventListener('DOMContentLoaded', function() {
       text: '<strong>System:</strong> Welcome to UAV-AI Assistant. Please connect to your drone to begin.',
       time: window._app.getCurrentTime()
    });
+});
+
+// Co-pilot badge update
+function updateCopilotBadge(active) {
+   var badge = document.getElementById('copilotBadge');
+   if (!badge) return;
+   badge.style.display = 'inline-block';
+   if (active) {
+      badge.classList.add('active');
+   } else {
+      badge.classList.remove('active');
+   }
+}
+
+// Co-pilot badge click handler
+document.addEventListener('DOMContentLoaded', function() {
+   var badge = document.getElementById('copilotBadge');
+   if (badge) {
+      badge.addEventListener('click', function(e) {
+         if (!window._app.socket) return;
+         if (e.shiftKey) {
+            // Shift+click: reset to auto mode
+            window._app.socket.emit('copilot_toggle', { enabled: null });
+            window._app.addMessage({
+               text: '<strong>System:</strong> Co-pilot mode set to AUTO (follows armed state).',
+               time: window._app.getCurrentTime()
+            });
+         } else {
+            var newState = !window._app.copilotActive;
+            window._app.socket.emit('copilot_toggle', { enabled: newState });
+            window._app.copilotActive = newState;
+            updateCopilotBadge(newState);
+            window._app.addMessage({
+               text: '<strong>System:</strong> Co-pilot mode manually ' + (newState ? 'enabled' : 'disabled') + '.',
+               time: window._app.getCurrentTime()
+            });
+         }
+      });
+   }
 });
 
 // Function to fetch firmware information

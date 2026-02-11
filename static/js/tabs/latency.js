@@ -18,6 +18,8 @@
    var paramTimeElapsed = null;
    var paramTimeRemaining = null;
    var paramCategoriesTable = null;
+   var linkPktRate = null;
+   var linkByteRate = null;
 
    document.addEventListener('DOMContentLoaded', function() {
       currentLatency = document.getElementById('currentLatency');
@@ -33,6 +35,8 @@
       paramTimeElapsed = document.getElementById('paramTimeElapsed');
       paramTimeRemaining = document.getElementById('paramTimeRemaining');
       paramCategoriesTable = document.getElementById('paramCategoriesTable');
+      linkPktRate = document.getElementById('linkPktRate');
+      linkByteRate = document.getElementById('linkByteRate');
    });
 
    function initLatencyChart() {
@@ -125,6 +129,20 @@
          }
 
          updateLatencyChart(data.latency);
+      }
+
+      if (data.link_stats) {
+         if (linkPktRate) linkPktRate.textContent = data.link_stats.pkt_rate + ' pkt/s';
+         if (linkByteRate) {
+            var bytes = data.link_stats.byte_rate;
+            var display;
+            if (bytes >= 1024) {
+               display = (bytes / 1024).toFixed(1) + ' KB/s';
+            } else {
+               display = Math.round(bytes) + ' B/s';
+            }
+            linkByteRate.textContent = display;
+         }
       }
 
       if (data.params !== undefined) {

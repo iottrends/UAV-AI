@@ -10,6 +10,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from log_parser import LogParser
+import copilot
 
 # Default logger that will be replaced if loggers are provided
 logger = logging.getLogger('web_server')
@@ -39,6 +40,10 @@ connection_params = {
     "connect_requested": False,
     "connect_success": False
 }
+
+# Co-pilot mode state
+copilot_active = False         # Current co-pilot mode state
+copilot_user_override = None   # None=auto, True=forced on, False=forced off
 
 # Global thread references
 telemetry_thread = None
@@ -604,6 +609,20 @@ def handle_latency_update(data):
         last_system_health['latency'] = data['latency']
 
 
+@socketio.on('copilot_toggle')
+def handle_copilot_toggle(data):
+    """Handle co-pilot mode toggle from the frontend."""
+    global copilot_user_override, copilot_active
+    enabled = data.get('enabled')
+    if enabled is None:
+        # Reset to auto mode
+        copilot_user_override = None
+    else:
+        copilot_user_override = bool(enabled)
+        copilot_active = copilot_user_override
+    logger.info(f"Co-pilot toggle: override={copilot_user_override}, active={copilot_active}")
+
+
 @socketio.on('chat_message')
 def handle_chat_message(data):
     """Handle chat messages from clients.
@@ -626,6 +645,33 @@ def handle_chat_message(data):
         return
 
     logger.info(f"Query from {client_id}: {query}")
+
+    # --- Co-pilot fast-path: instant command matching, no AI round-trip ---
+    if copilot_active and drone_available:
+        result = copilot.try_fast_command(query, mavlink_buffer)
+        if result:
+            if result.get('fix_command'):
+                fix_cmd = result['fix_command']
+                command_name = fix_cmd.get('command', 'unknown')
+                logger.info(f"Co-pilot executing: {command_name}")
+                if validator.send_mavlink_command_from_json(fix_cmd):
+                    socketio.emit('chat_response', {
+                        'source': 'copilot',
+                        'response': result['response'],
+                        'message': f"Command '{command_name}' acknowledged."
+                    }, room=client_id)
+                else:
+                    socketio.emit('chat_response', {
+                        'source': 'copilot',
+                        'response': result['response'],
+                        'error': f"Command '{command_name}' failed or timed out."
+                    }, room=client_id)
+            else:
+                socketio.emit('chat_response', {
+                    'source': 'copilot',
+                    'response': result['response']
+                }, room=client_id)
+            return
 
     # --- Route to log analysis if no drone but log is loaded ---
     if not drone_available and log_available:
@@ -743,7 +789,7 @@ def handle_stop_voice_input():
     stt_module.stop_recording_and_transcribe() # Transcription happens via callback
 
 def process_voice_command(client_id, query):
-    """Processes a transcribed voice command through JARVIS."""
+    """Processes a transcribed voice command through JARVIS or co-pilot fast-path."""
     if not validator or not validator.hardware_validated:
         socketio.emit('voice_response', {"error": "Drone not connected or not validated"}, room=client_id)
         return
@@ -754,6 +800,34 @@ def process_voice_command(client_id, query):
 
     logger.info(f"Voice command from {client_id}: {query}")
 
+    # --- Co-pilot fast-path for voice commands ---
+    if copilot_active:
+        result = copilot.try_fast_command(query, mavlink_buffer)
+        if result:
+            if result.get('fix_command'):
+                fix_cmd = result['fix_command']
+                command_name = fix_cmd.get('command', 'unknown')
+                logger.info(f"Co-pilot (voice) executing: {command_name}")
+                if validator.send_mavlink_command_from_json(fix_cmd):
+                    socketio.emit('voice_response', {
+                        'source': 'copilot',
+                        'response': result['response'],
+                        'message': f"Command '{command_name}' acknowledged."
+                    }, room=client_id)
+                else:
+                    socketio.emit('voice_response', {
+                        'source': 'copilot',
+                        'response': result['response'],
+                        'error': f"Command '{command_name}' failed or timed out."
+                    }, room=client_id)
+            else:
+                socketio.emit('voice_response', {
+                    'source': 'copilot',
+                    'response': result['response']
+                }, room=client_id)
+            return
+
+    # --- Fall through to JARVIS for complex voice commands ---
     try:
         import time as _time
         _jarvis_start = _time.time()
@@ -792,6 +866,7 @@ def process_voice_command(client_id, query):
     except Exception as e:
         logger.error(f"Error processing voice command with JARVIS: {str(e)}")
         socketio.emit('voice_response', {"error": str(e)}, room=client_id)
+
 
 ####################################################################################
 # Log Analysis
@@ -960,9 +1035,13 @@ def update_system_health():
 
         # Get GPS data from MAVLink messages
         msg = mavlink_buffer.get("GPS_RAW_INT")
+        gps_lat = 0.0
+        gps_lon = 0.0
         if msg:
             gps_fix = msg.get("fix_type", 0)
             satellites = msg.get("satellites_visible", 0)
+            gps_lat = msg.get("lat", 0) / 1e7
+            gps_lon = msg.get("lon", 0) / 1e7
 
         gps_status = "CRITICAL" if gps_fix == 0 else "OK"
 
@@ -1165,6 +1244,13 @@ def update_system_health():
         if hb_msg:
             is_armed = bool(hb_msg.get("base_mode", 0) & 128)
 
+        # Auto-toggle co-pilot mode based on armed state
+        global copilot_active
+        if copilot_user_override is not None:
+            copilot_active = copilot_user_override
+        else:
+            copilot_active = is_armed
+
         # Extract ESC telemetry from ESC_TELEMETRY_1_TO_4 (real hardware)
         # or fall back to SERVO_OUTPUT_RAW (SITL / no ESC telemetry)
         esc_telemetry = []
@@ -1240,6 +1326,8 @@ def update_system_health():
         vfr_altitude = vfr_hud.get("alt", 0) if vfr_hud else 0
         vfr_heading = vfr_hud.get("heading", 0) if vfr_hud else 0
         vfr_climb = vfr_hud.get("climb", 0) if vfr_hud else 0
+        vfr_groundspeed = vfr_hud.get("groundspeed", 0) if vfr_hud else 0
+        vfr_airspeed = vfr_hud.get("airspeed", 0) if vfr_hud else 0
 
         # Extract servo outputs for motor visualization
         servo_raw = mavlink_buffer.get("SERVO_OUTPUT_RAW")
@@ -1256,6 +1344,7 @@ def update_system_health():
             "critical_issues": critical_issues,
             "readiness": readiness,
             "armed": is_armed,
+            "copilot_active": copilot_active,
             "battery": {
                 "voltage": battery_voltage,
                 "threshold": battery_low_threshold,
@@ -1266,7 +1355,9 @@ def update_system_health():
                 "fix_type": gps_fix,
                 "satellites": satellites,
                 "satellites_visible": satellites,
-                "status": gps_status
+                "status": gps_status,
+                "lat": gps_lat,
+                "lon": gps_lon
             },
             "motors": motors,
             "esc_telemetry": esc_telemetry,
@@ -1292,6 +1383,8 @@ def update_system_health():
             "altitude": vfr_altitude,
             "heading": vfr_heading,
             "climb": vfr_climb,
+            "groundspeed": vfr_groundspeed,
+            "airspeed": vfr_airspeed,
             "servo_outputs": servo_outputs,
         }
 
@@ -1304,6 +1397,10 @@ def update_system_health():
                 "min": latency_stats["min"],
                 "max": latency_stats["max"],
             }
+
+        if hasattr(validator, 'get_link_stats'):
+            link_stats = validator.get_link_stats()
+            last_system_health["link_stats"] = link_stats
         
         # Update parameter progress from validator
         if hasattr(validator, 'param_progress'):

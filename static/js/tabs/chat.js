@@ -73,6 +73,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.charts && data.charts.length > 0 && window._app.renderLogCharts) {
                window._app.renderLogCharts(data.charts);
             }
+         } else if (data.source === 'copilot') {
+            messageText = '<strong>Co-Pilot:</strong> ' + data.response;
+            if (data.message) {
+               messageText += '<br><em>' + data.message + '</em>';
+            }
+            if (data.error) {
+               messageText += '<br><span style="color:var(--danger-color);">' + data.error + '</span>';
+            }
          } else if (data.source === 'jarvis') {
             var response = data.response;
             console.log("JARVIS response object:", response);

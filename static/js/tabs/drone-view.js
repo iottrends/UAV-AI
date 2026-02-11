@@ -14,6 +14,102 @@
         26: 'AUTOROTATE', 27: 'AUTO_RTL'
     };
 
+    // ===== Configurable OSD =====
+    var OSD_FIELDS = [
+        { key: 'bat_volt',   label: 'BAT',      unit: 'V',    path: function(d) { return d.battery ? d.battery.voltage.toFixed(2) : null; } },
+        { key: 'bat_pct',    label: 'BAT',      unit: '%',    path: function(d) { return d.battery ? d.battery.percentage : null; } },
+        { key: 'gps_fix',    label: 'GPS',      unit: '',     path: function(d) { return d.gps ? (['No GPS','No Fix','2D','3D','DGPS','RTK F','RTK'][d.gps.fix_type] || d.gps.fix_type) : null; } },
+        { key: 'gps_sats',   label: 'SATS',     unit: '',     path: function(d) { return d.gps ? d.gps.satellites_visible : null; } },
+        { key: 'gps_lat',    label: 'LAT',      unit: '',     path: function(d) { return d.gps && d.gps.lat !== undefined ? d.gps.lat.toFixed(7) : null; } },
+        { key: 'gps_lon',    label: 'LON',      unit: '',     path: function(d) { return d.gps && d.gps.lon !== undefined ? d.gps.lon.toFixed(7) : null; } },
+        { key: 'alt',        label: 'ALT',      unit: 'm',    path: function(d) { return d.altitude !== undefined ? d.altitude.toFixed(1) : null; } },
+        { key: 'gndspd',     label: 'GND SPD',  unit: 'm/s',  path: function(d) { return d.groundspeed !== undefined ? d.groundspeed.toFixed(1) : null; } },
+        { key: 'airspd',     label: 'AIR SPD',  unit: 'm/s',  path: function(d) { return d.airspeed !== undefined ? d.airspeed.toFixed(1) : null; } },
+        { key: 'vspd',       label: 'V/S',      unit: 'm/s',  path: function(d) { return d.climb !== undefined ? d.climb.toFixed(1) : null; } },
+        { key: 'hdg',        label: 'HDG',      unit: '\u00B0',    path: function(d) { return d.heading !== undefined ? d.heading : null; } },
+        { key: 'mode',       label: 'MODE',     unit: '',     path: function(d) { return d.current_mode !== undefined ? (COPTER_MODES[d.current_mode] || d.current_mode) : null; } },
+        { key: 'armed',      label: 'STATE',    unit: '',     path: function(d) { return d.armed !== undefined ? (d.armed ? 'ARMED' : 'DISARMED') : null; } },
+        { key: 'roll',       label: 'ROLL',     unit: '\u00B0',    path: function(d) { return d.attitude_roll !== undefined ? d.attitude_roll.toFixed(1) : null; } },
+        { key: 'pitch',      label: 'PITCH',    unit: '\u00B0',    path: function(d) { return d.attitude_pitch !== undefined ? d.attitude_pitch.toFixed(1) : null; } },
+        { key: 'yaw',        label: 'YAW',      unit: '\u00B0',    path: function(d) { return d.attitude_yaw !== undefined ? d.attitude_yaw.toFixed(1) : null; } },
+        { key: 'rc_rssi',    label: 'RSSI',     unit: '',     path: function(d) { return d.rc_rssi !== undefined ? d.rc_rssi : null; } },
+        { key: 'latency',    label: 'LINK',     unit: 'ms',   path: function(d) { return d.latency !== undefined ? d.latency : null; } },
+        { key: 'pkt_rate',   label: 'RX',       unit: 'pkt/s', path: function(d) { return d.link_stats ? d.link_stats.pkt_rate : null; } },
+        { key: 'link_spd',   label: 'BW',       unit: 'B/s',  path: function(d) { return d.link_stats ? Math.round(d.link_stats.byte_rate) : null; } },
+    ];
+
+    var OSD_STORAGE_KEY = 'uav-ai-osd-fields';
+    var osdEnabled = loadOsdFields();
+    var lastStatusData = null;
+
+    function loadOsdFields() {
+        try {
+            var stored = localStorage.getItem(OSD_STORAGE_KEY);
+            if (stored) {
+                var arr = JSON.parse(stored);
+                if (Array.isArray(arr)) return new Set(arr);
+            }
+        } catch (e) {}
+        return new Set();
+    }
+
+    function saveOsdFields() {
+        var arr = [];
+        osdEnabled.forEach(function(k) { arr.push(k); });
+        localStorage.setItem(OSD_STORAGE_KEY, JSON.stringify(arr));
+    }
+
+    function updateOsd() {
+        var container = getEl('dvOsdContainer');
+        if (!container || !lastStatusData) return;
+
+        var html = '';
+        for (var i = 0; i < OSD_FIELDS.length; i++) {
+            var field = OSD_FIELDS[i];
+            if (!osdEnabled.has(field.key)) continue;
+            var val = field.path(lastStatusData);
+            if (val === null) val = '--';
+            html += '<div class="drone-osd-item"><span class="osd-label">' + field.label + '</span>' + val + (field.unit ? ' ' + field.unit : '') + '</div>';
+        }
+        container.innerHTML = html;
+    }
+
+    function openOsdConfig() {
+        var modal = document.getElementById('osdConfigModal');
+        var list = document.getElementById('osdFieldList');
+        if (!modal || !list) return;
+
+        var html = '';
+        for (var i = 0; i < OSD_FIELDS.length; i++) {
+            var field = OSD_FIELDS[i];
+            var checked = osdEnabled.has(field.key) ? ' checked' : '';
+            var preview = '';
+            if (lastStatusData) {
+                var val = field.path(lastStatusData);
+                if (val !== null) preview = ' <span style="color:#22c55e;font-family:monospace;font-size:0.8rem;">' + val + (field.unit ? ' ' + field.unit : '') + '</span>';
+            }
+            html += '<label class="osd-field-row"><input type="checkbox" data-osd-key="' + field.key + '"' + checked + '> ' + field.label + (field.unit ? ' (' + field.unit + ')' : '') + preview + '</label>';
+        }
+        list.innerHTML = html;
+
+        // Bind checkbox changes
+        var checkboxes = list.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var key = cb.getAttribute('data-osd-key');
+                if (cb.checked) {
+                    osdEnabled.add(key);
+                } else {
+                    osdEnabled.delete(key);
+                }
+                saveOsdFields();
+                updateOsd();
+            });
+        });
+
+        modal.style.display = 'flex';
+    }
+
     // Target values (from telemetry)
     var target = {
         roll: 0, pitch: 0, yaw: 0,
@@ -274,6 +370,10 @@
             }
         }
 
+        // OSD update
+        lastStatusData = data;
+        if (isTabVisible()) updateOsd();
+
         // Start animation if tab is visible
         if (isTabVisible()) startAnimation();
     }
@@ -287,6 +387,42 @@
         // Register system status hook
         if (window._app && window._app.systemStatusHooks) {
             window._app.systemStatusHooks.push(onSystemStatus);
+        }
+
+        // OSD config button
+        var configBtn = document.getElementById('dvOsdConfigBtn');
+        if (configBtn) {
+            configBtn.addEventListener('click', openOsdConfig);
+        }
+
+        // OSD config modal close
+        var closeBtn = document.getElementById('osdConfigClose');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function() {
+                var modal = document.getElementById('osdConfigModal');
+                if (modal) modal.style.display = 'none';
+            });
+        }
+
+        // OSD config modal clear all
+        var clearBtn = document.getElementById('osdConfigClear');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function() {
+                osdEnabled.clear();
+                saveOsdFields();
+                updateOsd();
+                // Uncheck all checkboxes in the modal
+                var cbs = document.querySelectorAll('#osdFieldList input[type="checkbox"]');
+                cbs.forEach(function(cb) { cb.checked = false; });
+            });
+        }
+
+        // Close modal on backdrop click
+        var modal = document.getElementById('osdConfigModal');
+        if (modal) {
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) modal.style.display = 'none';
+            });
         }
 
         // Start animation when tab becomes visible

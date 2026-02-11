@@ -809,6 +809,7 @@ padding: 0.5rem;
 /* Responsive adjustments */
 /* ===== Drone View Tab ===== */
 .drone-view-container {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -933,6 +934,63 @@ padding: 0.5rem;
     color: #6b7280;
 }
 
+/* ===== OSD Overlay ===== */
+.drone-osd-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    width: 100%;
+    max-width: 560px;
+    justify-content: center;
+}
+.drone-osd-item {
+    background: rgba(0, 0, 0, 0.65);
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 0.2rem 0.6rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: #22c55e;
+    white-space: nowrap;
+}
+.drone-osd-item .osd-label {
+    color: #888;
+    font-size: 0.7rem;
+    margin-right: 0.3rem;
+}
+.drone-osd-config-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid #444;
+    border-radius: 5px;
+    color: #aaa;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.drone-osd-config-btn:hover {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+}
+.osd-field-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-radius: 4px;
+}
+.osd-field-row:hover {
+    background: rgba(255,255,255,0.05);
+}
+.osd-field-row input[type="checkbox"] {
+    accent-color: #22c55e;
+}
+
 /* ===== Log Analysis Tab ===== */
 .log-upload-area {
    background: #1a1a2e;
@@ -984,6 +1042,29 @@ padding: 0.5rem;
    color: #ccc;
    font-size: 0.85rem;
    margin-bottom: 0.5rem;
+}
+
+/* ===== Co-Pilot Badge ===== */
+.copilot-badge {
+   padding: 0.25rem 0.75rem;
+   border-radius: 12px;
+   font-size: 0.75rem;
+   font-weight: bold;
+   cursor: pointer;
+   background: #555;
+   color: #aaa;
+   transition: all 0.3s;
+   margin-left: 15px;
+   user-select: none;
+}
+.copilot-badge.active {
+   background: #22c55e;
+   color: #fff;
+   animation: copilotPulse 2s infinite;
+}
+@keyframes copilotPulse {
+   0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+   50% { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
 }
 
 @media (max-width: 768px) {
