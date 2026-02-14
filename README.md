@@ -92,7 +92,7 @@ AI-powered, web-based ground station for ArduPilot. Voice commands, real-time di
    GEMINI_API_KEY=your_gemini_api_key_here
    ```
 
-## Usage
+## Usage (Dev)
 
 1. Start the UAV-AI Assistant:
    ```
@@ -106,6 +106,104 @@ AI-powered, web-based ground station for ArduPilot. Voice commands, real-time di
 4. Use the terminal interface for direct commands:
    - `query:your question here` - Ask the AI assistant a question
    - `exit` - Exit the application
+
+---
+
+## Field Quickstart (for pilots)
+
+This is the shortest path from "hardware on the bench" to "AI co-pilot in the field".
+
+### 1. Power up UAV-AI
+
+- Power your Raspberry Pi (or other small computer) running UAV-AI.
+- Make sure **the Pi and your phone/tablet are on the same WiFi**:
+  - Either the Pi auto-joins your **phone hotspot**, or
+  - The Pi is running as a WiFi AP (e.g. `UAV-GS`) and your phone joins that.
+- On your phone/tablet, open a browser and go to:
+  - `http://<pi-ip>:5000`  
+  - Or a hostname you configured, e.g. `http://uav-ai.local`.
+
+You should see the **UAV-AI Assistant** UI with a sidebar and dashboard.
+
+### 2. Connect to the drone
+
+1. Click **"Connect Drone"** in the left sidebar.
+2. Choose how you're connected:
+   - **Serial (USB)**:
+     - Port: the USB device connected to your FC (e.g. `/dev/ttyACM0` or `COM3`).
+     - Baud: usually `115200`.
+   - **IP (UDP)**:
+     - IP: leave as `0.0.0.0` to listen on all interfaces.
+     - Port: typically `14550` (match your ELRS WiFi/telemetry source).
+3. Click **Connect**.
+
+You should see:
+
+- Header status turn **green** with `Connected`.
+- `Params:` in the header count up from `0%` to `100%` as parameters download.
+- Dashboard widgets (battery, GPS, motors, subsystems) start populating.
+
+### 3. Check health before you fly
+
+On the **Dashboard** tab:
+
+- **System Health** and **Flight Readiness** give you a quick "can I fly?" signal.
+- Battery, GPS, Compass, RC, Barometer, etc. all show up in the **Subsystem Status** table.
+- The **Firmware Information** card tells you exactly what firmware and capabilities the FC reports.
+
+Use this like a pre-flight checklist:
+- Health high, readiness = READY, no scary red entries → good to arm.
+- Any **CRITICAL** entries → investigate before takeoff.
+
+### 4. Use Co-Pilot for instant commands
+
+Co-pilot is the **fast, local command path**. It does not depend on the cloud.
+
+1. Enable co-pilot mode by clicking the **CO-PILOT** badge in the header.
+2. In the chat input (bottom right), try **safe status queries** first:
+   - `gps status`
+   - `what is my battery`
+   - `what mode am i in`
+
+These respond instantly using the MAVLink buffer:
+
+- `gps status` → e.g. `GPS: 3D Fix, 10 satellites visible.`
+- `what is my battery` → e.g. `Battery: 16.00V, 10.0A, 80% remaining.`
+
+Once you're comfortable (and in a safe environment, ideally props off):
+
+- `arm the drone`
+- `disarm`
+- `land now`
+- `rtl`
+
+Co-pilot turns these into the correct `MAV_CMD_*` commands under the hood.
+
+### 5. Ask JARVIS (AI) for deeper help
+
+When the Pi has internet and you've set `GEMINI_API_KEY`:
+
+- You can ask questions like:
+  - `why is my compass off?`
+  - `explain my gps situation`
+  - `are my failsafe and battery settings safe for 4s lipo?`
+
+JARVIS will:
+
+- Read your **categorized parameters** and recent MAVLink telemetry.
+- Explain issues in plain English.
+- Suggest specific fixes (e.g., params to adjust, modes to change).
+
+Treat JARVIS as your **field engineer**. Use co-pilot for fast commands; use JARVIS when you’d otherwise be digging through Mission Planner docs.
+
+### 6. Save configs & work with logs
+
+- **Configs tab**:
+  - Save a **named snapshot** once a build is tuned and flying well.
+  - Later you can apply that config to recover from bad experiments or clone a setup to another airframe.
+- **Logs tab**:
+  - Upload `.bin` / `.tlog` files or fetch logs from the FC.
+  - Use the log viewer and (future) AI log analysis to understand crashes, vibrations, GPS issues, etc.
 
 ## Project Structure
 

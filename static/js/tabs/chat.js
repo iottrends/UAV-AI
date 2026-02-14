@@ -4,12 +4,36 @@ document.addEventListener('DOMContentLoaded', function() {
    const chatInput = document.getElementById('chatInput');
    const sendButton = document.getElementById('sendButton');
    const voiceButton = document.getElementById('voiceButton');
+   const providerSelect = document.getElementById('chatProviderSelect');
+
+   // Detect if a message looks like an API key and return the provider, or null
+   function detectApiKey(text) {
+      text = text.trim();
+      if (text.startsWith('sk-ant-') && text.length > 20) return 'claude';
+      if (text.startsWith('sk-') && text.length > 20) return 'openai';
+      if (text.startsWith('AI') && text.length > 20) return 'gemini';
+      return null;
+   }
 
    function sendMessage() {
       if (!chatInput) return;
 
-      const message = chatInput.value.trim();
+      var message = chatInput.value.trim();
       if (!message) return;
+
+      // Check if the message is an API key
+      var keyProvider = detectApiKey(message);
+      if (keyProvider && window._app.socket) {
+         chatInput.value = '';
+         window._app.socket.emit('set_api_key', { provider: keyProvider, key: message });
+         var providerLabel = { openai: 'OpenAI', claude: 'Claude', gemini: 'Gemini' }[keyProvider] || keyProvider;
+         window._app.addMessage({
+            text: '<strong>System:</strong> ' + providerLabel + ' API key saved! Switching to ' + providerLabel + '...',
+            time: window._app.getCurrentTime()
+         });
+         if (providerSelect) providerSelect.value = keyProvider;
+         return;
+      }
 
       window._app.addMessage({
          text: message,
@@ -19,7 +43,8 @@ document.addEventListener('DOMContentLoaded', function() {
       chatInput.value = '';
 
       if (window._app.socket && (window._app.isConnected || window._app.logLoaded)) {
-         window._app.socket.emit('chat_message', { message: message });
+         var provider = providerSelect ? providerSelect.value : 'gemini';
+         window._app.socket.emit('chat_message', { message: message, provider: provider });
       } else {
          window._app.addMessage({
             text: "<strong>System:</strong> Please connect to a drone or upload a log file first.",
@@ -41,6 +66,20 @@ document.addEventListener('DOMContentLoaded', function() {
       sendButton.addEventListener('click', sendMessage);
    }
 
+   // Update provider dropdown based on available providers
+   function updateProviderOptions(providers) {
+      if (!providerSelect) return;
+      var options = providerSelect.options;
+      for (var i = 0; i < options.length; i++) {
+         var opt = options[i];
+         var available = providers.indexOf(opt.value) !== -1;
+         opt.disabled = !available;
+         // Add "(no key)" suffix for unavailable providers
+         var baseLabel = { gemini: 'Gemini', openai: 'OpenAI (GPT-4o)', claude: 'Claude' }[opt.value] || opt.value;
+         opt.textContent = available ? baseLabel : baseLabel + ' (no key)';
+      }
+   }
+
    // Wait for socket to be available, then register chat handlers
    function setupSocketHandlers() {
       var socket = window._app.socket;
@@ -48,6 +87,29 @@ document.addEventListener('DOMContentLoaded', function() {
          setTimeout(setupSocketHandlers, 100);
          return;
       }
+
+      // Fetch available providers on connect
+      socket.on('connect', function() {
+         socket.emit('get_providers');
+      });
+      // Also request immediately if already connected
+      socket.emit('get_providers');
+
+      socket.on('available_providers', function(data) {
+         updateProviderOptions(data.providers || []);
+         if (data.current && providerSelect) {
+            providerSelect.value = data.current;
+         }
+      });
+
+      socket.on('api_key_result', function(data) {
+         if (data.error) {
+            window._app.addMessage({
+               text: '<strong>System:</strong> Failed to save API key: ' + data.error,
+               time: window._app.getCurrentTime()
+            });
+         }
+      });
 
       socket.on('chat_processing', function(data) {
          console.log('Processing message:', data);
@@ -57,6 +119,28 @@ document.addEventListener('DOMContentLoaded', function() {
          if (data.error) {
             window._app.addMessage({
                text: 'Error: ' + data.error,
+               time: window._app.getCurrentTime()
+            });
+         }
+
+         // Handle quota exhaustion
+         if (data.quota_exhausted && providerSelect) {
+            providerSelect.classList.add('chat-provider-exhausted');
+            setTimeout(function() {
+               providerSelect.classList.remove('chat-provider-exhausted');
+            }, 1500);
+
+            // Disable the exhausted provider option temporarily
+            var exhaustedValue = providerSelect.value;
+            for (var i = 0; i < providerSelect.options.length; i++) {
+               if (providerSelect.options[i].value === exhaustedValue) {
+                  providerSelect.options[i].disabled = true;
+                  break;
+               }
+            }
+
+            window._app.addMessage({
+               text: '<strong>System:</strong> Token quota exhausted for the current provider. Please select another model from the dropdown above.',
                time: window._app.getCurrentTime()
             });
             return;
@@ -102,10 +186,12 @@ document.addEventListener('DOMContentLoaded', function() {
             messageText = '<strong>AI Pipeline:</strong><br><br>' + data.response;
          }
 
-         window._app.addMessage({
-            text: messageText,
-            time: window._app.getCurrentTime()
-         });
+         if (messageText) {
+            window._app.addMessage({
+               text: messageText,
+               time: window._app.getCurrentTime()
+            });
+         }
       });
 
       // Listen for voice command responses

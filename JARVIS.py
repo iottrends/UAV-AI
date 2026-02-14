@@ -5,6 +5,17 @@ import time
 from dotenv import load_dotenv
 import google.generativeai as genai
 
+# Optional provider imports — only needed if API keys are configured
+try:
+    import openai as openai_module
+except ImportError:
+    openai_module = None
+
+try:
+    import anthropic as anthropic_module
+except ImportError:
+    anthropic_module = None
+
 # Get the agent logger
 agent_logger = logging.getLogger('agent')
 
@@ -131,6 +142,112 @@ _total_output_tokens = 0
 _total_requests = 0
 
 
+def get_available_providers():
+    """Return list of providers that have API keys configured."""
+    providers = []
+    if os.getenv("GEMINI_API_KEY"):
+        providers.append("gemini")
+    if os.getenv("OPENAI_API_KEY") and openai_module:
+        providers.append("openai")
+    if os.getenv("ANTHROPIC_API_KEY") and anthropic_module:
+        providers.append("claude")
+    return providers
+
+
+def _call_gemini(prompt, system_instruction):
+    """Call Gemini API. Returns (response_text, input_tokens, output_tokens)."""
+    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
+    response = model.generate_content(prompt)
+    response_text = response.text.strip()
+
+    input_tok = 0
+    output_tok = 0
+    if hasattr(response, 'usage_metadata') and response.usage_metadata:
+        input_tok = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+        output_tok = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+
+    return response_text, input_tok, output_tok
+
+
+def _call_openai(prompt, system_instruction):
+    """Call OpenAI API. Returns (response_text, input_tokens, output_tokens)."""
+    if not openai_module:
+        raise ImportError("openai package not installed. Run: pip install openai")
+    client = openai_module.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    response_text = response.choices[0].message.content.strip()
+    input_tok = response.usage.prompt_tokens if response.usage else 0
+    output_tok = response.usage.completion_tokens if response.usage else 0
+    return response_text, input_tok, output_tok
+
+
+def _call_claude(prompt, system_instruction):
+    """Call Anthropic Claude API. Returns (response_text, input_tokens, output_tokens)."""
+    if not anthropic_module:
+        raise ImportError("anthropic package not installed. Run: pip install anthropic")
+    client = anthropic_module.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    response = client.messages.create(
+        model="claude-sonnet-4-5-20250929",
+        max_tokens=4096,
+        system=system_instruction,
+        messages=[
+            {"role": "user", "content": prompt},
+        ],
+    )
+    response_text = response.content[0].text.strip()
+    input_tok = response.usage.input_tokens if response.usage else 0
+    output_tok = response.usage.output_tokens if response.usage else 0
+    return response_text, input_tok, output_tok
+
+
+def _dispatch(provider, prompt, system_instruction):
+    """Route to the correct provider. Returns (response_text, input_tok, output_tok).
+
+    Raises a dict with 'error' and 'quota_exhausted' on rate/quota errors.
+    """
+    try:
+        if provider == "openai":
+            return _call_openai(prompt, system_instruction)
+        elif provider == "claude":
+            return _call_claude(prompt, system_instruction)
+        else:
+            return _call_gemini(prompt, system_instruction)
+    except Exception as e:
+        # Check for quota / rate-limit errors from each provider
+        err_type = type(e).__name__
+        err_module = type(e).__module__ or ""
+        is_quota = False
+
+        # Gemini: google.api_core.exceptions.ResourceExhausted
+        if "ResourceExhausted" in err_type:
+            is_quota = True
+        # OpenAI: openai.RateLimitError
+        elif openai_module and isinstance(e, getattr(openai_module, 'RateLimitError', type(None))):
+            is_quota = True
+        # Anthropic: anthropic.RateLimitError
+        elif anthropic_module and isinstance(e, getattr(anthropic_module, 'RateLimitError', type(None))):
+            is_quota = True
+
+        if is_quota:
+            agent_logger.warning(f"Quota/rate limit hit for provider '{provider}': {e}")
+            raise QuotaExhaustedError(str(e), provider)
+
+        raise
+
+
+class QuotaExhaustedError(Exception):
+    """Raised when a provider's quota or rate limit is hit."""
+    def __init__(self, message, provider):
+        super().__init__(message)
+        self.provider = provider
+
+
 def _compute_param_delta(old_params, new_params):
     """Compute changed/added/removed parameters between two param dicts."""
     if not old_params:
@@ -204,22 +321,28 @@ def _ensure_model(parameter_context):
     return _model
 
 
-def ask_gemini(query, parameter_context=None, mavlink_ctx=None):
-    """Process the user query using Gemini AI with MAVLink context.
+def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini"):
+    """Process the user query using the selected AI provider with MAVLink context.
 
     Args:
         query: User query string.
         parameter_context: Categorized params dict (for delta tracking).
         mavlink_ctx: dict keyed by msg type → latest msg dict (from snapshot).
                      Falls back to global jarvis_mav_data if not provided.
+        provider: AI provider to use — "gemini", "openai", or "claude".
     """
     global _last_seen_params
 
     ctx_data = mavlink_ctx if mavlink_ctx is not None else jarvis_mav_data
     mavlink_context = json.dumps(list(ctx_data.values()), indent=2)
 
-    # Ensure model exists (created once with full params in system_instruction)
-    model = _ensure_model(parameter_context)
+    # Ensure model exists (for param caching — still needed for delta tracking)
+    _ensure_model(parameter_context)
+
+    # Build system instruction with params
+    system_instruction = SYSTEM_INSTRUCTION
+    if parameter_context:
+        system_instruction += f"\n\n### Available Parameters:\n{json.dumps(parameter_context, indent=2)}"
 
     # Check for param changes since last query
     param_delta_text = ""
@@ -241,43 +364,33 @@ def ask_gemini(query, parameter_context=None, mavlink_ctx=None):
     try:
         global _total_input_tokens, _total_output_tokens, _total_requests, _request_timestamps
 
-        # Log breakdown of what we're sending
-        sys_instr_len = len(model._system_instruction.parts[0].text) if model._system_instruction else 0
         mavlink_ctx_len = len(mavlink_context)
         param_delta_len = len(param_delta_text)
         prompt_len = len(prompt)
-        print(f">>> JARVIS prompt breakdown: sys_instruction={sys_instr_len} chars, "
+        print(f">>> JARVIS [{provider}] prompt breakdown: "
               f"mavlink_ctx={mavlink_ctx_len} chars, param_delta={param_delta_len} chars, "
               f"prompt_total={prompt_len} chars")
-        agent_logger.info("Sending query to Gemini API")
+        agent_logger.info(f"Sending query to {provider} API")
 
-        # Stateless call — system_instruction (cached) + this prompt
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
+        # Dispatch to selected provider
+        response_text, input_tok, output_tok = _dispatch(provider, prompt, system_instruction)
 
         # Track tokens and request rate
         _total_requests += 1
         now = time.time()
         _request_timestamps.append(now)
-        # Keep only last 60 seconds of timestamps
         _request_timestamps = [t for t in _request_timestamps if now - t <= 60]
         rpm = len(_request_timestamps)
-
-        input_tok = 0
-        output_tok = 0
-        if hasattr(response, 'usage_metadata') and response.usage_metadata:
-            input_tok = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
-            output_tok = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
-            _total_input_tokens += input_tok
-            _total_output_tokens += output_tok
+        _total_input_tokens += input_tok
+        _total_output_tokens += output_tok
 
         agent_logger.info(
-            f"Tokens: in={input_tok} out={output_tok} | "
+            f"[{provider}] Tokens: in={input_tok} out={output_tok} | "
             f"Totals: in={_total_input_tokens} out={_total_output_tokens} | "
             f"Requests: {_total_requests} ({rpm}/min)"
         )
         print(
-            f">>> JARVIS tokens: in={input_tok} out={output_tok} | "
+            f">>> JARVIS [{provider}] tokens: in={input_tok} out={output_tok} | "
             f"totals: in={_total_input_tokens} out={_total_output_tokens} | "
             f"req={_total_requests} ({rpm}/min)"
         )
@@ -295,6 +408,10 @@ def ask_gemini(query, parameter_context=None, mavlink_ctx=None):
 
         return result
 
+    except QuotaExhaustedError as e:
+        agent_logger.warning(f"Quota exhausted for {e.provider}: {e}")
+        return {"error": f"Token quota exhausted for {e.provider}. Please switch to another model.", "quota_exhausted": True}
+
     except json.JSONDecodeError as e:
         error_msg = f"Invalid JSON response from AI: {str(e)}"
         agent_logger.error(error_msg)
@@ -302,6 +419,11 @@ def ask_gemini(query, parameter_context=None, mavlink_ctx=None):
 
     except Exception as e:
         return {"error": f"Unexpected error: {str(e)}"}
+
+
+# Backwards-compatible alias
+def ask_gemini(query, parameter_context=None, mavlink_ctx=None):
+    return ask_jarvis(query, parameter_context, mavlink_ctx, provider="gemini")
 
 
 # ============================================================================
@@ -364,35 +486,19 @@ You MUST respond in strict JSON format:
 - For attitude: compare desired vs actual (DesRoll vs Roll) — large errors indicate tuning issues
 """
 
-_log_model = None
-
-
-def _ensure_log_model():
-    """Create the log analysis model on first use."""
-    global _log_model
-    if _log_model is None:
-        _log_model = genai.GenerativeModel(
-            "gemini-2.5-flash",
-            system_instruction=LOG_ANALYSIS_SYSTEM_PROMPT
-        )
-        agent_logger.info("Created JARVIS log analysis model")
-    return _log_model
-
-
-def ask_gemini_log_analysis(query, log_summary, message_data=None):
-    """Analyze a flight log using Gemini AI.
+def ask_gemini_log_analysis(query, log_summary, message_data=None, provider="gemini"):
+    """Analyze a flight log using the selected AI provider.
 
     Args:
         query: User's analysis question.
         log_summary: Dict from LogParser.get_summary().
         message_data: Optional dict of {msg_type: [list of dicts]} with actual data.
+        provider: AI provider to use — "gemini", "openai", or "claude".
 
     Returns:
         Dict with 'analysis', 'charts', and 'need_data' keys.
     """
     global _total_input_tokens, _total_output_tokens, _total_requests, _request_timestamps
-
-    model = _ensure_log_model()
 
     # Build prompt
     prompt_parts = [f'### Log Summary:\n```json\n{json.dumps(log_summary, indent=1, default=str)}\n```\n']
@@ -401,12 +507,11 @@ def ask_gemini_log_analysis(query, log_summary, message_data=None):
         prompt_parts.append("### Message Data:\n")
         for msg_type, data in message_data.items():
             prompt_parts.append(f"**{msg_type}** ({len(data)} points):\n```json\n{json.dumps(data[:5], indent=1, default=str)}\n... ({len(data)} total)\n```\n")
-            # Include statistical summary for large datasets
             if len(data) > 10:
                 fields = [k for k in data[0].keys() if isinstance(data[0].get(k), (int, float))]
                 if fields:
                     stats = {}
-                    for f in fields[:6]:  # limit to 6 fields for brevity
+                    for f in fields[:6]:
                         vals = [d[f] for d in data if isinstance(d.get(f), (int, float))]
                         if vals:
                             stats[f] = {"min": round(min(vals), 2), "max": round(max(vals), 2),
@@ -417,27 +522,20 @@ def ask_gemini_log_analysis(query, log_summary, message_data=None):
     prompt = "\n".join(prompt_parts)
 
     try:
-        agent_logger.info(f"Log analysis query: {query}")
-        print(f">>> JARVIS log analysis query: \"{query}\" (prompt {len(prompt)} chars)")
+        agent_logger.info(f"Log analysis query [{provider}]: {query}")
+        print(f">>> JARVIS [{provider}] log analysis query: \"{query}\" (prompt {len(prompt)} chars)")
 
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
+        response_text, input_tok, output_tok = _dispatch(provider, prompt, LOG_ANALYSIS_SYSTEM_PROMPT)
 
         # Track tokens
         _total_requests += 1
         now = time.time()
         _request_timestamps.append(now)
         _request_timestamps = [t for t in _request_timestamps if now - t <= 60]
+        _total_input_tokens += input_tok
+        _total_output_tokens += output_tok
 
-        input_tok = 0
-        output_tok = 0
-        if hasattr(response, 'usage_metadata') and response.usage_metadata:
-            input_tok = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
-            output_tok = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
-            _total_input_tokens += input_tok
-            _total_output_tokens += output_tok
-
-        print(f"<<< JARVIS log analysis response: in={input_tok} out={output_tok}")
+        print(f"<<< JARVIS [{provider}] log analysis response: in={input_tok} out={output_tok}")
 
         # Extract JSON
         json_start = response_text.find("{")
@@ -447,13 +545,15 @@ def ask_gemini_log_analysis(query, log_summary, message_data=None):
 
         result = json.loads(response_text[json_start:json_end])
 
-        # Ensure required keys exist
         result.setdefault("analysis", "No analysis provided.")
         result.setdefault("charts", [])
         result.setdefault("need_data", [])
 
         return result
 
+    except QuotaExhaustedError as e:
+        agent_logger.warning(f"Quota exhausted for {e.provider} during log analysis: {e}")
+        return {"analysis": f"Token quota exhausted for {e.provider}. Please switch to another model.", "charts": [], "need_data": [], "quota_exhausted": True}
     except json.JSONDecodeError as e:
         agent_logger.error(f"Log analysis JSON error: {e}")
         return {"analysis": response_text, "charts": [], "need_data": []}

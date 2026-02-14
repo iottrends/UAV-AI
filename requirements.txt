@@ -5,7 +5,10 @@ Flask-SocketIO==5.3.6
 python-dotenv==1.0.1
 eventlet
 google-generativeai==0.4.1
+openai
+anthropic
 pyserial==3.5
 pyaudio==0.2.14
 google-cloud-speech==2.26.0
 Flask-Cors==4.0.1
+pytest

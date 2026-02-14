@@ -285,6 +285,32 @@ background-color: var(--warning-color);
 .status-ok {
 background-color: var(--success-color);
 }
+/* Provider selector */
+.chat-provider-row {
+   display: flex;
+   align-items: center;
+   gap: 0.5rem;
+   margin-bottom: 0.75rem;
+   padding: 0 0.25rem;
+}
+.chat-provider-select {
+   padding: 0.3rem 0.5rem;
+   border: 1px solid #ddd;
+   border-radius: 5px;
+   font-size: 0.8rem;
+   flex: 1;
+}
+.chat-provider-select option:disabled {
+   color: #aaa;
+}
+.chat-provider-exhausted {
+   animation: providerFlash 0.5s ease 3;
+}
+@keyframes providerFlash {
+   0%, 100% { border-color: #ddd; }
+   50% { border-color: var(--danger-color); }
+}
+
 /* Chat interface styling */
 .chat-container {
 background-color: var(--white-color);
@@ -831,6 +857,8 @@ padding: 0.5rem;
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    min-width: 7rem;
+    text-align: center;
 }
 .drone-mode-badge {
     background-color: #2563eb;
@@ -852,6 +880,8 @@ padding: 0.5rem;
     font-weight: bold;
     font-family: 'Courier New', monospace;
     color: #a5b4fc;
+    min-width: 8ch;
+    text-align: center;
 }
 .drone-main-area {
     display: flex;
@@ -862,7 +892,7 @@ padding: 0.5rem;
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-width: 70px;
+    width: 90px;
 }
 .drone-altitude-label {
     font-size: 0.7rem;
@@ -875,14 +905,15 @@ padding: 0.5rem;
     font-weight: bold;
     font-family: 'Courier New', monospace;
     color: #e0e7ff;
+    min-width: 5ch;
+    text-align: center;
 }
 .drone-altitude-unit {
     font-size: 0.75rem;
     color: #6b7280;
 }
 .drone-canvas-wrapper {
-    transition: transform 0.15s ease-out;
-    will-change: transform;
+    /* static — no transforms applied to avoid layout jitter */
 }
 #dvCanvas {
     display: block;
@@ -894,6 +925,10 @@ padding: 0.5rem;
     font-family: 'Courier New', monospace;
     font-size: 0.9rem;
     color: #94a3b8;
+}
+.drone-attitude-readout span {
+    min-width: 7ch;
+    text-align: center;
 }
 .drone-motor-bars {
     display: flex;
@@ -952,6 +987,12 @@ padding: 0.5rem;
     font-size: 0.8rem;
     color: #22c55e;
     white-space: nowrap;
+    min-width: 8ch;
+}
+.drone-osd-item .osd-value {
+    display: inline-block;
+    min-width: 4ch;
+    text-align: right;
 }
 .drone-osd-item .osd-label {
     color: #888;

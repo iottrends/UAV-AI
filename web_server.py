@@ -45,6 +45,9 @@ connection_params = {
 copilot_active = False         # Current co-pilot mode state
 copilot_user_override = None   # None=auto, True=forced on, False=forced off
 
+# Current LLM provider (used by voice commands and as default)
+current_provider = "gemini"
+
 # Global thread references
 telemetry_thread = None
 server_thread = None
@@ -623,6 +626,68 @@ def handle_copilot_toggle(data):
     logger.info(f"Co-pilot toggle: override={copilot_user_override}, active={copilot_active}")
 
 
+@socketio.on('get_providers')
+def handle_get_providers():
+    """Return list of available AI providers (those with API keys configured)."""
+    client_id = request.sid
+    providers = jarvis_module.get_available_providers() if jarvis_module else []
+    emit('available_providers', {'providers': providers, 'current': current_provider}, room=client_id)
+
+
+@socketio.on('set_api_key')
+def handle_set_api_key(data):
+    """Save an API key for a provider and update .env file."""
+    global current_provider
+    client_id = request.sid
+    provider = data.get('provider', '')
+    key = data.get('key', '').strip()
+
+    if not provider or not key:
+        emit('api_key_result', {'error': 'Missing provider or key'}, room=client_id)
+        return
+
+    # Map provider to env var name
+    env_map = {
+        'openai': 'OPENAI_API_KEY',
+        'claude': 'ANTHROPIC_API_KEY',
+        'gemini': 'GEMINI_API_KEY',
+    }
+    env_var = env_map.get(provider)
+    if not env_var:
+        emit('api_key_result', {'error': f'Unknown provider: {provider}'}, room=client_id)
+        return
+
+    # Set in current process
+    os.environ[env_var] = key
+
+    # Update .env file
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    try:
+        lines = []
+        found = False
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                lines = f.readlines()
+            for i, line in enumerate(lines):
+                if line.startswith(f"{env_var}="):
+                    lines[i] = f"{env_var}={key}\n"
+                    found = True
+                    break
+        if not found:
+            lines.append(f"{env_var}={key}\n")
+        with open(env_path, 'w') as f:
+            f.writelines(lines)
+    except IOError as e:
+        logger.error(f"Failed to update .env: {e}")
+
+    # Auto-switch to this provider
+    current_provider = provider
+    providers = jarvis_module.get_available_providers() if jarvis_module else []
+    emit('api_key_result', {'success': True, 'provider': provider}, room=client_id)
+    emit('available_providers', {'providers': providers, 'current': current_provider}, room=client_id)
+    logger.info(f"API key set for {provider}, switched to {provider}")
+
+
 @socketio.on('chat_message')
 def handle_chat_message(data):
     """Handle chat messages from clients.
@@ -630,7 +695,10 @@ def handle_chat_message(data):
     Routes to drone assistant (JARVIS) when connected, or to log analysis
     when a log file is loaded. Drone queries take priority if both are available.
     """
+    global current_provider
     query = data.get('message', '')
+    provider = data.get('provider', current_provider)
+    current_provider = provider  # remember for voice commands
     client_id = request.sid
 
     if not query:
@@ -678,9 +746,9 @@ def handle_chat_message(data):
         emit('chat_processing', {"status": "processing"}, room=client_id)
         try:
             summary = log_parser_instance.get_summary()
-            result = jarvis_module.ask_gemini_log_analysis(query, summary)
+            result = jarvis_module.ask_gemini_log_analysis(query, summary, provider=provider)
 
-            # Phase 2: fetch data if Gemini requested it
+            # Phase 2: fetch data if AI requested it
             need_data = result.get('need_data', [])
             if need_data:
                 message_data = {}
@@ -689,7 +757,7 @@ def handle_chat_message(data):
                     if md:
                         message_data[msg_type] = md
                 if message_data:
-                    result = jarvis_module.ask_gemini_log_analysis(query, summary, message_data)
+                    result = jarvis_module.ask_gemini_log_analysis(query, summary, message_data, provider=provider)
 
             socketio.emit('chat_response', {
                 "source": "log_analysis",
@@ -708,15 +776,20 @@ def handle_chat_message(data):
         try:
             import time as _time
             _jarvis_start = _time.time()
-            print(f">>> JARVIS query sent: \"{query}\"")
-            jarvis_response = jarvis_module.ask_gemini(query, validator.categorized_params, validator.ai_mavlink_ctx)
+            print(f">>> JARVIS [{provider}] query sent: \"{query}\"")
+            jarvis_response = jarvis_module.ask_jarvis(query, validator.categorized_params, validator.ai_mavlink_ctx, provider=provider)
             _jarvis_elapsed = _time.time() - _jarvis_start
-            print(f"<<< JARVIS response received in {_jarvis_elapsed:.2f}s")
+            print(f"<<< JARVIS [{provider}] response received in {_jarvis_elapsed:.2f}s")
             print(jarvis_response)
-            socketio.emit('chat_response', {
-                    "source": "jarvis",
-                    "response": jarvis_response
-                }, room=client_id)
+
+            # Check for quota exhaustion
+            response_data = {
+                "source": "jarvis",
+                "response": jarvis_response
+            }
+            if jarvis_response and jarvis_response.get('quota_exhausted'):
+                response_data['quota_exhausted'] = True
+            socketio.emit('chat_response', response_data, room=client_id)
 
             # Execute fix_command if JARVIS included one (supports single dict or list of dicts)
             if jarvis_response and 'fix_command' in jarvis_response and jarvis_response['fix_command']:
@@ -831,10 +904,10 @@ def process_voice_command(client_id, query):
     try:
         import time as _time
         _jarvis_start = _time.time()
-        print(f">>> JARVIS voice query sent: \"{query}\"")
-        jarvis_response = jarvis_module.ask_gemini(query, validator.categorized_params, validator.ai_mavlink_ctx)
+        print(f">>> JARVIS [{current_provider}] voice query sent: \"{query}\"")
+        jarvis_response = jarvis_module.ask_jarvis(query, validator.categorized_params, validator.ai_mavlink_ctx, provider=current_provider)
         _jarvis_elapsed = _time.time() - _jarvis_start
-        print(f"<<< JARVIS voice response received in {_jarvis_elapsed:.2f}s")
+        print(f"<<< JARVIS [{current_provider}] voice response received in {_jarvis_elapsed:.2f}s")
         logger.info(f"JARVIS response to voice command: {jarvis_response}")
         
         socketio.emit('voice_response', {
@@ -1446,7 +1519,7 @@ def telemetry_update_loop():
                 elapsed_ms = (time.perf_counter() - start) * 1000
 #                print(f"[Telemetry Loop] {elapsed_ms:.2f} ms", flush=True)
                 
-                time.sleep(0.2)  # Sleep to avoid excessive updates
+                time.sleep(0.3)  # Sleep to avoid excessive updates
 
             else:
                 time.sleep(1)  # Sleep to avoid excessive updates

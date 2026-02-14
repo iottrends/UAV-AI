@@ -161,6 +161,21 @@ function startLatencyMeasurement() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+   // First-run tour card
+   const firstRunCard = document.getElementById('firstRunCard');
+   const hasSeenTour = window.localStorage.getItem('uav_ai_first_run_seen');
+
+   if (firstRunCard && !hasSeenTour) {
+      firstRunCard.style.display = 'block';
+      const dismissBtn = document.getElementById('dismissFirstRun');
+      if (dismissBtn) {
+         dismissBtn.addEventListener('click', function() {
+            firstRunCard.style.display = 'none';
+            window.localStorage.setItem('uav_ai_first_run_seen', '1');
+         });
+      }
+   }
+
    // Dashboard elements
    const healthScoreText = document.getElementById('healthScoreText');
    const healthScoreArc = document.getElementById('healthScoreArc');

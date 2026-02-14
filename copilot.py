@@ -195,12 +195,12 @@ _PATTERNS = [
     (re.compile(r'\barm\b'), _handle_arm),
     (re.compile(r'\bland\b'), _handle_land),
     (re.compile(r'\b(rtl|return to launch|return home|go home|come back)\b'), _handle_rtl),
+    (re.compile(r'\b(alt hold|altitude hold)\b'), _handle_althold),
     (re.compile(r'\b(position hold|poshold|hold position|hold|stop)\b'), _handle_poshold),
     (re.compile(r'\b(brake|stop now)\b'), _handle_brake),
     (re.compile(r'\bloiter\b'), _handle_loiter),
     (re.compile(r'\bstabili[sz]e\b'), _handle_stabilize),
     (re.compile(r'\bguided\b'), _handle_guided),
-    (re.compile(r'\b(alt hold|altitude hold)\b'), _handle_althold),
     # Status queries
     (re.compile(r'\b(gps status|gps|how many satellites)\b'), _handle_gps_status),
     (re.compile(r'\b(battery|battery status|voltage)\b'), _handle_battery),

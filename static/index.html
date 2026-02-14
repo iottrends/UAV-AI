@@ -186,6 +186,30 @@
                   </div>
                </div>
                <!-- Subsystem Status Table -->
+               <!-- First-Run Tour Card -->
+               <div class="card first-run-card" id="firstRunCard" style="display: none;">
+                  <div class="card-title">Welcome to UAV-AI</div>
+                  <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.75rem;">
+                     New here? Follow these three steps to see UAV-AI in action.
+                  </p>
+                  <ol style="margin-left:1.25rem; font-size:0.85rem; color:var(--text-color);">
+                     <li style="margin-bottom:0.4rem;">
+                        <strong>Connect your drone:</strong>
+                        Click <em>Connect Drone</em> in the left sidebar and choose Serial or UDP.
+                     </li>
+                     <li style="margin-bottom:0.4rem;">
+                        <strong>Test Co-pilot:</strong>
+                        In the chat, type <code>gps status</code> to get an instant answer (no cloud).
+                     </li>
+                     <li>
+                        <strong>Ask JARVIS:</strong>
+                        Once connected, ask <code>why is my compass off?</code> for a full AI diagnosis.
+                     </li>
+                  </ol>
+                  <button id="dismissFirstRun" class="action-button" style="margin-top:0.75rem;">
+                     Got it, hide this
+                  </button>
+               </div>
                <div class="card">
                   <div class="card-title">SUBSYSTEM STATUS</div>
                   <table class="subsystem-table" id="subsystemTable">
@@ -747,6 +771,13 @@
             <!-- Chat Interface -->
             <div class="chat-container" id="chat-container">
                <h2 class="chat-title">AI Assistant</h2>
+               <div class="chat-provider-row" id="chatProviderRow">
+                  <select id="chatProviderSelect" class="chat-provider-select">
+                     <option value="gemini">Gemini</option>
+                     <option value="openai">OpenAI (GPT-4o)</option>
+                     <option value="claude">Claude</option>
+                  </select>
+               </div>
                <div class="chat-messages" id="chatMessages">
                </div>
                <div class="chat-input">
