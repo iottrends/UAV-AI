@@ -688,6 +688,67 @@ def handle_set_api_key(data):
     logger.info(f"API key set for {provider}, switched to {provider}")
 
 
+####################################################################################
+# Settings — API Key Management
+####################################################################################
+
+@app.route('/api/settings/keys', methods=['GET'])
+def get_api_key_status():
+    """Return which providers have API keys configured, with masked previews."""
+    env_map = {
+        'gemini': 'GEMINI_API_KEY',
+        'openai': 'OPENAI_API_KEY',
+        'claude': 'ANTHROPIC_API_KEY',
+    }
+    keys = {}
+    for provider, env_var in env_map.items():
+        val = os.environ.get(env_var, '')
+        if val:
+            # Mask: show first 4 and last 4 chars
+            if len(val) > 8:
+                masked = val[:4] + '...' + val[-4:]
+            else:
+                masked = '****'
+            keys[provider] = {'configured': True, 'masked': masked}
+        else:
+            keys[provider] = {'configured': False, 'masked': ''}
+    return jsonify({'status': 'success', 'keys': keys})
+
+
+@app.route('/api/settings/keys', methods=['DELETE'])
+def delete_api_key():
+    """Remove an API key from env and .env file."""
+    data = request.get_json(force=True)
+    provider = data.get('provider', '')
+    env_map = {
+        'gemini': 'GEMINI_API_KEY',
+        'openai': 'OPENAI_API_KEY',
+        'claude': 'ANTHROPIC_API_KEY',
+    }
+    env_var = env_map.get(provider)
+    if not env_var:
+        return jsonify({'status': 'error', 'message': f'Unknown provider: {provider}'}), 400
+
+    # Remove from current process
+    if env_var in os.environ:
+        del os.environ[env_var]
+
+    # Remove from .env file
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    try:
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                lines = f.readlines()
+            lines = [l for l in lines if not l.startswith(f"{env_var}=")]
+            with open(env_path, 'w') as f:
+                f.writelines(lines)
+    except IOError as e:
+        logger.error(f"Failed to update .env: {e}")
+
+    logger.info(f"API key deleted for {provider}")
+    return jsonify({'status': 'success', 'message': f'{provider} key removed'})
+
+
 @socketio.on('chat_message')
 def handle_chat_message(data):
     """Handle chat messages from clients.

@@ -1,4 +1,4 @@
-// ===== drone-view.js — Live top-down quadcopter visualization =====
+// ===== drone-view.js — Live 3D quadcopter visualization =====
 
 (function() {
     'use strict';
@@ -59,19 +59,61 @@
         localStorage.setItem(OSD_STORAGE_KEY, JSON.stringify(arr));
     }
 
+    // Persistent OSD element cache
+    var osdElementCache = {};
+
     function updateOsd() {
         var container = getEl('dvOsdContainer');
         if (!container || !lastStatusData) return;
 
-        var html = '';
+        var wantedKeys = [];
         for (var i = 0; i < OSD_FIELDS.length; i++) {
-            var field = OSD_FIELDS[i];
-            if (!osdEnabled.has(field.key)) continue;
+            if (osdEnabled.has(OSD_FIELDS[i].key)) wantedKeys.push(OSD_FIELDS[i].key);
+        }
+
+        for (var cachedKey in osdElementCache) {
+            if (wantedKeys.indexOf(cachedKey) === -1) {
+                var old = osdElementCache[cachedKey].el;
+                if (old.parentNode) old.parentNode.removeChild(old);
+                delete osdElementCache[cachedKey];
+            }
+        }
+
+        for (var j = 0; j < wantedKeys.length; j++) {
+            var key = wantedKeys[j];
+            var field = null;
+            for (var k = 0; k < OSD_FIELDS.length; k++) {
+                if (OSD_FIELDS[k].key === key) { field = OSD_FIELDS[k]; break; }
+            }
+            if (!field) continue;
+
             var val = field.path(lastStatusData);
             if (val === null) val = '--';
-            html += '<div class="drone-osd-item"><span class="osd-label">' + field.label + '</span>' + val + (field.unit ? ' ' + field.unit : '') + '</div>';
+            var text = val + (field.unit ? ' ' + field.unit : '');
+
+            if (!osdElementCache[key]) {
+                var div = document.createElement('div');
+                div.className = 'drone-osd-item';
+                var lbl = document.createElement('span');
+                lbl.className = 'osd-label';
+                lbl.textContent = field.label;
+                var valSpan = document.createElement('span');
+                valSpan.className = 'osd-value';
+                valSpan.textContent = text;
+                div.appendChild(lbl);
+                div.appendChild(valSpan);
+                container.appendChild(div);
+                osdElementCache[key] = { el: div, valSpan: valSpan };
+            } else {
+                osdElementCache[key].valSpan.textContent = text;
+            }
         }
-        container.innerHTML = html;
+    }
+
+    function clearOsdCache() {
+        var container = getEl('dvOsdContainer');
+        if (container) container.innerHTML = '';
+        osdElementCache = {};
     }
 
     function openOsdConfig() {
@@ -92,7 +134,6 @@
         }
         list.innerHTML = html;
 
-        // Bind checkbox changes
         var checkboxes = list.querySelectorAll('input[type="checkbox"]');
         checkboxes.forEach(function(cb) {
             cb.addEventListener('change', function() {
@@ -110,49 +151,47 @@
         modal.style.display = 'flex';
     }
 
-    // Target values (from telemetry)
+    // ===== Telemetry targets & display (lerped) =====
     var target = {
         roll: 0, pitch: 0, yaw: 0,
         altitude: 0, climb: 0, heading: 0,
         armed: false, mode: 0,
-        motors: [0, 0, 0, 0]  // percentages 0-100
+        motors: [0, 0, 0, 0]
     };
 
-    // Displayed values (lerped for smooth animation)
     var display = {
         roll: 0, pitch: 0, yaw: 0,
         altitude: 0, climb: 0, heading: 0,
         motors: [0, 0, 0, 0]
     };
 
-    var canvas, ctx;
+    // ===== Three.js state =====
+    var scene, camera, renderer, quadGroup;
+    var propellers = [];
+    var threeInitialized = false;
     var animFrameId = null;
 
-    // DOM element refs (cached after first use)
-    var els = {};
+    var OSD_MIN_INTERVAL_MS = 200;
+    var lastOsdUpdateTs = 0;
 
+    var els = {};
     function getEl(id) {
         if (!els[id]) els[id] = document.getElementById(id);
         return els[id];
     }
 
-    function lerp(current, target, factor) {
-        return current + (target - current) * factor;
-    }
-
-    // Lerp angle handling wrap-around for yaw
-    function lerpAngle(current, target, factor) {
-        var diff = target - current;
-        // Normalize to -180..180
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function lerpAngle(a, b, t) {
+        var diff = b - a;
         while (diff > 180) diff -= 360;
         while (diff < -180) diff += 360;
-        return current + diff * factor;
+        return a + diff * t;
     }
 
     function motorColor(pct) {
-        if (pct < 30) return '#22c55e';       // green
-        if (pct < 70) return '#eab308';       // yellow
-        return '#ef4444';                      // red
+        if (pct < 30) return '#22c55e';
+        if (pct < 70) return '#eab308';
+        return '#ef4444';
     }
 
     function isTabVisible() {
@@ -160,140 +199,168 @@
         return tab && tab.style.display !== 'none';
     }
 
-    function drawDrone() {
-        var w = canvas.width;
-        var h = canvas.height;
-        var cx = w / 2;
-        var cy = h / 2;
+    // ===== Build 3D quad model =====
+    function buildQuadModel() {
+        quadGroup = new THREE.Group();
 
-        ctx.clearRect(0, 0, w, h);
-        ctx.save();
+        var bodyMat = new THREE.MeshPhongMaterial({ color: 0x4a5568, shininess: 80 });
+        var armMat = new THREE.MeshPhongMaterial({ color: 0x8899aa, shininess: 60 });
+        var motorMat = new THREE.MeshPhongMaterial({ color: 0x667788, shininess: 40 });
+        var propMat = new THREE.MeshPhongMaterial({ color: 0x818cf8, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
+        var frontMat = new THREE.MeshPhongMaterial({ color: 0xef4444, emissive: 0x551111 });
 
-        // Apply roll rotation to the whole drawing
-        ctx.translate(cx, cy);
-        var rollRad = display.roll * Math.PI / 180;
-        ctx.rotate(rollRad);
+        // Center body
+        var bodyGeo = new THREE.BoxGeometry(1.0, 0.3, 1.0);
+        var body = new THREE.Mesh(bodyGeo, bodyMat);
+        quadGroup.add(body);
 
-        // Apply pitch as vertical offset (clamped)
-        var pitchOffset = Math.max(-60, Math.min(60, display.pitch * 1.5));
-        ctx.translate(0, pitchOffset);
+        // Front indicator
+        var frontGeo = new THREE.ConeGeometry(0.18, 0.5, 4);
+        var front = new THREE.Mesh(frontGeo, frontMat);
+        front.rotation.x = -Math.PI / 2;
+        front.position.set(0, 0.2, -0.7);
+        quadGroup.add(front);
 
-        var armLen = 120;
-        var bodySize = 30;
-        var motorRadius = 22;
+        // X-frame arms
+        var armLength = 3.2;
+        var armGeo = new THREE.BoxGeometry(armLength, 0.1, 0.14);
 
-        // Motor positions (X-frame: 45deg diagonals)
-        // ArduCopter motor order: M1=front-right, M2=rear-left, M3=front-left, M4=rear-right
-        var motorPos = [
-            { x:  armLen * 0.707, y: -armLen * 0.707 },  // M1 front-right
-            { x: -armLen * 0.707, y:  armLen * 0.707 },  // M2 rear-left
-            { x: -armLen * 0.707, y: -armLen * 0.707 },  // M3 front-left
-            { x:  armLen * 0.707, y:  armLen * 0.707 },  // M4 rear-right
+        var arm1 = new THREE.Mesh(armGeo, armMat);
+        arm1.rotation.y = Math.PI / 4;
+        quadGroup.add(arm1);
+
+        var arm2 = new THREE.Mesh(armGeo, armMat);
+        arm2.rotation.y = -Math.PI / 4;
+        quadGroup.add(arm2);
+
+        // Motor positions
+        var d = armLength / 2 * 0.707;
+        var motorPositions = [
+            { x:  d, z: -d },
+            { x: -d, z: -d },
+            { x: -d, z:  d },
+            { x:  d, z:  d },
         ];
 
-        // Draw arms
-        ctx.strokeStyle = '#4b5563';
-        ctx.lineWidth = 6;
-        ctx.lineCap = 'round';
         for (var i = 0; i < 4; i++) {
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(motorPos[i].x, motorPos[i].y);
-            ctx.stroke();
+            var mp = motorPositions[i];
+
+            var motorGeo = new THREE.CylinderGeometry(0.22, 0.28, 0.28, 12);
+            var motor = new THREE.Mesh(motorGeo, motorMat);
+            motor.position.set(mp.x, 0.15, mp.z);
+            quadGroup.add(motor);
+
+            var propGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.03, 20);
+            var prop = new THREE.Mesh(propGeo, propMat);
+            prop.position.set(mp.x, 0.32, mp.z);
+            quadGroup.add(prop);
+            propellers.push(prop);
         }
 
-        // Draw center body
-        ctx.fillStyle = '#1f2937';
-        ctx.strokeStyle = '#6366f1';
-        ctx.lineWidth = 2;
-        roundRect(ctx, -bodySize, -bodySize, bodySize * 2, bodySize * 2, 8);
-        ctx.fill();
-        ctx.stroke();
+        return quadGroup;
+    }
 
-        // Front direction arrow
-        ctx.fillStyle = '#ef4444';
-        ctx.beginPath();
-        ctx.moveTo(0, -bodySize - 12);
-        ctx.lineTo(-8, -bodySize - 2);
-        ctx.lineTo(8, -bodySize - 2);
-        ctx.closePath();
-        ctx.fill();
-
-        // Draw motor circles with color based on output
-        for (var m = 0; m < 4; m++) {
-            var pct = display.motors[m];
-            var color = motorColor(pct);
-
-            // Outer ring
-            ctx.beginPath();
-            ctx.arc(motorPos[m].x, motorPos[m].y, motorRadius, 0, Math.PI * 2);
-            ctx.fillStyle = '#111827';
-            ctx.fill();
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 3;
-            ctx.stroke();
-
-            // Inner fill proportional to output
-            if (pct > 0) {
-                ctx.beginPath();
-                ctx.arc(motorPos[m].x, motorPos[m].y, motorRadius * 0.7 * (pct / 100), 0, Math.PI * 2);
-                ctx.fillStyle = color;
-                ctx.globalAlpha = 0.5;
-                ctx.fill();
-                ctx.globalAlpha = 1.0;
-            }
-
-            // Motor label
-            ctx.fillStyle = '#e5e7eb';
-            ctx.font = 'bold 11px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('M' + (m + 1), motorPos[m].x, motorPos[m].y);
+    // ===== Lazy 3D init (called on first tab show) =====
+    function init3D() {
+        if (threeInitialized) return;
+        if (typeof THREE === 'undefined') {
+            console.warn('Three.js not loaded, skipping 3D drone view');
+            return;
         }
 
-        ctx.restore();
+        var container = document.getElementById('dv3dContainer');
+        if (!container) return;
+
+        var w = container.clientWidth;
+        var h = container.clientHeight;
+        if (w < 10 || h < 10) {
+            console.warn('dv3dContainer has no dimensions yet, deferring');
+            return;
+        }
+
+        threeInitialized = true;
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0d0d1a);
+
+        camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+        camera.position.set(3.5, 3.5, 4.5);
+        camera.lookAt(0, 0, 0);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(w, h);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // Lighting
+        var ambient = new THREE.AmbientLight(0x667799, 0.8);
+        scene.add(ambient);
+
+        var dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(5, 8, 5);
+        scene.add(dirLight);
+
+        var fillLight = new THREE.DirectionalLight(0x8888ff, 0.4);
+        fillLight.position.set(-3, 4, -3);
+        scene.add(fillLight);
+
+        // Ground grid
+        var gridHelper = new THREE.GridHelper(12, 12, 0x333355, 0x222244);
+        gridHelper.position.y = -1.5;
+        scene.add(gridHelper);
+
+        // Build quad
+        var quad = buildQuadModel();
+        scene.add(quad);
+
+        // Resize handler
+        window.addEventListener('resize', function() {
+            if (!renderer || !isTabVisible()) return;
+            var rw = container.clientWidth;
+            var rh = container.clientHeight;
+            if (rw < 10 || rh < 10) return;
+            camera.aspect = rw / rh;
+            camera.updateProjectionMatrix();
+            renderer.setSize(rw, rh);
+        });
+
+        renderer.render(scene, camera);
+        console.log('3D drone view initialized:', w + 'x' + h);
     }
 
-    function roundRect(ctx, x, y, w, h, r) {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.arcTo(x + w, y, x + w, y + r, r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-        ctx.lineTo(x + r, y + h);
-        ctx.arcTo(x, y + h, x, y + h - r, r);
-        ctx.lineTo(x, y + r);
-        ctx.arcTo(x, y, x + r, y, r);
-        ctx.closePath();
+    function resizeRenderer() {
+        if (!renderer) return;
+        var container = document.getElementById('dv3dContainer');
+        if (!container) return;
+        var w = container.clientWidth;
+        var h = container.clientHeight;
+        if (w < 10 || h < 10) return;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
     }
 
+    // ===== Update HUD DOM elements =====
     function updateDOM() {
-        // Mode badge
         var modeName = COPTER_MODES[target.mode] || 'MODE ' + target.mode;
         var modeBadge = getEl('dvModeBadge');
         if (modeBadge) modeBadge.textContent = modeName;
 
-        // Armed badge
         var armedBadge = getEl('dvArmedBadge');
         if (armedBadge) {
             armedBadge.textContent = target.armed ? 'ARMED' : 'DISARMED';
             armedBadge.className = 'drone-hud-badge drone-armed-badge ' + (target.armed ? 'armed' : 'disarmed');
         }
 
-        // Heading
         var hdg = getEl('dvHeading');
         if (hdg) hdg.textContent = Math.round(display.heading);
 
-        // Altitude
         var alt = getEl('dvAltitude');
         if (alt) alt.textContent = display.altitude.toFixed(1);
 
-        // Climb
         var clm = getEl('dvClimb');
         if (clm) clm.textContent = display.climb.toFixed(1);
 
-        // Attitude readout
         var r = getEl('dvRoll');
         if (r) r.textContent = display.roll.toFixed(1);
         var p = getEl('dvPitch');
@@ -301,13 +368,6 @@
         var y = getEl('dvYaw');
         if (y) y.textContent = display.yaw.toFixed(1);
 
-        // Yaw rotation on canvas wrapper (CSS transform for GPU acceleration)
-        var wrapper = getEl('dvCanvasWrapper');
-        if (wrapper) {
-            wrapper.style.transform = 'rotate(' + display.yaw + 'deg)';
-        }
-
-        // Motor bars
         for (var i = 0; i < 4; i++) {
             var pct = Math.round(display.motors[i]);
             var fill = getEl('dvMotor' + (i + 1));
@@ -320,13 +380,16 @@
         }
     }
 
+    // ===== Animation loop =====
     function animationLoop() {
         if (!isTabVisible()) {
             animFrameId = null;
             return;
         }
 
-        var f = 0.15;  // lerp factor (~smooth at 60fps)
+        animFrameId = requestAnimationFrame(animationLoop);
+
+        var f = 0.15;
 
         display.roll = lerp(display.roll, target.roll, f);
         display.pitch = lerp(display.pitch, target.pitch, f);
@@ -339,20 +402,35 @@
             display.motors[i] = lerp(display.motors[i], target.motors[i], f);
         }
 
-        drawDrone();
-        updateDOM();
+        // Update 3D model attitude
+        if (quadGroup) {
+            var rollRad = display.roll * Math.PI / 180;
+            var pitchRad = display.pitch * Math.PI / 180;
+            var yawRad = display.yaw * Math.PI / 180;
 
-        animFrameId = requestAnimationFrame(animationLoop);
+            quadGroup.rotation.set(0, 0, 0);
+            quadGroup.rotation.order = 'YXZ';
+            quadGroup.rotation.y = -yawRad;
+            quadGroup.rotation.x = pitchRad;
+            quadGroup.rotation.z = -rollRad;
+        }
+
+        // Spin propellers
+        for (var p = 0; p < propellers.length; p++) {
+            propellers[p].rotation.y += (p % 2 === 0 ? 0.3 : -0.3);
+        }
+
+        if (renderer) renderer.render(scene, camera);
+        updateDOM();
     }
 
     function startAnimation() {
-        if (!animFrameId) {
+        if (!animFrameId && threeInitialized) {
             animFrameId = requestAnimationFrame(animationLoop);
         }
     }
 
     function onSystemStatus(data) {
-        // Update targets from system_status data
         if (data.attitude_roll !== undefined) target.roll = data.attitude_roll;
         if (data.attitude_pitch !== undefined) target.pitch = data.attitude_pitch;
         if (data.attitude_yaw !== undefined) target.yaw = data.attitude_yaw;
@@ -362,7 +440,6 @@
         if (data.armed !== undefined) target.armed = data.armed;
         if (data.current_mode !== undefined) target.mode = data.current_mode;
 
-        // Motor outputs from servo PWM values (1000-2000 -> 0-100%)
         if (data.servo_outputs && data.servo_outputs.length >= 4) {
             for (var i = 0; i < 4; i++) {
                 var pwm = data.servo_outputs[i] || 1000;
@@ -370,20 +447,32 @@
             }
         }
 
-        // OSD update
         lastStatusData = data;
-        if (isTabVisible()) updateOsd();
-
-        // Start animation if tab is visible
-        if (isTabVisible()) startAnimation();
+        if (isTabVisible()) {
+            var now = Date.now();
+            if (now - lastOsdUpdateTs > OSD_MIN_INTERVAL_MS) {
+                updateOsd();
+                lastOsdUpdateTs = now;
+            }
+            startAnimation();
+        }
     }
 
-    // Initialize when DOM is ready
-    function init() {
-        canvas = document.getElementById('dvCanvas');
-        if (!canvas) return;
-        ctx = canvas.getContext('2d');
+    // Called when user clicks the drone-view tab
+    function onTabShown() {
+        if (!threeInitialized) {
+            setTimeout(function() {
+                init3D();
+                startAnimation();
+            }, 100);
+        } else {
+            resizeRenderer();
+            setTimeout(startAnimation, 50);
+        }
+    }
 
+    // ===== Init =====
+    function init() {
         // Register system status hook
         if (window._app && window._app.systemStatusHooks) {
             window._app.systemStatusHooks.push(onSystemStatus);
@@ -410,8 +499,7 @@
             clearBtn.addEventListener('click', function() {
                 osdEnabled.clear();
                 saveOsdFields();
-                updateOsd();
-                // Uncheck all checkboxes in the modal
+                clearOsdCache();
                 var cbs = document.querySelectorAll('#osdFieldList input[type="checkbox"]');
                 cbs.forEach(function(cb) { cb.checked = false; });
             });
@@ -425,19 +513,17 @@
             });
         }
 
-        // Start animation when tab becomes visible
-        // Listen for tab switches (menu-item clicks)
+        // Lazy-init 3D on first tab visit
         var menuItems = document.querySelectorAll('.menu-item[data-tab]');
         menuItems.forEach(function(item) {
             item.addEventListener('click', function() {
                 if (item.getAttribute('data-tab') === 'drone-view') {
-                    setTimeout(startAnimation, 50);
+                    onTabShown();
                 }
             });
         });
     }
 
-    // Wait for DOM
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {

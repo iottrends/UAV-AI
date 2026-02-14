@@ -534,13 +534,17 @@ document.addEventListener('DOMContentLoaded', function() {
          if (tabContent) {
             tabContent.style.display = 'block';
 
-            // Keep chat window visible in all tabs
-            document.getElementById('chat-container').style.display = 'flex';
+            // Keep chat window visible in all tabs (unless collapsed)
+            var chatEl = document.getElementById('chat-container');
+            if (chatEl && !chatEl.classList.contains('collapsed')) {
+               chatEl.style.display = 'flex';
+            }
 
             // Adjust width of the active tab content to make room for chat
             var activeTab = document.getElementById(tabId + '-tab');
             if (activeTab) {
-               activeTab.style.width = '65%';
+               var chatCollapsed = chatEl && chatEl.classList.contains('collapsed');
+               activeTab.style.width = chatCollapsed ? '100%' : '65%';
             }
          }
       });
@@ -588,6 +592,33 @@ document.addEventListener('DOMContentLoaded', function() {
                time: window._app.getCurrentTime()
             });
          }
+      });
+   }
+});
+
+// Panel toggle handlers
+document.addEventListener('DOMContentLoaded', function() {
+   var toggleSidebar = document.getElementById('toggleSidebar');
+   var toggleChat = document.getElementById('toggleChat');
+   var sidebar = document.querySelector('.sidebar');
+   var chatContainer = document.getElementById('chat-container');
+
+   if (toggleSidebar && sidebar) {
+      toggleSidebar.addEventListener('click', function() {
+         sidebar.classList.toggle('collapsed');
+      });
+   }
+
+   if (toggleChat && chatContainer) {
+      toggleChat.addEventListener('click', function() {
+         chatContainer.classList.toggle('collapsed');
+         // When chat is hidden, expand tab content to full width
+         var activeTabs = document.querySelectorAll('.tab-content');
+         activeTabs.forEach(function(tab) {
+            if (tab.style.display !== 'none') {
+               tab.style.width = chatContainer.classList.contains('collapsed') ? '100%' : '65%';
+            }
+         });
       });
    }
 });

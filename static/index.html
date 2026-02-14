@@ -8,6 +8,7 @@
       <link rel="stylesheet" href="/static/css/style.css">
       <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
    </head>
    <body>
       <!-- Header -->
@@ -21,6 +22,12 @@
             <div id="copilotBadge" class="copilot-badge" style="display:none;" title="Click to toggle co-pilot mode. Shift+click for auto mode.">
                <i class="fas fa-robot"></i> CO-PILOT
             </div>
+            <button class="panel-toggle-btn" id="toggleSidebar" title="Toggle sidebar">
+               <i class="fas fa-bars"></i>
+            </button>
+            <button class="panel-toggle-btn" id="toggleChat" title="Toggle chat panel">
+               <i class="fas fa-comment"></i>
+            </button>
          </div>
       </header>
       <!-- Main Container -->
@@ -43,6 +50,10 @@
                <i class="fas fa-plug"></i>
                Serial Ports
             </div>
+            <div class="menu-item" data-tab="calibration">
+               <i class="fas fa-crosshairs"></i>
+               Calibration
+            </div>
             <div class="menu-item" data-tab="parameters">
                <i class="fas fa-sliders-h"></i>
                Parameters
@@ -59,10 +70,6 @@
                <i class="fas fa-save"></i>
                Configs
             </div>
-            <div class="menu-item" data-tab="calibration">
-               <i class="fas fa-crosshairs"></i>
-               Calibration
-            </div>
             <div class="menu-item" data-tab="motors">
                <i class="fas fa-cog"></i>
                Motors
@@ -74,6 +81,11 @@
             <div class="menu-item" data-tab="drone-view">
                <i class="fas fa-plane"></i>
                Drone View
+            </div>
+            <div style="flex-grow: 1;"></div>
+            <div class="menu-item" data-tab="settings">
+               <i class="fas fa-cog"></i>
+               Settings
             </div>
          </div>
          <!-- Main Content -->
@@ -485,7 +497,15 @@
             <!-- Calibration Tab -->
             <div class="tab-content" id="calibration-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
                <h2 class="dashboard-title">Field Calibration</h2>
-               <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Trigger on-board calibration routines directly from the web UI.</p>
+               <p style="color: var(--text-muted); margin-bottom: 1rem;">Trigger on-board calibration routines directly from the web UI.</p>
+               <!-- 3D Quad Model -->
+               <div class="card" style="margin-bottom: 1.5rem; padding: 0; overflow: hidden; background: #0d0d1a;">
+                  <div id="cal3dContainer" style="width: 100%; height: 300px; position: relative;">
+                     <div id="cal3dAttitude" style="position: absolute; bottom: 8px; left: 12px; font-size: 0.75rem; font-family: monospace; color: #8888aa; z-index: 1;">
+                        R: <span id="cal3dRoll">0.0</span>&deg; &nbsp; P: <span id="cal3dPitch">0.0</span>&deg; &nbsp; Y: <span id="cal3dYaw">0.0</span>&deg;
+                     </div>
+                  </div>
+               </div>
                <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
                   <div class="card cal-card" data-cal="gyro" style="min-width: 200px; flex: 1;">
                      <div class="card-title"><i class="fas fa-sync-alt"></i> Gyro Calibration</div>
@@ -709,8 +729,8 @@
                         <div class="drone-altitude-value" id="dvAltitude">0.0</div>
                         <div class="drone-altitude-unit">m</div>
                      </div>
-                     <div class="drone-canvas-wrapper" id="dvCanvasWrapper">
-                        <canvas id="dvCanvas" width="400" height="400"></canvas>
+                     <div class="drone-canvas-wrapper" id="dvCanvasWrapper" style="position: relative;">
+                        <div id="dv3dContainer" style="width: 100%; height: 100%;"></div>
                      </div>
                      <div class="drone-altitude-panel">
                         <div class="drone-altitude-label">V/S</div>
@@ -752,6 +772,79 @@
                   <button class="drone-osd-config-btn" id="dvOsdConfigBtn" title="Configure OSD fields">
                      <i class="fas fa-cog"></i> OSD
                   </button>
+               </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-content" id="settings-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+               <h2 class="dashboard-title"><i class="fas fa-cog"></i> Settings</h2>
+               <div class="card" style="margin-bottom: 1.5rem;">
+                  <div class="card-title">API KEYS</div>
+                  <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                     Configure API keys for AI providers. Keys are stored in <code>.env</code> on the device.
+                  </p>
+                  <div id="apiKeysContainer" style="display: flex; flex-direction: column; gap: 1rem;">
+                     <!-- Gemini -->
+                     <div class="api-key-card" data-provider="gemini" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                           <div style="display: flex; align-items: center; gap: 0.5rem;">
+                              <i class="fas fa-robot" style="color: #4285f4;"></i>
+                              <strong>Google Gemini</strong>
+                           </div>
+                           <span class="api-key-status" data-provider="gemini" style="font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 10px; background: #f0f0f0; color: var(--text-muted);">Not configured</span>
+                        </div>
+                        <div class="api-key-preview" data-provider="gemini" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; font-family: monospace; display: none;"></div>
+                        <div style="display: flex; gap: 0.5rem;">
+                           <input type="password" class="api-key-input" data-provider="gemini" placeholder="AIza..." style="flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 5px; font-size: 0.85rem;">
+                           <button class="api-key-save" data-provider="gemini" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85rem;">
+                              <i class="fas fa-save"></i> Save
+                           </button>
+                           <button class="api-key-delete" data-provider="gemini" style="background-color: var(--danger-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.85rem; display: none;">
+                              <i class="fas fa-trash"></i>
+                           </button>
+                        </div>
+                     </div>
+                     <!-- OpenAI -->
+                     <div class="api-key-card" data-provider="openai" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                           <div style="display: flex; align-items: center; gap: 0.5rem;">
+                              <i class="fas fa-brain" style="color: #10a37f;"></i>
+                              <strong>OpenAI (GPT-4o)</strong>
+                           </div>
+                           <span class="api-key-status" data-provider="openai" style="font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 10px; background: #f0f0f0; color: var(--text-muted);">Not configured</span>
+                        </div>
+                        <div class="api-key-preview" data-provider="openai" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; font-family: monospace; display: none;"></div>
+                        <div style="display: flex; gap: 0.5rem;">
+                           <input type="password" class="api-key-input" data-provider="openai" placeholder="sk-..." style="flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 5px; font-size: 0.85rem;">
+                           <button class="api-key-save" data-provider="openai" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85rem;">
+                              <i class="fas fa-save"></i> Save
+                           </button>
+                           <button class="api-key-delete" data-provider="openai" style="background-color: var(--danger-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.85rem; display: none;">
+                              <i class="fas fa-trash"></i>
+                           </button>
+                        </div>
+                     </div>
+                     <!-- Anthropic -->
+                     <div class="api-key-card" data-provider="claude" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                           <div style="display: flex; align-items: center; gap: 0.5rem;">
+                              <i class="fas fa-comment-dots" style="color: #d97706;"></i>
+                              <strong>Anthropic (Claude)</strong>
+                           </div>
+                           <span class="api-key-status" data-provider="claude" style="font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 10px; background: #f0f0f0; color: var(--text-muted);">Not configured</span>
+                        </div>
+                        <div class="api-key-preview" data-provider="claude" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; font-family: monospace; display: none;"></div>
+                        <div style="display: flex; gap: 0.5rem;">
+                           <input type="password" class="api-key-input" data-provider="claude" placeholder="sk-ant-..." style="flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 5px; font-size: 0.85rem;">
+                           <button class="api-key-save" data-provider="claude" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85rem;">
+                              <i class="fas fa-save"></i> Save
+                           </button>
+                           <button class="api-key-delete" data-provider="claude" style="background-color: var(--danger-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.85rem; display: none;">
+                              <i class="fas fa-trash"></i>
+                           </button>
+                        </div>
+                     </div>
+                  </div>
                </div>
             </div>
 
@@ -839,5 +932,6 @@
       <script defer src="/static/js/tabs/logs.js"></script>
       <script defer src="/static/js/tabs/serial-ports.js"></script>
       <script defer src="/static/js/tabs/drone-view.js"></script>
+      <script defer src="/static/js/tabs/settings.js"></script>
    </body>
 </html>

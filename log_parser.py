@@ -1,4 +1,5 @@
 import os
+import math
 import logging
 from pymavlink import mavutil
 from pymavlink.DFReader import DFReader_binary, DFReader_text
@@ -86,6 +87,15 @@ class LogParser:
                     d = msg.to_dict()
                     # Remove mavpackettype key added by pymavlink
                     d.pop('mavpackettype', None)
+                    # Sanitize values for JSON serialization
+                    for k, v in d.items():
+                        if isinstance(v, bytes):
+                            try:
+                                d[k] = v.decode('utf-8', errors='replace')
+                            except Exception:
+                                d[k] = str(v)
+                        elif isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                            d[k] = None
                     self.parsed_data[msg_type].append(d)
 
                     # Track fields from first message
