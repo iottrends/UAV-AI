@@ -123,6 +123,15 @@ class MavlinkHandler:
                 if not msg:
                     continue
 
+                # Capture TIMESYNC timestamp immediately before any processing overhead
+                if msg.get_type() == "TIMESYNC" and msg.tc1 != 0:
+                    now_us = int(time.time() * 1e6)
+                    rtt_ms = (now_us - msg.ts1) / 1000.0
+                    if 0 < rtt_ms < 10000:
+                        self.latency_ms = round(rtt_ms, 1)
+                        self.latency_history.append(self.latency_ms)
+                    continue
+
                 # Process the message
                 self._process_message(msg)
 
@@ -195,17 +204,6 @@ class MavlinkHandler:
 
         elif msg.get_type() == "LOG_DATA":
             self.on_log_data_received(msg.id, msg.data)
-        elif msg.get_type() == "TIMESYNC":
-            # tc1 != 0 means this is a response to our request
-            tc1 = msg.tc1
-            ts1 = msg.ts1
-            if tc1 != 0:
-                now_us = int(time.time() * 1e6)
-                rtt_ms = (now_us - ts1) / 1000.0
-                if 0 < rtt_ms < 10000:  # sanity check: ignore negative or >10s
-                    self.latency_ms = round(rtt_ms, 1)
-                    self.latency_history.append(self.latency_ms)
-
         elif msg.get_type() == "COMMAND_ACK":
             with self.command_ack_condition:
                 command_id = msg.command
@@ -227,18 +225,22 @@ class MavlinkHandler:
         self.param_count = msg.param_count
         param_index = msg.param_index
 
-        # Show progress periodically
+        # Always update progress so system_status broadcasts have current value
+        self.param_progress = (param_index + 1) / self.param_count * 100
+
+        # Log and emit progress periodically
         if param_index % 50 == 0 or param_index == self.param_count - 1:
-            self.param_progress = (param_index + 1) / self.param_count * 100
             mavlink_logger.info(f"⏳ Parameter download: {self.param_progress:.1f}% ({param_index + 1}/{self.param_count})")
             print(f"⏳ Parameter download: {self.param_progress:.1f}% ({param_index + 1}/{self.param_count})")
 
             ## emit param progress to frontend
             if self.socketio:
-                self.socketio.emit('parameter_progress', {
-                "percentage": self.param_progress,
-                "downloaded": param_index + 1,
-                "total": self.param_count
+                self.socketio.emit('param_progress', {
+                "params": {
+                    "percentage": self.param_progress,
+                    "downloaded": param_index + 1,
+                    "total": self.param_count
+                }
             })
 
         # Check if we've received all parameters
@@ -249,10 +251,12 @@ class MavlinkHandler:
             #emit to frontend
             self.on_params_received()
             if self.socketio:
-                self.socketio.emit('parameter_progress', {
-                    "percentage": self.param_progress,
-                    "downloaded": param_index + 1,
-                    "total": self.param_count
+                self.socketio.emit('param_progress', {
+                    "params": {
+                        "percentage": self.param_progress,
+                        "downloaded": param_index + 1,
+                        "total": self.param_count
+                    }
                 })
 
 

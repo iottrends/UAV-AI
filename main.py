@@ -32,7 +32,7 @@ def main():
         validator_instance=validator,
         jarvis=JARVIS,
         #llm_ai=llm_ai_v5,
-        host='127.0.0.1',  # Listen on all interfaces
+        host='0.0.0.0',  # Listen on all interfaces
         port=5000,  # Set to True for debugging
         debug=False,
         loggers=loggers,  # Pass loggers to web_server
