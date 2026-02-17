@@ -14,16 +14,13 @@ if errorlevel 1 (
 )
 
 REM Install/upgrade PyInstaller
-echo Installing PyInstaller...
-pip install pyinstaller
-
-REM Install project dependencies
+REM Install project dependencies (includes pyinstaller)
 echo Installing project dependencies...
 pip install -r requirements.txt
 
 echo.
 echo Building UAV-AI executable...
-pyinstaller uav-ai.spec --noconfirm
+python -m PyInstaller uav-ai.spec --noconfirm
 
 if errorlevel 1 (
     echo.

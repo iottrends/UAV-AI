@@ -13,17 +13,13 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Install/upgrade PyInstaller
-echo "Installing PyInstaller..."
-pip install pyinstaller
-
-# Install project dependencies
+# Install project dependencies (includes pyinstaller)
 echo "Installing project dependencies..."
 pip install -r requirements.txt
 
 echo
 echo "Building UAV-AI executable..."
-pyinstaller uav-ai.spec --noconfirm
+python3 -m PyInstaller uav-ai.spec --noconfirm
 
 echo
 echo "=== Build complete! ==="
