@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import math
+import signal
 import threading
 import time
 import glob
@@ -95,13 +96,13 @@ last_system_health = {
 @app.route('/')
 def index():
     """Serve the main HTML page"""
-    return send_from_directory('static', 'index.html')
+    return send_from_directory(_resource_path('static'), 'index.html')
 
 
 @app.route('/<path:path>')
 def static_files(path):
     """Serve static files"""
-    return send_from_directory('static', path)
+    return send_from_directory(_resource_path('static'), path)
 
 
 @app.route('/api/connect', methods=['POST'])
@@ -604,13 +605,29 @@ def handle_connect():
     emit('system_status', last_system_health)
 
 #############################################################################
+_shutdown_timer = None
+
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle WebSocket disconnection"""
+    """Handle WebSocket disconnection. In bundled mode, auto-shutdown when all clients leave."""
+    global _shutdown_timer
     client_id = request.sid
     if client_id in connected_clients:
         connected_clients.remove(client_id)
     logger.info(f"Client disconnected: {client_id}, remaining clients: {len(connected_clients)}")
+
+    # Auto-shutdown in bundled (desktop) mode when no clients remain
+    if getattr(sys, '_MEIPASS', None) and len(connected_clients) == 0:
+        def _delayed_shutdown():
+            if len(connected_clients) == 0:
+                logger.info("No clients connected — shutting down desktop app")
+                os.kill(os.getpid(), signal.SIGTERM)
+        # Cancel any previous timer (e.g. page refresh)
+        if _shutdown_timer is not None:
+            _shutdown_timer.cancel()
+        _shutdown_timer = threading.Timer(5.0, _delayed_shutdown)
+        _shutdown_timer.daemon = True
+        _shutdown_timer.start()
 
 @socketio.on('ping')
 def handle_ping():
@@ -1628,7 +1645,7 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
     index_path = os.path.join(static_dir, 'index.html')
     if not os.path.exists(index_path):
         logger.info("Copying index.html to static directory")
-        source_index = os.path.join(os.path.dirname(__file__), 'index.html')
+        source_index = os.path.join(_resource_path(''), 'index.html')
         if os.path.exists(source_index):
             import shutil
             shutil.copy2(source_index, index_path)

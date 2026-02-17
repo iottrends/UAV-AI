@@ -78,7 +78,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # No terminal window on Windows
+    console=True,  # DEBUG: enable to see errors; set back to False for release
 )
 
 coll = COLLECT(
