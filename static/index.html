@@ -54,6 +54,10 @@
                <i class="fas fa-crosshairs"></i>
                Calibration
             </div>
+            <div class="menu-item" data-tab="firmware">
+               <i class="fas fa-microchip"></i>
+               Firmware
+            </div>
             <div class="menu-item" data-tab="parameters">
                <i class="fas fa-sliders-h"></i>
                Parameters
@@ -293,6 +297,65 @@
                   <div id="serialStatus" style="margin-top:0.5rem; font-size:0.85rem;"></div>
                </div>
             </div>
+            <!-- Firmware Tab -->
+            <div class="tab-content" id="firmware-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+               <h2 class="dashboard-title">Firmware</h2>
+               <p style="color: var(--text-muted); margin-bottom: 1rem;">Flash ArduPilot firmware from a local file or the online firmware server.</p>
+
+               <!-- Current Firmware Info -->
+               <div class="card" style="margin-bottom: 1rem;">
+                  <div class="card-title"><i class="fas fa-info-circle"></i> Current Firmware</div>
+                  <div id="fwCurrentInfo" style="font-size: 0.85rem; color: var(--text-muted);">
+                     Not connected — connect a flight controller to see firmware info.
+                  </div>
+               </div>
+
+               <!-- Flash Local File -->
+               <div class="card" style="margin-bottom: 1rem;">
+                  <div class="card-title"><i class="fas fa-file-upload"></i> Flash Local File</div>
+                  <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">Select an ArduPilot <code>.apj</code> firmware file from your computer.</p>
+                  <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                     <input type="file" id="fwLocalFile" accept=".apj" style="font-size: 0.85rem;">
+                     <button id="fwFlashLocalBtn" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; white-space: nowrap;" disabled>
+                        <i class="fas fa-bolt"></i> Flash Selected File
+                     </button>
+                  </div>
+                  <div id="fwLocalStatus" style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);"></div>
+               </div>
+
+               <!-- Online Firmware -->
+               <div class="card" style="margin-bottom: 1rem;">
+                  <div class="card-title"><i class="fas fa-cloud-download-alt"></i> Online Firmware</div>
+                  <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem;">
+                     <select id="fwVehicleFilter" style="padding: 0.4rem 0.6rem; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.85rem;">
+                        <option value="">All Vehicle Types</option>
+                        <option value="Copter">Copter</option>
+                        <option value="Plane">Plane</option>
+                        <option value="Rover">Rover</option>
+                        <option value="Sub">Sub</option>
+                        <option value="Tracker">Tracker</option>
+                        <option value="Heli">Heli</option>
+                     </select>
+                     <button id="fwRefreshManifest" style="background-color: var(--secondary-color); color: white; border: none; border-radius: 5px; padding: 0.4rem 0.8rem; cursor: pointer; font-size: 0.85rem;">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                     </button>
+                  </div>
+                  <div id="fwOnlineList" style="max-height: 300px; overflow-y: auto; font-size: 0.85rem;">
+                     <p style="color: var(--text-muted);">Click Refresh to fetch available firmware.</p>
+                  </div>
+               </div>
+
+               <!-- Flash Progress -->
+               <div class="card" id="fwProgressCard" style="margin-bottom: 1rem; display: none;">
+                  <div class="card-title"><i class="fas fa-tasks"></i> Flash Progress</div>
+                  <div id="fwProgressStage" style="font-weight: 600; margin-bottom: 0.5rem;">Idle</div>
+                  <div style="background: var(--bg-color); border-radius: 5px; overflow: hidden; height: 20px; margin-bottom: 0.5rem;">
+                     <div id="fwProgressBar" style="height: 100%; width: 0%; background: var(--primary-color); transition: width 0.3s ease; border-radius: 5px;"></div>
+                  </div>
+                  <div id="fwProgressLog" style="background: #1a1a2e; color: #a0ffa0; font-family: monospace; font-size: 0.75rem; padding: 0.75rem; border-radius: 5px; max-height: 200px; overflow-y: auto; white-space: pre-wrap;"></div>
+               </div>
+            </div>
+
             <!-- Parameters Tab -->
             <div class="tab-content" id="parameters-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
                <h2 class="dashboard-title">Parameters</h2>
@@ -929,6 +992,7 @@
       <script defer src="/static/js/tabs/parameters.js"></script>
       <script defer src="/static/js/tabs/configs.js"></script>
       <script defer src="/static/js/tabs/calibration.js"></script>
+      <script defer src="/static/js/tabs/firmware.js"></script>
       <script defer src="/static/js/tabs/logs.js"></script>
       <script defer src="/static/js/tabs/serial-ports.js"></script>
       <script defer src="/static/js/tabs/drone-view.js"></script>

@@ -340,6 +340,303 @@ def get_firmware_info():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 ####################################################################################
+# Firmware Flashing
+####################################################################################
+import firmware_flasher
+import urllib.request
+
+FIRMWARE_CACHE_DIR = None  # initialized lazily after _writable_path is defined
+
+# Flash state shared across threads
+_flash_state = {
+    "status": "idle",       # idle | flashing | complete | error
+    "stage": "",
+    "percent": 0,
+    "message": "",
+    "result": None,
+}
+_flash_lock = threading.Lock()
+_manifest_cache = {"data": None, "fetched_at": 0}
+
+
+def _get_firmware_cache_dir():
+    global FIRMWARE_CACHE_DIR
+    if FIRMWARE_CACHE_DIR is None:
+        FIRMWARE_CACHE_DIR = _writable_path('firmware_cache')
+        os.makedirs(FIRMWARE_CACHE_DIR, exist_ok=True)
+    return FIRMWARE_CACHE_DIR
+
+
+@app.route('/api/firmware/manifest', methods=['GET'])
+def get_firmware_manifest():
+    """Fetch ArduPilot firmware manifest, filter by detected board_id."""
+    try:
+        now = time.time()
+        # Cache for 1 hour
+        if _manifest_cache["data"] and (now - _manifest_cache["fetched_at"]) < 3600:
+            manifest = _manifest_cache["data"]
+        else:
+            cache_dir = _get_firmware_cache_dir()
+            manifest_path = os.path.join(cache_dir, 'manifest.json')
+
+            # Check local file cache
+            if os.path.exists(manifest_path) and (now - os.path.getmtime(manifest_path)) < 3600:
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+            else:
+                url = 'https://firmware.ardupilot.org/manifest.json'
+                logger.info(f"Fetching ArduPilot manifest from {url}...")
+                req = urllib.request.Request(url, headers={'User-Agent': 'UAV-AI/1.0'})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    raw = resp.read()
+                manifest = json.loads(raw)
+                # Save to disk cache
+                with open(manifest_path, 'w') as f:
+                    json.dump(manifest, f)
+                logger.info("Manifest fetched and cached")
+
+            _manifest_cache["data"] = manifest
+            _manifest_cache["fetched_at"] = now
+
+        # Filter by detected board_id if connected
+        detected_board_id = None
+        if validator and validator.firmware_data:
+            detected_board_id = validator.firmware_data.get('product_id')
+
+        firmware_list = manifest.get('firmware', [])
+
+        # Filter to .apj files only
+        filtered = [
+            fw for fw in firmware_list
+            if fw.get('format') == 'apj'
+        ]
+
+        # If we know the board, filter to matching board_id
+        if detected_board_id:
+            board_filtered = [
+                fw for fw in filtered
+                if fw.get('board_id') == detected_board_id
+            ]
+            # Fall back to full list if no matches (board_id might differ in manifest)
+            if board_filtered:
+                filtered = board_filtered
+
+        # Group by vehicle type and version for frontend
+        grouped = {}
+        for fw in filtered:
+            vehicle = fw.get('vehicletype', 'Unknown')
+            if vehicle not in grouped:
+                grouped[vehicle] = []
+            grouped[vehicle].append({
+                'url': fw.get('url', ''),
+                'version': fw.get('mav-firmware-version-str', fw.get('mav-firmware-version', '')),
+                'vehicletype': vehicle,
+                'board_id': fw.get('board_id', 0),
+                'platform': fw.get('platform', ''),
+                'latest': fw.get('latest', 0),
+                'mav_type': fw.get('mav-type', ''),
+                'git_sha': fw.get('git-sha', ''),
+            })
+
+        # Sort each group by version descending
+        for vehicle in grouped:
+            grouped[vehicle].sort(key=lambda x: x['version'], reverse=True)
+
+        return jsonify({
+            "status": "success",
+            "firmware": grouped,
+            "detected_board_id": detected_board_id,
+        })
+
+    except urllib.error.URLError as e:
+        logger.error(f"Failed to fetch manifest: {e}")
+        return jsonify({"status": "error", "message": f"Failed to fetch manifest: {e}"}), 502
+    except Exception as e:
+        logger.error(f"Error getting firmware manifest: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/firmware/download', methods=['POST'])
+def download_firmware():
+    """Download .apj firmware from ArduPilot server to local cache."""
+    try:
+        data = request.get_json(force=True)
+        url = data.get('url')
+        if not url:
+            return jsonify({"status": "error", "message": "No URL provided"}), 400
+
+        # Validate URL is from ArduPilot firmware server
+        if not url.startswith('https://firmware.ardupilot.org/'):
+            return jsonify({"status": "error", "message": "URL must be from firmware.ardupilot.org"}), 400
+
+        cache_dir = _get_firmware_cache_dir()
+        filename = url.split('/')[-1]
+        if not filename.endswith('.apj'):
+            return jsonify({"status": "error", "message": "URL must point to an .apj file"}), 400
+
+        local_path = os.path.join(cache_dir, filename)
+
+        # Download with progress
+        logger.info(f"Downloading firmware from {url}...")
+        req = urllib.request.Request(url, headers={'User-Agent': 'UAV-AI/1.0'})
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            total = int(resp.headers.get('Content-Length', 0))
+            downloaded = 0
+            chunks = []
+            while True:
+                chunk = resp.read(8192)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                downloaded += len(chunk)
+                if total > 0:
+                    pct = int(downloaded * 100 / total)
+                    socketio.emit('firmware_download_progress', {
+                        'percent': pct,
+                        'downloaded': downloaded,
+                        'total': total,
+                    })
+
+        with open(local_path, 'wb') as f:
+            for chunk in chunks:
+                f.write(chunk)
+
+        logger.info(f"Downloaded firmware to {local_path}")
+        return jsonify({
+            "status": "success",
+            "path": local_path,
+            "filename": filename,
+            "size": downloaded,
+        })
+
+    except Exception as e:
+        logger.error(f"Error downloading firmware: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/firmware/flash', methods=['POST'])
+def flash_firmware():
+    """Start firmware flash. Accepts uploaded .apj file or cached path."""
+    global _flash_state
+
+    with _flash_lock:
+        if _flash_state["status"] == "flashing":
+            return jsonify({"status": "error", "message": "Flash already in progress"}), 409
+
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+
+    try:
+        force = False
+        apj_path = None
+
+        # Check for uploaded file
+        if 'file' in request.files:
+            uploaded = request.files['file']
+            if not uploaded.filename.endswith('.apj'):
+                return jsonify({"status": "error", "message": "File must be .apj"}), 400
+            cache_dir = _get_firmware_cache_dir()
+            apj_path = os.path.join(cache_dir, uploaded.filename)
+            uploaded.save(apj_path)
+        else:
+            data = request.get_json(force=True)
+            apj_path = data.get('path')
+            force = data.get('force', False)
+
+        if not apj_path or not os.path.exists(apj_path):
+            return jsonify({"status": "error", "message": "No firmware file provided or file not found"}), 400
+
+        # Get current connection port
+        port = connection_params.get("port")
+        if not port or port.startswith("udp"):
+            return jsonify({"status": "error",
+                            "message": "Firmware flashing requires a serial connection (not UDP)"}), 400
+
+        # Start flash in background thread
+        def do_flash():
+            global _flash_state
+            with _flash_lock:
+                _flash_state = {
+                    "status": "flashing", "stage": "init",
+                    "percent": 0, "message": "Starting...", "result": None
+                }
+            socketio.emit('firmware_flash_progress', {
+                'stage': 'init', 'percent': 0, 'message': 'Starting flash...'
+            })
+
+            try:
+                # 1. Reboot FC into bootloader
+                socketio.emit('firmware_flash_progress', {
+                    'stage': 'reboot', 'percent': 0,
+                    'message': 'Rebooting flight controller into bootloader...'
+                })
+                validator.reboot_to_bootloader()
+                time.sleep(1)
+
+                # 2. Disconnect MAVLink to release serial port
+                socketio.emit('firmware_flash_progress', {
+                    'stage': 'reboot', 'percent': 50,
+                    'message': 'Disconnecting MAVLink...'
+                })
+                validator.disconnect()
+                time.sleep(2)  # Wait for bootloader to be ready
+
+                # 3. Flash firmware
+                flasher = firmware_flasher.FirmwareFlasher()
+
+                def progress_cb(stage, percent, message):
+                    with _flash_lock:
+                        _flash_state["stage"] = stage
+                        _flash_state["percent"] = percent
+                        _flash_state["message"] = message
+                    socketio.emit('firmware_flash_progress', {
+                        'stage': stage, 'percent': percent, 'message': message
+                    })
+
+                result = flasher.flash(port, apj_path, progress_callback=progress_cb, force=force)
+
+                with _flash_lock:
+                    if result['success']:
+                        _flash_state["status"] = "complete"
+                        _flash_state["message"] = result['message']
+                    else:
+                        _flash_state["status"] = "error"
+                        _flash_state["message"] = result['message']
+                    _flash_state["result"] = result
+
+                socketio.emit('firmware_flash_complete', result)
+
+            except Exception as e:
+                logger.error(f"Flash thread error: {e}")
+                with _flash_lock:
+                    _flash_state["status"] = "error"
+                    _flash_state["message"] = str(e)
+                    _flash_state["result"] = {'success': False, 'message': str(e)}
+                socketio.emit('firmware_flash_complete', {
+                    'success': False, 'message': str(e)
+                })
+
+        flash_thread = threading.Thread(target=do_flash, daemon=True)
+        flash_thread.start()
+
+        return jsonify({"status": "success", "message": "Flash started"})
+
+    except Exception as e:
+        logger.error(f"Error starting flash: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/firmware/status', methods=['GET'])
+def get_flash_status():
+    """Return current flash state."""
+    with _flash_lock:
+        return jsonify({
+            "status": "success",
+            "flash": dict(_flash_state),
+        })
+
+
+####################################################################################
 # Golden Config Snapshots
 ####################################################################################
 def _writable_path(relative_path):

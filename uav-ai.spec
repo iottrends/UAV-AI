@@ -26,6 +26,7 @@ a = Analysis(
         'logging_config',
         'stt_module',
         'Mavlink_rx_handler',
+        'firmware_flasher',
         'flask',
         'flask_socketio',
         'engineio',

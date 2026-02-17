@@ -587,6 +587,27 @@ class MavlinkHandler:
         """Parse black-box log (override in subclass)."""
         pass
 #####################################################################################
+    def reboot_to_bootloader(self):
+        """Send MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN with param1=3 to stay in bootloader."""
+        if not self.is_connected or not self.mav_conn:
+            mavlink_logger.error("Cannot reboot to bootloader: not connected")
+            return False
+        try:
+            self.mav_conn.mav.command_long_send(
+                self.target_system,
+                self.target_component,
+                mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+                0,    # confirmation
+                3.0,  # param1 = 3 → stay in bootloader
+                0, 0, 0, 0, 0, 0
+            )
+            mavlink_logger.info("Sent reboot-to-bootloader command (param1=3)")
+            return True
+        except Exception as e:
+            mavlink_logger.error(f"Failed to send reboot-to-bootloader: {e}")
+            return False
+
+#####################################################################################
     ##log file handler
     def disconnect(self):
         """Disconnect from MAVLink."""
