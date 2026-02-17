@@ -1,3 +1,4 @@
+import sys
 import os
 import json
 import logging
@@ -12,12 +13,20 @@ from flask_socketio import SocketIO, emit
 from log_parser import LogParser
 import copilot
 
+
+def _resource_path(relative_path):
+    """Get path to resource, works for dev and PyInstaller bundle."""
+    if getattr(sys, '_MEIPASS', None):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
+
+
 # Default logger that will be replaced if loggers are provided
 logger = logging.getLogger('web_server')
 stt_logger = logging.getLogger('stt_module')
 
 # Create Flask app and SocketIO instance
-app = Flask(__name__, static_folder='static')
+app = Flask(__name__, static_folder=_resource_path('static'))
 app.config['SECRET_KEY'] = 'uav-ai-assistant-secret-key'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
@@ -332,7 +341,14 @@ def get_firmware_info():
 ####################################################################################
 # Golden Config Snapshots
 ####################################################################################
-CONFIGS_DIR = os.path.join(os.path.dirname(__file__), 'configs')
+def _writable_path(relative_path):
+    """Get a writable path next to the executable (bundled) or project root (dev)."""
+    if getattr(sys, '_MEIPASS', None):
+        return os.path.join(os.path.dirname(sys.executable), relative_path)
+    return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
+
+
+CONFIGS_DIR = _writable_path('configs')
 os.makedirs(CONFIGS_DIR, exist_ok=True)
 MAX_CONFIGS = 5
 
@@ -661,7 +677,7 @@ def handle_set_api_key(data):
     os.environ[env_var] = key
 
     # Update .env file
-    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    env_path = os.path.join(os.path.dirname(sys.executable) if getattr(sys, '_MEIPASS', None) else os.path.dirname(__file__), '.env')
     try:
         lines = []
         found = False
@@ -734,7 +750,7 @@ def delete_api_key():
         del os.environ[env_var]
 
     # Remove from .env file
-    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    env_path = os.path.join(os.path.dirname(sys.executable) if getattr(sys, '_MEIPASS', None) else os.path.dirname(__file__), '.env')
     try:
         if os.path.exists(env_path):
             with open(env_path, 'r') as f:
@@ -1605,7 +1621,7 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
     #llm_ai_module = llm_ai
 
     # Make sure the static directory exists
-    static_dir = os.path.join(os.path.dirname(__file__), 'static')
+    static_dir = _resource_path('static')
     os.makedirs(static_dir, exist_ok=True)
 
     # Copy index.html to static directory if not already there

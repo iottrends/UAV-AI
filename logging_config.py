@@ -1,8 +1,19 @@
 import logging
+import sys
 import os
 import logging.handlers
 import glob
 import time
+
+
+def _get_log_dir():
+    """Return a writable log directory. Uses a user-local path when running
+    from a PyInstaller bundle (where the CWD may be read-only)."""
+    if getattr(sys, '_MEIPASS', None):
+        # Bundled mode — write logs next to the executable
+        base = os.path.dirname(sys.executable)
+        return os.path.join(base, 'logs')
+    return os.path.join(os.path.abspath(os.path.dirname(__file__)), 'logs')
 
 
 def setup_logging():
@@ -14,7 +25,7 @@ def setup_logging():
     - webserver.log: For web server activities
     """
     # Ensure log directory exists
-    log_dir = "logs"
+    log_dir = _get_log_dir()
     os.makedirs(log_dir, exist_ok=True)
     
     # Cleanup old logs if total size exceeds 1GB

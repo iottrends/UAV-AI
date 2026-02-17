@@ -26,7 +26,11 @@ class MavlinkHandler:
         self.param_progress = 0  # Track parameter download progress percentage
         self.target_system = None
         self.target_component = None
-        self.log_directory = "blackbox_logs"
+        # Write blackbox logs next to the executable (bundled) or project root (dev)
+        if getattr(sys, '_MEIPASS', None):
+            self.log_directory = os.path.join(os.path.dirname(sys.executable), "blackbox_logs")
+        else:
+            self.log_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)), "blackbox_logs")
         self.log_list = []  # store log Ids from Log_Entry messages
         self.firmware_data = {}
         os.makedirs(self.log_directory, exist_ok=True)
