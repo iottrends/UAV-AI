@@ -45,6 +45,10 @@ class MavlinkHandler:
         self.command_ack_status = {} # Stores {command_id: (result, completion_time)}
         self.command_ack_condition = threading.Condition() # For signaling ACK reception
 
+        # For parameter update confirmation (PARAM_VALUE echo after PARAM_SET)
+        self._param_update_condition = threading.Condition()
+        self._pending_param_updates = {}  # {param_name: expected_value}
+
         # Latency measurement via TIMESYNC
         self.latency_ms = 0  # most recent RTT in ms
         self.latency_history = deque(maxlen=60)  # last 60 samples (~1 per second)
@@ -225,6 +229,13 @@ class MavlinkHandler:
         param_value = msg.param_value
         self.params_dict[param_id] = param_value
 
+        # Notify if this is an echo for a pending param update
+        with self._param_update_condition:
+            if param_id in self._pending_param_updates:
+                del self._pending_param_updates[param_id]
+                mavlink_logger.info(f"✅ Parameter {param_id} confirmed: {param_value}")
+                self._param_update_condition.notify_all()
+
         # Track parameter download progress
         self.param_count = msg.param_count
         param_index = msg.param_index
@@ -389,15 +400,18 @@ class MavlinkHandler:
         """Return the current parameter dictionary."""
         return self.params_dict.copy()
 ########################################################################
-    def update_parameter(self, param_name, value):
-        """Update a parameter on the flight controller."""
+    def update_parameter(self, param_name, value, timeout_seconds=5):
+        """Update a parameter on the flight controller and wait for PARAM_VALUE echo."""
         if not self.is_connected:
             return False
 
         try:
-            # Convert parameter value to float
             param_value = float(value)
-            
+
+            # Register as pending before sending
+            with self._param_update_condition:
+                self._pending_param_updates[param_name] = param_value
+
             # Send parameter set command
             self.mav_conn.mav.param_set_send(
                 self.target_system,
@@ -406,13 +420,22 @@ class MavlinkHandler:
                 param_value,
                 mavutil.mavlink.MAV_PARAM_TYPE_REAL32
             )
-            
-            # Store the sent command
             self.tx_mav_msg.append(f"PARAM_SET:{param_name}")
-            
             mavlink_logger.info(f"⏳ Sent parameter update: {param_name} = {param_value}")
+
+            # Wait for FC to echo back PARAM_VALUE
+            with self._param_update_condition:
+                if param_name in self._pending_param_updates:
+                    self._param_update_condition.wait(timeout=timeout_seconds)
+
+                if param_name in self._pending_param_updates:
+                    # Still pending — FC didn't confirm
+                    del self._pending_param_updates[param_name]
+                    mavlink_logger.error(f"❌ Parameter {param_name} update timed out — no PARAM_VALUE echo within {timeout_seconds}s")
+                    return False
+
             return True
-            
+
         except Exception as e:
             mavlink_logger.error(f"❌ Failed to update parameter {param_name}: {e}")
             return False
@@ -430,14 +453,15 @@ class MavlinkHandler:
         "MAV_CMD_NAV_RETURN_TO_LAUNCH": mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH,
     }
 
-    def send_mavlink_command_from_json(self, command_json):
+    def send_mavlink_command_from_json(self, command_json, timeout_seconds=5):
         """
         Sends a MAVLink command (MAV_CMD_LONG) to the flight controller
         based on a JSON dictionary provided by JARVIS.
-        
+
         Args:
             command_json (dict): A dictionary containing command and parameters.
                                  Example: {"command": "MAV_CMD_COMPONENT_ARM_DISARM", "param1": 1, "param2": 21196}
+            timeout_seconds (int): How long to wait for ACK (default 5s).
         Returns:
             bool: True if command was sent, False otherwise.
         """
@@ -473,7 +497,7 @@ class MavlinkHandler:
                 self.target_system,
                 self.target_component,
                 mavlink_command_id,
-                1,  # Confirmation, 1 for first transmission (expected to be ACKed)
+                0,  # Confirmation: 0 = first transmission
                 *params
             )
             self.tx_mav_msg.append(f"COMMAND_SENT:{command_name}")
@@ -481,7 +505,6 @@ class MavlinkHandler:
             print(f">>> SENT MAVLink command: {command_name} | target_sys={self.target_system} target_comp={self.target_component} | params={params}")
 
             # Wait for ACK with a timeout
-            timeout_seconds = 5
             with self.command_ack_condition:
                 acked_result = self.command_ack_status.get(mavlink_command_id)
                 if acked_result is None: # Only wait if ACK not already received (unlikely but safe)
@@ -573,6 +596,11 @@ class MavlinkHandler:
                 self.mav_conn.close()
             except:
                 pass
+        # Reset parameter state so reconnect starts fresh
+        self.params_dict = {}
+        self.param_count = 0
+        self.param_progress = 0
+        self.param_done = 0
         mavlink_logger.info("🔌 Disconnected from MAVLink")
 ######################################################################################
     def parse_firmware_info(self, msg):

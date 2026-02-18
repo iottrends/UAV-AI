@@ -510,7 +510,7 @@ def calibrate():
         "param7": 0,
     }
 
-    success = validator.send_mavlink_command_from_json(command_json)
+    success = validator.send_mavlink_command_from_json(command_json, timeout_seconds=30)
     if success:
         return jsonify({"status": "success", "message": f"{cal_type.capitalize()} calibration command accepted"})
     else:

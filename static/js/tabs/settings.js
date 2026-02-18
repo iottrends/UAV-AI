@@ -89,18 +89,23 @@
       });
 
       // Listen for api_key_result from socket (save confirmation)
-      if (window._app && window._app.socket) {
-         window._app.socket.on('api_key_result', function(data) {
-            // Re-enable all save buttons
-            document.querySelectorAll('.api-key-save').forEach(function(b) {
-               b.innerHTML = '<i class="fas fa-save"></i> Save';
-               b.disabled = false;
+      function setupSocketListener() {
+         if (window._app && window._app.socket) {
+            window._app.socket.on('api_key_result', function(data) {
+               // Re-enable all save buttons
+               document.querySelectorAll('.api-key-save').forEach(function(b) {
+                  b.innerHTML = '<i class="fas fa-save"></i> Save';
+                  b.disabled = false;
+               });
+               if (data.success) {
+                  loadKeyStatus();
+               }
             });
-            if (data.success) {
-               loadKeyStatus();
-            }
-         });
+         } else {
+            setTimeout(setupSocketListener, 100);
+         }
       }
+      setupSocketListener();
 
       // Load status when settings tab becomes visible
       document.querySelectorAll('.menu-item[data-tab]').forEach(function(item) {
