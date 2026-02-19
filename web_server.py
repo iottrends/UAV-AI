@@ -188,6 +188,8 @@ def disconnect_drone():
 
     try:
         validator.disconnect()
+        if jarvis_module:
+            jarvis_module.reset_session()
         return jsonify({"status": "success", "message": "Disconnected from drone"})
     except Exception as e:
         logger.error(f"Disconnection error: {str(e)}")

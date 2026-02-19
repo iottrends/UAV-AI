@@ -130,10 +130,11 @@ The following drone parameters have been changed. Use these updated values going
 # Chat history file path
 CHAT_HISTORY_FILE = os.path.join(os.path.dirname(__file__), "chat_history.json")
 
-# Model state
-_model = None
-_cached_params = None       # full param dict from initial model creation
-_last_seen_params = None     # last param dict seen (for delta computation)
+# Conversation state
+_conversation_history = []   # list of {"role": "user"|"assistant", "content": str}
+_params_sent = False          # whether full params have been sent in current session
+_last_seen_params = None      # last param dict seen (for delta computation)
+MAX_HISTORY_TURNS = 5         # keep last 5 exchanges (10 messages) in context window
 
 # Token & rate tracking
 _request_timestamps = []     # list of timestamps for rate calculation
@@ -154,10 +155,19 @@ def get_available_providers():
     return providers
 
 
-def _call_gemini(prompt, system_instruction):
+def _call_gemini(prompt, system_instruction, history=None):
     """Call Gemini API. Returns (response_text, input_tokens, output_tokens)."""
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
-    response = model.generate_content(prompt)
+    if history:
+        gemini_history = [
+            {"role": "model" if m["role"] == "assistant" else "user",
+             "parts": [m["content"]]}
+            for m in history
+        ]
+        chat = model.start_chat(history=gemini_history)
+        response = chat.send_message(prompt)
+    else:
+        response = model.generate_content(prompt)
     response_text = response.text.strip()
 
     input_tok = 0
@@ -169,36 +179,36 @@ def _call_gemini(prompt, system_instruction):
     return response_text, input_tok, output_tok
 
 
-def _call_openai(prompt, system_instruction):
+def _call_openai(prompt, system_instruction, history=None):
     """Call OpenAI API. Returns (response_text, input_tokens, output_tokens)."""
     if not openai_module:
         raise ImportError("openai package not installed. Run: pip install openai")
     client = openai_module.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": prompt},
-        ],
-    )
+    messages = [{"role": "system", "content": system_instruction}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": prompt})
+    response = client.chat.completions.create(model="gpt-4o", messages=messages)
     response_text = response.choices[0].message.content.strip()
     input_tok = response.usage.prompt_tokens if response.usage else 0
     output_tok = response.usage.completion_tokens if response.usage else 0
     return response_text, input_tok, output_tok
 
 
-def _call_claude(prompt, system_instruction):
+def _call_claude(prompt, system_instruction, history=None):
     """Call Anthropic Claude API. Returns (response_text, input_tokens, output_tokens)."""
     if not anthropic_module:
         raise ImportError("anthropic package not installed. Run: pip install anthropic")
     client = anthropic_module.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    messages = []
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": prompt})
     response = client.messages.create(
-        model="claude-sonnet-4-5-20250929",
+        model="claude-sonnet-4-6",
         max_tokens=4096,
         system=system_instruction,
-        messages=[
-            {"role": "user", "content": prompt},
-        ],
+        messages=messages,
     )
     response_text = response.content[0].text.strip()
     input_tok = response.usage.input_tokens if response.usage else 0
@@ -206,18 +216,18 @@ def _call_claude(prompt, system_instruction):
     return response_text, input_tok, output_tok
 
 
-def _dispatch(provider, prompt, system_instruction):
+def _dispatch(provider, prompt, system_instruction, history=None):
     """Route to the correct provider. Returns (response_text, input_tok, output_tok).
 
     Raises a dict with 'error' and 'quota_exhausted' on rate/quota errors.
     """
     try:
         if provider == "openai":
-            return _call_openai(prompt, system_instruction)
+            return _call_openai(prompt, system_instruction, history)
         elif provider == "claude":
-            return _call_claude(prompt, system_instruction)
+            return _call_claude(prompt, system_instruction, history)
         else:
-            return _call_gemini(prompt, system_instruction)
+            return _call_gemini(prompt, system_instruction, history)
     except Exception as e:
         # Check for quota / rate-limit errors from each provider
         err_type = type(e).__name__
@@ -299,26 +309,29 @@ def _append_to_history(query, response):
     _save_chat_history(history)
 
 
-def _ensure_model(parameter_context):
-    """Create model on first call with full params in system_instruction."""
-    global _model, _cached_params, _last_seen_params
+def reset_session():
+    """Reset conversation state — call when drone disconnects or new session starts."""
+    global _conversation_history, _params_sent, _last_seen_params
+    _conversation_history = []
+    _params_sent = False
+    _last_seen_params = None
+    agent_logger.info("JARVIS session reset")
+    print(">>> JARVIS: session reset — full params will be sent on next query")
 
-    if _model is None:
-        # First call — build system_instruction with full param list
-        sys_instruction = SYSTEM_INSTRUCTION
-        if parameter_context:
-            sys_instruction += f"\n\n### Available Parameters:\n{json.dumps(parameter_context, indent=2)}"
 
-        _model = genai.GenerativeModel(
-            "gemini-2.5-flash",
-            system_instruction=sys_instruction
-        )
-        _cached_params = dict(parameter_context) if parameter_context else {}
-        _last_seen_params = dict(parameter_context) if parameter_context else {}
-        agent_logger.info("Created JARVIS model with initial params")
-        print(f">>> JARVIS: Model created with {len(_cached_params)} parameters in system_instruction")
-
-    return _model
+def _trim_history():
+    """Trim history to MAX_HISTORY_TURNS. If the initial params message is dropped, mark for resend."""
+    global _conversation_history, _params_sent
+    max_messages = MAX_HISTORY_TURNS * 2
+    if len(_conversation_history) > max_messages:
+        dropped = _conversation_history[:-max_messages]
+        _conversation_history = _conversation_history[-max_messages:]
+        # If the initial full-params message was trimmed out, re-send on next call
+        for msg in dropped:
+            if msg["role"] == "user" and "### Drone Parameters:" in msg["content"]:
+                _params_sent = False
+                agent_logger.info("JARVIS: initial params dropped from history window — will resend on next query")
+                break
 
 
 def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini"):
@@ -331,51 +344,46 @@ def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini
                      Falls back to global jarvis_mav_data if not provided.
         provider: AI provider to use — "gemini", "openai", or "claude".
     """
-    global _last_seen_params
+    global _last_seen_params, _params_sent, _conversation_history
 
     ctx_data = mavlink_ctx if mavlink_ctx is not None else jarvis_mav_data
-    mavlink_context = json.dumps(list(ctx_data.values()), indent=2)
+    mavlink_context = json.dumps(list(ctx_data.values()))  # compact — no indent
 
-    # Ensure model exists (for param caching — still needed for delta tracking)
-    _ensure_model(parameter_context)
-
-    # Build system instruction with params
-    system_instruction = SYSTEM_INSTRUCTION
-    if parameter_context:
-        system_instruction += f"\n\n### Available Parameters:\n{json.dumps(parameter_context, indent=2)}"
-
-    # Check for param changes since last query
-    param_delta_text = ""
-    if parameter_context and _last_seen_params is not None:
+    # Build param section: full on first call, delta only on subsequent calls
+    param_section = ""
+    if not _params_sent and parameter_context:
+        # First call — send full params once, LLM remembers via history after this
+        param_section = f"### Drone Parameters:\n{json.dumps(parameter_context)}\n\n"
+        _params_sent = True
+        _last_seen_params = dict(parameter_context)
+        agent_logger.info(f"JARVIS: sending full params ({len(parameter_context)} categories) on first call")
+        print(f">>> JARVIS: first call — sending full params ({len(parameter_context)} categories)")
+    elif parameter_context and _last_seen_params is not None:
         delta = _compute_param_delta(_last_seen_params, parameter_context)
         if delta:
-            param_delta_text = PARAM_UPDATE_TEMPLATE.format(
-                delta_params=json.dumps(delta, indent=2)
-            )
-            agent_logger.info(f"Parameter delta detected: {len(delta)} params changed")
-            print(f">>> JARVIS: {len(delta)} parameters updated, sending delta with query")
+            param_section = PARAM_UPDATE_TEMPLATE.format(delta_params=json.dumps(delta))
             _last_seen_params = dict(parameter_context)
+            agent_logger.info(f"JARVIS: {len(delta)} param(s) changed, sending delta")
+            print(f">>> JARVIS: {len(delta)} parameter(s) changed, sending delta")
 
-    # Build prompt: [param delta if any] + MAVLink data + query
-    prompt = param_delta_text + QUERY_TEMPLATE.format(
+    prompt = param_section + QUERY_TEMPLATE.format(
         mavlink_context=mavlink_context, query=query
     )
+
+    # Snapshot history window before appending current turn
+    history_window = list(_conversation_history)
 
     try:
         global _total_input_tokens, _total_output_tokens, _total_requests, _request_timestamps
 
-        mavlink_ctx_len = len(mavlink_context)
-        param_delta_len = len(param_delta_text)
-        prompt_len = len(prompt)
-        print(f">>> JARVIS [{provider}] prompt breakdown: "
-              f"mavlink_ctx={mavlink_ctx_len} chars, param_delta={param_delta_len} chars, "
-              f"prompt_total={prompt_len} chars")
-        agent_logger.info(f"Sending query to {provider} API")
+        print(f">>> JARVIS [{provider}] prompt: {len(prompt)} chars | history: {len(history_window)//2} turns")
+        agent_logger.info(f"Sending query to {provider} API (history={len(history_window)//2} turns)")
 
-        # Dispatch to selected provider
-        response_text, input_tok, output_tok = _dispatch(provider, prompt, system_instruction)
+        response_text, input_tok, output_tok = _dispatch(
+            provider, prompt, SYSTEM_INSTRUCTION, history_window or None
+        )
 
-        # Track tokens and request rate
+        # Track tokens
         _total_requests += 1
         now = time.time()
         _request_timestamps.append(now)
@@ -395,7 +403,12 @@ def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini
             f"req={_total_requests} ({rpm}/min)"
         )
 
-        # Extract JSON part only (ignores extra AI text)
+        # Update conversation history
+        _conversation_history.append({"role": "user", "content": prompt})
+        _conversation_history.append({"role": "assistant", "content": response_text})
+        _trim_history()
+
+        # Extract JSON
         json_start = response_text.find("{")
         json_end = response_text.rfind("}") + 1
         json_data = response_text[json_start:json_end]
@@ -403,7 +416,6 @@ def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini
         result = json.loads(json_data)
         agent_logger.info(f"JARVIS response intent: {result.get('intent', 'unknown')}")
 
-        # Save to chat history file
         _append_to_history(query, result)
 
         return result
