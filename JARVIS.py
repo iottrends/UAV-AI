@@ -298,14 +298,21 @@ def _save_chat_history(history):
         agent_logger.error(f"Failed to save chat history: {e}")
 
 
-def _append_to_history(query, response):
-    """Append a query-response pair to chat history."""
+def _append_to_history(query, response, full_prompt=None, raw_response=None,
+                        provider=None, tokens_in=0, tokens_out=0):
+    """Append a full interaction record to chat history."""
     history = _load_chat_history()
-    history.append({
+    record = {
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "provider": provider,
         "query": query,
-        "response": response
-    })
+        "full_prompt": full_prompt,
+        "raw_llm_response": raw_response,
+        "parsed_response": response,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+    }
+    history.append(record)
     _save_chat_history(history)
 
 
@@ -416,7 +423,12 @@ def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini
         result = json.loads(json_data)
         agent_logger.info(f"JARVIS response intent: {result.get('intent', 'unknown')}")
 
-        _append_to_history(query, result)
+        _append_to_history(query, result,
+                           full_prompt=prompt,
+                           raw_response=response_text,
+                           provider=provider,
+                           tokens_in=input_tok,
+                           tokens_out=output_tok)
 
         return result
 

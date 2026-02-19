@@ -4,6 +4,7 @@ import time
 import sys
 import serial
 import os
+import json
 from pymavlink import mavutil
 import JARVIS
 from collections import deque
@@ -60,6 +61,8 @@ class MavlinkHandler:
         self._pkt_rate = 0.0       # packets/sec
         self._byte_rate = 0.0      # bytes/sec
 
+        self._traffic_file = None  # mavlink_rxtx_log file handle
+
     def connect(self, port_name, baudrate):
         """Establish connection to flight controller."""
         try:
@@ -93,6 +96,7 @@ class MavlinkHandler:
             self.target_system = self.mav_conn.target_system
             self.target_component = self.mav_conn.target_component
             self.is_connected = True
+            self._open_traffic_log()
 
             # Start heartbeat monitoring
             threading.Thread(target=self._check_heartbeat_timeout, daemon=True).start()
@@ -166,6 +170,9 @@ class MavlinkHandler:
         # Push into the 100-msg circular buffer (thread-safe)
         with self._rx_mav_lock:
             self.rx_mav_msg.append(msg_dict)
+            if len(self.rx_mav_msg) >= 100:
+                self._write_traffic_records([{"dir": "rx", "data": m} for m in self.rx_mav_msg])
+                self.rx_mav_msg.clear()
 
         mavlink_logger.debug(f"Received msg: {msg.get_type()}")
 
@@ -421,6 +428,10 @@ class MavlinkHandler:
                 mavutil.mavlink.MAV_PARAM_TYPE_REAL32
             )
             self.tx_mav_msg.append(f"PARAM_SET:{param_name}")
+            if len(self.tx_mav_msg) >= 10:
+                self._write_traffic_records([{"dir": "tx", "ts": time.time(), "msg": m} for m in self.tx_mav_msg])
+                self.tx_mav_msg.clear()
+
             mavlink_logger.info(f"⏳ Sent parameter update: {param_name} = {param_value}")
 
             # Wait for FC to echo back PARAM_VALUE
@@ -501,6 +512,9 @@ class MavlinkHandler:
                 *params
             )
             self.tx_mav_msg.append(f"COMMAND_SENT:{command_name}")
+            if len(self.tx_mav_msg) >= 10:
+                self._write_traffic_records([{"dir": "tx", "ts": time.time(), "msg": m} for m in self.tx_mav_msg])
+                self.tx_mav_msg.clear()
             mavlink_logger.info(f"✅ Sent MAVLink command: {command_name} with params: {params}")
             print(f">>> SENT MAVLink command: {command_name} | target_sys={self.target_system} target_comp={self.target_component} | params={params}")
 
@@ -608,10 +622,44 @@ class MavlinkHandler:
             return False
 
 #####################################################################################
-    ##log file handler
+    def _open_traffic_log(self):
+        """Open the mavlink_rxtx_log file for appending."""
+        try:
+            if getattr(sys, '_MEIPASS', None):
+                log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
+            else:
+                log_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'logs')
+            os.makedirs(log_dir, exist_ok=True)
+            path = os.path.join(log_dir, 'mavlink_rxtx_log.jsonl')
+            self._traffic_file = open(path, 'a', encoding='utf-8')
+            mavlink_logger.info(f"MAVLink traffic log opened: {path}")
+        except Exception as e:
+            mavlink_logger.error(f"Failed to open traffic log: {e}")
+
+    def _write_traffic_records(self, records):
+        """Write a list of records as JSONL lines to the traffic log."""
+        if not self._traffic_file:
+            return
+        try:
+            for record in records:
+                self._traffic_file.write(json.dumps(record, default=str) + '\n')
+            self._traffic_file.flush()
+        except Exception as e:
+            mavlink_logger.error(f"Traffic log write error: {e}")
+
     def disconnect(self):
         """Disconnect from MAVLink."""
         self.is_connected = False
+        # Flush remaining buffered messages before closing
+        if self.rx_mav_msg:
+            self._write_traffic_records([{"dir": "rx", "data": m} for m in self.rx_mav_msg])
+            self.rx_mav_msg.clear()
+        if self.tx_mav_msg:
+            self._write_traffic_records([{"dir": "tx", "ts": time.time(), "msg": m} for m in self.tx_mav_msg])
+            self.tx_mav_msg.clear()
+        if self._traffic_file:
+            self._traffic_file.close()
+            self._traffic_file = None
         if self.mav_conn:
             try:
                 self.mav_conn.close()
