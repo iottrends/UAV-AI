@@ -545,132 +545,214 @@ background-color: var(--primary-color);
 color: white;
 }
 
-/* ===== RC & Modes Tab ===== */
-.rc-section {
-   background: #1a1a2e;
-   border-radius: var(--border-radius);
-   padding: 1rem 1.25rem;
+/* ══════════════════════════════════════════
+   RC TAB — Betaflight-style
+   ══════════════════════════════════════════ */
+
+/* Signal header */
+.rc-header-strip {
+   display: flex; align-items: center; justify-content: space-between;
+   padding-bottom: 0.9rem; margin-bottom: 1rem;
+   border-bottom: 1px solid #161630;
 }
-.rc-section-header {
-   display: flex;
-   align-items: center;
-   gap: 0.75rem;
-   margin-bottom: 1rem;
+.rc-signal-group { display: flex; align-items: center; gap: 0.45rem; }
+.rc-dot {
+   width: 9px; height: 9px; border-radius: 50%;
+   background: #2a2a3a; flex-shrink: 0;
+   transition: background 0.3s, box-shadow 0.3s;
+}
+.rc-dot.connected { background: #22c55e; box-shadow: 0 0 7px #22c55e99; }
+.rc-chip {
+   font-family: monospace; font-size: 0.68rem; letter-spacing: 0.04em;
+   padding: 0.18rem 0.5rem; border-radius: 3px;
+   background: #0f0f22; color: #6a7bcc; border: 1px solid #232350;
+}
+.rc-rssi-group { display: flex; align-items: center; gap: 0.45rem; }
+.rc-rssi-label { font-family: monospace; font-size: 0.65rem; color: #3a4870; letter-spacing: 0.08em; }
+.rc-rssi-track {
+   width: 100px; height: 6px; background: #0a0a1a;
+   border-radius: 3px; overflow: hidden; border: 1px solid #1a1a35;
+}
+.rc-rssi-fill { height: 100%; width: 0%; border-radius: 3px; transition: width 0.35s, background 0.35s; }
+.rc-rssi-pct { font-family: monospace; font-size: 0.7rem; color: #7080a0; min-width: 2.8em; text-align: right; }
+
+/* Section box wrapper (Betaflight gui_box style) */
+.rc-section {
+   background: #09091f; border: 1px solid #181835; border-radius: 5px;
+   margin-bottom: 1.2rem; overflow: hidden;
 }
 .rc-section-title {
-   font-size: 1rem;
-   font-weight: bold;
-   color: #e0e0e0;
-   flex: 1;
-}
-.rc-rssi-badge, .rc-chancount-badge {
-   background: #2a2a3e;
-   color: #aaa;
-   font-size: 0.75rem;
-   padding: 0.2rem 0.6rem;
-   border-radius: 4px;
-   font-family: monospace;
-}
-.rc-bars-container {
-   display: flex;
-   flex-direction: column;
-   gap: 0.5rem;
-}
-.rc-bar-row {
-   display: flex;
-   align-items: center;
-   gap: 0.6rem;
-}
-.rc-bar-label {
-   width: 70px;
-   font-size: 0.75rem;
-   color: #bbb;
-   text-align: right;
-   font-family: monospace;
-}
-.rc-bar-track {
-   flex: 1;
-   height: 20px;
-   background: #2a2a3e;
-   border-radius: 3px;
-   position: relative;
-   overflow: hidden;
-}
-.rc-bar-fill {
-   height: 100%;
-   border-radius: 3px;
-   transition: width 0.15s ease, left 0.15s ease;
-   position: absolute;
-   top: 0;
-}
-.rc-bar-fill.center-return {
-   background: var(--success-color);
-}
-.rc-bar-fill.throttle {
-   background: #e67e22;
-}
-.rc-bar-fill.aux {
-   background: var(--primary-color);
-}
-.rc-bar-center-line {
-   position: absolute;
-   left: 50%;
-   top: 0;
-   bottom: 0;
-   width: 1px;
-   background: rgba(255,255,255,0.2);
-}
-.rc-bar-value {
-   width: 50px;
-   font-size: 0.75rem;
-   color: #ccc;
-   font-family: monospace;
-   text-align: left;
+   background: #0d0d28; border-bottom: 1px solid #181835;
+   padding: 0.4rem 0.85rem;
+   font-family: monospace; font-size: 0.6rem; color: #303860;
+   letter-spacing: 0.14em; text-transform: uppercase;
 }
 
-/* Flight Modes Section */
-.rc-mode-badge {
-   font-size: 0.85rem;
-   font-weight: bold;
-   padding: 0.3rem 0.8rem;
-   border-radius: 5px;
-   color: #fff;
-   background: var(--success-color);
+/* Cockpit row — left gimbal | 3D model | right gimbal */
+.rc-cockpit {
+   display: flex; align-items: center; justify-content: center;
+   gap: 1.8rem; margin-bottom: 1.4rem;
 }
-.rc-mode-badge.mode-auto { background: #f39c12; }
-.rc-mode-badge.mode-danger { background: var(--danger-color); }
-.rc-mode-table {
-   width: 100%;
-   border-collapse: collapse;
-   margin-top: 0.5rem;
+.rc-gimbal-wrap {
+   display: flex; flex-direction: column; align-items: center; gap: 0;
+   flex-shrink: 0;
 }
-.rc-mode-table th {
-   text-align: left;
-   padding: 0.4rem 0.6rem;
-   color: #888;
-   font-size: 0.75rem;
-   border-bottom: 1px solid #333;
+/* Axis value readouts above/below/left/right of gimbal */
+.rc-gimbal-valrow {
+   display: flex; justify-content: space-between; align-items: center;
+   width: 175px;
 }
-.rc-mode-table td {
-   padding: 0.45rem 0.6rem;
-   font-size: 0.8rem;
-   color: #ccc;
-   border-bottom: 1px solid #222;
+.rc-gimbal-axis-label {
+   font-family: monospace; font-size: 0.58rem; color: #2d3460;
+   letter-spacing: 0.10em; text-transform: uppercase;
 }
-.rc-mode-table tr.rc-mode-active {
-   background: rgba(46, 204, 113, 0.12);
-   border-left: 3px solid var(--success-color);
+.rc-gimbal-val {
+   font-family: monospace; font-size: 0.7rem; color: #5a70bb;
+   letter-spacing: 0.03em; min-width: 2.8em; text-align: right;
 }
-.rc-mode-table tr.rc-mode-active td {
-   color: #fff;
+.rc-gimbal-box {
+   position: relative; width: 175px; height: 175px;
+   background: #060614;
+   border: 1px solid #181835; border-radius: 5px;
+   cursor: crosshair; overflow: hidden;
+   /* subtle grid */
+   background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+   background-size: 25px 25px;
 }
-.rc-mode-active-dot {
-   display: inline-block;
-   width: 8px;
-   height: 8px;
-   border-radius: 50%;
-   background: var(--success-color);
+.rc-crosshair { display: block; position: absolute; background: rgba(255,255,255,0.08); }
+.rc-cv { width: 1px; height: 100%; left: 50%; top: 0; }
+.rc-ch { height: 1px; width: 100%; top: 50%; left: 0; }
+/* Deadband ring in center */
+.rc-deadband-ring {
+   position: absolute; border-radius: 50%;
+   border: 1px solid rgba(255,255,255,0.12);
+   pointer-events: none;
+   transform: translate(-50%, -50%);
+   top: 50%; left: 50%;
 }
+.rc-stick-dot {
+   position: absolute; width: 20px; height: 20px; border-radius: 50%;
+   background: #4a9eff; box-shadow: 0 0 12px rgba(74,158,255,0.75), 0 0 4px rgba(74,158,255,0.5);
+   margin-left: -10px; margin-top: -10px; pointer-events: none;
+   transition: left 0.04s linear, top 0.04s linear;
+   z-index: 2;
+}
+.rc-drone-panel {
+   flex: 1; min-width: 0; height: 215px;
+   background: #07071a; border: 1px solid #181835; border-radius: 5px; overflow: hidden;
+}
+
+/* Channel map info row */
+.rc-chmap-row {
+   display: flex; gap: 0.5rem; flex-wrap: wrap;
+   padding: 0.5rem 0.85rem; border-bottom: 1px solid #111128;
+}
+.rc-chmap-item {
+   font-family: monospace; font-size: 0.62rem;
+   color: #3a4870; letter-spacing: 0.04em;
+}
+.rc-chmap-item span { color: #6070bb; }
+
+/* Bottom two-column layout */
+.rc-bottom {
+   display: flex; gap: 1.2rem; align-items: flex-start;
+}
+.rc-bottom-left  { flex: 2; min-width: 0; }
+.rc-bottom-right { flex: 1; min-width: 200px; }
+
+/* Channel bars */
+.rc-ch-row {
+   display: flex; align-items: center; gap: 0.55rem;
+   padding: 0.2rem 0.85rem;
+}
+.rc-ch-row:not(:last-child) { border-bottom: 1px solid #0d0d22; }
+.rc-ch-name {
+   font-family: monospace; font-size: 0.66rem; color: #4a5580;
+   min-width: 5.5rem; text-align: right; letter-spacing: 0.04em; flex-shrink: 0;
+}
+.rc-bar-track {
+   flex: 1; height: 20px; background: #04040f;
+   border: 1px solid #0f0f25; border-radius: 2px;
+   position: relative; overflow: visible;
+}
+.rc-bar-fill {
+   position: absolute; top: 0; bottom: 0; left: 0;
+   border-radius: 2px; transition: width 0.05s linear; opacity: 0.85;
+   overflow: hidden;
+}
+/* Value label inside the bar fill */
+.rc-bar-inner-val {
+   position: absolute; right: 4px; top: 50%;
+   transform: translateY(-50%);
+   font-family: monospace; font-size: 0.68rem;
+   color: rgba(255,255,255,0.9); pointer-events: none; white-space: nowrap;
+}
+/* Value label outside the bar (fallback for small fills) */
+.rc-ch-val {
+   font-family: monospace; font-size: 0.72rem; color: #6070a0;
+   min-width: 3rem; text-align: right; flex-shrink: 0;
+}
+/* Center tick mark at 1500μs */
+.rc-bar-center-tick {
+   position: absolute; top: -2px; bottom: -2px; width: 2px;
+   background: rgba(255,255,255,0.18); border-radius: 1px;
+   pointer-events: none; z-index: 1;
+}
+/* Mode range bands overlay */
+.rc-mode-band {
+   position: absolute; top: 0; bottom: 0;
+   opacity: 0.22; pointer-events: none;
+}
+.rc-mode-band-label {
+   position: absolute; top: 50%; transform: translateY(-50%);
+   font-family: monospace; font-size: 0.5rem; color: rgba(255,255,255,0.7);
+   white-space: nowrap; pointer-events: none; z-index: 3;
+}
+
+/* Flight modes panel */
+.rc-modes-header {
+   display: flex; align-items: center; justify-content: space-between;
+   padding: 0.5rem 0.85rem; border-bottom: 1px solid #111128;
+}
+.rc-mode-active-badge {
+   font-family: monospace; font-size: 0.72rem;
+   padding: 0.18rem 0.6rem; border-radius: 3px;
+   background: #0e0e28; color: #5a70ee; border: 1px solid #2a3ab0;
+}
+.rc-mode-active-badge.mode-auto   { color: #f59e0b; border-color: #906010; background: #1a1000; }
+.rc-mode-active-badge.mode-danger { color: #ef4444; border-color: #881010; background: #1a0000; }
+.rc-mode-slots {
+   display: flex; flex-direction: column; gap: 0.25rem;
+   padding: 0.6rem 0.85rem;
+}
+.rc-mode-slot {
+   display: flex; align-items: center; gap: 0.6rem;
+   padding: 0.35rem 0.55rem; border-radius: 3px;
+   background: #0a0a1e; border: 1px solid #141430;
+   transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.rc-mode-slot.slot-active {
+   border-color: #3a7aee; background: #08102a;
+   box-shadow: 0 0 10px rgba(58,122,238,0.25);
+}
+.rc-mode-slot-num {
+   font-family: monospace; font-size: 0.6rem; color: #2a3060;
+   min-width: 1rem; text-align: center;
+}
+.rc-mode-slot-bar {
+   flex: 1; height: 4px; background: #0f0f2a; border-radius: 2px; position: relative; overflow: hidden;
+}
+.rc-mode-slot-fill {
+   height: 100%; border-radius: 2px; background: #3a7aee; opacity: 0.4;
+}
+.rc-mode-slot.slot-active .rc-mode-slot-fill { opacity: 1; }
+.rc-mode-slot-name {
+   font-family: monospace; font-size: 0.74rem; color: #6070aa;
+   min-width: 7rem; text-align: right;
+}
+.rc-mode-slot.slot-active .rc-mode-slot-name { color: #5090ff; }
 
 /* Tab content */
 .tab-content {

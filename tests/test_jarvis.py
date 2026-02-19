@@ -1,7 +1,7 @@
 import pytest
 import json
 from unittest.mock import MagicMock, patch
-from JARVIS import ask_gemini, SYSTEM_INSTRUCTION, QUERY_TEMPLATE, PARAM_UPDATE_TEMPLATE, _compute_param_delta, _ensure_model, _load_chat_history, _save_chat_history, _append_to_history
+from JARVIS import ask_gemini, SYSTEM_INSTRUCTION, QUERY_TEMPLATE, PARAM_UPDATE_TEMPLATE, _compute_param_delta, _load_chat_history, _save_chat_history, _append_to_history
 
 # A helper to create mock response objects consistently, now ensuring all parts are MagicMocks with explicit primitive attributes
 def create_mock_response_object(response_text, prompt_token_count=10, candidates_token_count=5):

@@ -737,43 +737,89 @@
                </div>
             </div>
             <!-- RC & Modes Tab -->
-            <div class="tab-content" id="receiver-tab" style="display: none; flex: 1; background-color: #16162b; border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
-               <h2 class="dashboard-title" style="color: #e0e0e0;"><i class="fas fa-broadcast-tower"></i> RC & Modes</h2>
-               <div class="rc-section">
-                  <div class="rc-section-header">
-                     <span class="rc-section-title">Receiver</span>
-                     <div class="rc-rssi-badge" id="rcRssiBadge">RSSI: --</div>
-                     <div class="rc-chancount-badge" id="rcChancountBadge">CH: --</div>
-                     <div class="rc-rssi-badge" id="rcProtocolBadge">Protocol: --</div>
-                     <div class="rc-rssi-badge" id="rcUartBadge">UART: --</div>
+            <div class="tab-content" id="receiver-tab" style="display: none; flex: 1; background-color: #0d0d1a; border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+
+               <!-- Signal header -->
+               <div class="rc-header-strip">
+                  <div class="rc-signal-group">
+                     <span class="rc-dot" id="rcStatusDot"></span>
+                     <span class="rc-chip" id="rcProtocolChip">--</span>
+                     <span class="rc-chip" id="rcUartChip">--</span>
+                     <span class="rc-chip" id="rcChCountChip">CH --</span>
                   </div>
-                  <div class="rc-bars-container" id="rcBarsContainer">
+                  <div class="rc-rssi-group">
+                     <span class="rc-rssi-label">RSSI</span>
+                     <div class="rc-rssi-track"><div class="rc-rssi-fill" id="rcRssiFill"></div></div>
+                     <span class="rc-rssi-pct" id="rcRssiPct">--%</span>
                   </div>
                </div>
-               <div class="rc-section" style="margin-top: 1.5rem;">
-                  <div class="rc-section-header">
-                     <span class="rc-section-title">Flight Modes</span>
-                     <div class="rc-mode-badge" id="rcCurrentModeBadge">-- (--)</div>
+
+               <!-- Cockpit row: Left gimbal | 3D drone | Right gimbal -->
+               <div class="rc-cockpit">
+
+                  <div class="rc-gimbal-wrap">
+                     <div class="rc-gimbal-valrow">
+                        <span class="rc-gimbal-axis-label">THR</span>
+                        <span class="rc-gimbal-val" id="rcGimbalLeftY">----</span>
+                     </div>
+                     <div class="rc-gimbal-box" id="rcGimbalLeft">
+                        <span class="rc-crosshair rc-cv"></span>
+                        <span class="rc-crosshair rc-ch"></span>
+                        <div class="rc-deadband-ring" id="rcDeadbandLeft" style="width:30px;height:30px;"></div>
+                        <div class="rc-stick-dot" id="rcDotLeft"></div>
+                     </div>
+                     <div class="rc-gimbal-valrow">
+                        <span class="rc-gimbal-axis-label">YAW</span>
+                        <span class="rc-gimbal-val" id="rcGimbalLeftX">----</span>
+                     </div>
                   </div>
-                  <table class="rc-mode-table" id="rcModeTable">
-                     <thead>
-                        <tr>
-                           <th>Slot</th>
-                           <th>Mode</th>
-                           <th>PWM Range</th>
-                           <th>Active</th>
-                        </tr>
-                     </thead>
-                     <tbody id="rcModeTableBody">
-                        <tr><td>1</td><td>--</td><td>&lt; 1230</td><td></td></tr>
-                        <tr><td>2</td><td>--</td><td>1230 – 1360</td><td></td></tr>
-                        <tr><td>3</td><td>--</td><td>1360 – 1490</td><td></td></tr>
-                        <tr><td>4</td><td>--</td><td>1490 – 1620</td><td></td></tr>
-                        <tr><td>5</td><td>--</td><td>1620 – 1749</td><td></td></tr>
-                        <tr><td>6</td><td>--</td><td>&ge; 1749</td><td></td></tr>
-                     </tbody>
-                  </table>
+
+                  <div class="rc-drone-panel" id="rcDroneContainer"></div>
+
+                  <div class="rc-gimbal-wrap">
+                     <div class="rc-gimbal-valrow">
+                        <span class="rc-gimbal-axis-label">PIT</span>
+                        <span class="rc-gimbal-val" id="rcGimbalRightY">----</span>
+                     </div>
+                     <div class="rc-gimbal-box" id="rcGimbalRight">
+                        <span class="rc-crosshair rc-cv"></span>
+                        <span class="rc-crosshair rc-ch"></span>
+                        <div class="rc-deadband-ring" id="rcDeadbandRight" style="width:30px;height:30px;"></div>
+                        <div class="rc-stick-dot" id="rcDotRight"></div>
+                     </div>
+                     <div class="rc-gimbal-valrow">
+                        <span class="rc-gimbal-axis-label">ROLL</span>
+                        <span class="rc-gimbal-val" id="rcGimbalRightX">----</span>
+                     </div>
+                  </div>
+
                </div>
+
+               <!-- Bottom: channel bars (left) + flight modes (right) -->
+               <div class="rc-bottom">
+
+                  <!-- Channel bars section -->
+                  <div class="rc-bottom-left">
+                     <div class="rc-section">
+                        <div class="rc-section-title">RC CHANNELS</div>
+                        <div id="rcChmapRow" class="rc-chmap-row"></div>
+                        <div id="rcChannelsPanel"></div>
+                     </div>
+                  </div>
+
+                  <!-- Flight modes section -->
+                  <div class="rc-bottom-right">
+                     <div class="rc-section">
+                        <div class="rc-modes-header">
+                           <span class="rc-section-title" style="border:none;padding:0;background:none;">FLIGHT MODES</span>
+                           <span class="rc-mode-active-badge" id="rcCurrentModeBadge">--</span>
+                        </div>
+                        <div class="rc-mode-slots" id="rcModeSlots"></div>
+                     </div>
+                  </div>
+
+               </div>
+
             </div>
 
             <!-- Drone View Tab -->
