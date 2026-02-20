@@ -91,11 +91,14 @@ document.addEventListener('DOMContentLoaded', function() {
       statusEl.style.color = 'var(--text-muted)';
 
       try {
-         var response = await fetch('/api/parameters');
+         var response = await fetch('/api/config/domains/serial_ports');
          if (!response.ok) throw new Error('HTTP ' + response.status);
-         var allParams = await response.json();
+         var data = await response.json();
+         if (data.status !== 'success') {
+            throw new Error(data.message || 'Failed to load serial configuration');
+         }
 
-         var serial = allParams['Serial'] || {};
+         var serial = data.params || {};
          serialData = {};
 
          for (var n = 0; n <= 7; n++) {
@@ -191,10 +194,8 @@ document.addEventListener('DOMContentLoaded', function() {
       serialData[port][field] = e.target.value;
    }
 
-   async function saveSerialConfig() {
-      var statusEl = document.getElementById('serialStatus');
+   function buildSerialDiff() {
       var diff = {};
-
       for (var n in serialData) {
          if (!originalData[n]) continue;
          if (serialData[n].protocol !== originalData[n].protocol) {
@@ -204,29 +205,90 @@ document.addEventListener('DOMContentLoaded', function() {
             diff['SERIAL' + n + '_BAUD'] = Number(serialData[n].baud);
          }
       }
+      return diff;
+   }
+
+   async function previewSerialConfig() {
+      var statusEl = document.getElementById('serialStatus');
+      var diff = buildSerialDiff();
 
       if (Object.keys(diff).length === 0) {
-         statusEl.textContent = 'No changes to save.';
+         statusEl.textContent = 'No changes to preview.';
+         statusEl.style.color = 'var(--text-muted)';
+         return { hasChanges: false, diff: [] };
+      }
+
+      statusEl.textContent = 'Previewing ' + Object.keys(diff).length + ' parameter(s)...';
+      statusEl.style.color = 'var(--text-muted)';
+
+      try {
+         var response = await fetch('/api/config/domains/serial_ports/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ changes: diff })
+         });
+         var result = await response.json();
+         if (!response.ok || result.status !== 'success') {
+            throw new Error(result.message || 'Preview failed');
+         }
+
+         var changedRows = (result.diff || []).filter(function(item) { return item.changed; });
+         if (!changedRows.length) {
+            statusEl.textContent = 'No effective changes detected after preview.';
+            statusEl.style.color = 'var(--text-muted)';
+            return { hasChanges: false, diff: result.diff || [] };
+         }
+
+         statusEl.textContent = 'Preview ready: ' + changedRows.length + ' parameter(s) will change.';
+         statusEl.style.color = 'var(--primary-color)';
+         return { hasChanges: true, diff: changedRows };
+      } catch (err) {
+         console.error('Serial config preview error:', err);
+         statusEl.textContent = 'Preview error: ' + err.message;
+         statusEl.style.color = 'var(--danger-color)';
+         throw err;
+      }
+   }
+
+   async function saveSerialConfig() {
+      var statusEl = document.getElementById('serialStatus');
+      var preview;
+      try {
+         preview = await previewSerialConfig();
+      } catch (_err) {
+         return;
+      }
+      if (!preview.hasChanges) return;
+
+      var lines = preview.diff.map(function(item) {
+         return item.param + ': ' + item.old + ' -> ' + item.new;
+      });
+      var confirmText = 'Apply these changes?\n\n' + lines.join('\n');
+      if (!window.confirm(confirmText)) {
+         statusEl.textContent = 'Apply cancelled.';
          statusEl.style.color = 'var(--text-muted)';
          return;
       }
 
-      statusEl.textContent = 'Saving ' + Object.keys(diff).length + ' parameter(s)...';
+      var diff = buildSerialDiff();
+      statusEl.textContent = 'Applying and verifying ' + Object.keys(diff).length + ' parameter(s)...';
       statusEl.style.color = 'var(--text-muted)';
-
       try {
-         var response = await fetch('/api/parameters', {
+         var response = await fetch('/api/config/domains/serial_ports/apply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(diff)
+            body: JSON.stringify({ changes: diff, verify_timeout_ms: 5000, tolerance: 0.0001 })
          });
-
-         if (!response.ok) throw new Error('HTTP ' + response.status);
          var result = await response.json();
-
-         if (result.status === 'success') {
-            statusEl.innerHTML = '<span style="color:var(--success-color);">Saved! Please reboot the flight controller for changes to take effect.</span>';
+         if (response.status === 200 && result.status === 'success') {
+            statusEl.textContent = 'Saved and verified (' + result.verified + ' param). Reboot FC if required.';
+            statusEl.style.color = 'var(--success-color)';
             originalData = JSON.parse(JSON.stringify(serialData));
+         } else if (response.status === 207 || result.status === 'partial') {
+            var failedCount = (result.failed || []).length;
+            var mismatchCount = (result.mismatched || []).length;
+            statusEl.textContent = 'Partial apply: verified=' + result.verified + ', failed=' + failedCount + ', mismatched=' + mismatchCount + '.';
+            statusEl.style.color = 'var(--warning-color)';
          } else {
             throw new Error(result.message || 'Unknown error');
          }
@@ -239,8 +301,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
    // Wire up buttons
    var saveBtn = document.getElementById('serialSaveBtn');
+   var previewBtn = document.getElementById('serialPreviewBtn');
    var refreshBtn = document.getElementById('serialRefreshBtn');
    if (saveBtn) saveBtn.addEventListener('click', saveSerialConfig);
+   if (previewBtn) previewBtn.addEventListener('click', function() {
+      previewSerialConfig().catch(function() { /* error already shown in status */ });
+   });
    if (refreshBtn) refreshBtn.addEventListener('click', loadSerialConfig);
 
    // Load on first tab visit via MutationObserver

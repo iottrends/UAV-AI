@@ -102,8 +102,17 @@ def test_send_mavlink_command_success_ack(handler, monkeypatch):
     cmd_name = "MAV_CMD_NAV_LAND"
     cmd_id = handler._mav_command_map[cmd_name]
 
-    # Pre-populate ACK result so send_mavlink_command_from_json sees it immediately
-    handler.command_ack_status[cmd_id] = 0  # MAV_RESULT_ACCEPTED
+    # Define a side effect for wait() that populates the ACK status
+    def simulate_ack(*args, **kwargs):
+        handler.command_ack_status[cmd_id] = 0  # MAV_RESULT_ACCEPTED
+        return True
+
+    # Mock the condition variable
+    handler.command_ack_condition = MagicMock()
+    handler.command_ack_condition.wait.side_effect = simulate_ack
+    
+    # We also need to mock __enter__/__exit__ because 'with self.command_ack_condition:' is used
+    handler.command_ack_condition.__enter__.return_value = handler.command_ack_condition
 
     ok = handler.send_mavlink_command_from_json({"command": cmd_name, "param1": 1})
     assert ok is True

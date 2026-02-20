@@ -143,6 +143,116 @@ _total_output_tokens = 0
 _total_requests = 0
 
 
+# ── Semantic MAVLink context filtering ────────────────────────────────────────
+# Maps keyword stems → MAVLink message types that are relevant to that topic.
+# When the user's query matches a keyword, only those msg types are sent to the LLM,
+# dramatically reducing token count for focused queries.
+_MAVLINK_FILTER_MAP = {
+    'battery':   ['SYS_STATUS', 'BATTERY_STATUS', 'POWER_STATUS'],
+    'voltage':   ['SYS_STATUS', 'BATTERY_STATUS'],
+    'current':   ['BATTERY_STATUS'],
+    'gps':       ['GPS_RAW_INT', 'GPS_STATUS', 'GLOBAL_POSITION_INT', 'GPS2_RAW'],
+    'satellite': ['GPS_RAW_INT', 'GPS_STATUS'],
+    'position':  ['GLOBAL_POSITION_INT', 'GPS_RAW_INT', 'LOCAL_POSITION_NED'],
+    'altitude':  ['GLOBAL_POSITION_INT', 'VFR_HUD', 'ALTITUDE'],
+    'attitude':  ['ATTITUDE', 'AHRS', 'AHRS2', 'AHRS3'],
+    'roll':      ['ATTITUDE', 'AHRS'],
+    'pitch':     ['ATTITUDE', 'AHRS'],
+    'yaw':       ['ATTITUDE', 'AHRS', 'VFR_HUD'],
+    'heading':   ['VFR_HUD', 'GPS_RAW_INT'],
+    'speed':     ['VFR_HUD', 'GLOBAL_POSITION_INT'],
+    'airspeed':  ['VFR_HUD'],
+    'compass':   ['RAW_IMU', 'SCALED_IMU2', 'SCALED_IMU3', 'MAG_CAL_PROGRESS', 'SYS_STATUS'],
+    'magnetic':  ['RAW_IMU', 'SCALED_IMU2', 'SCALED_IMU3'],
+    'motor':     ['SERVO_OUTPUT_RAW', 'ESC_TELEMETRY_1_TO_4', 'ESC_INFO'],
+    'esc':       ['SERVO_OUTPUT_RAW', 'ESC_TELEMETRY_1_TO_4', 'ESC_INFO'],
+    'servo':     ['SERVO_OUTPUT_RAW'],
+    'rc':        ['RC_CHANNELS', 'RC_CHANNELS_RAW', 'RC_CHANNELS_SCALED'],
+    'channel':   ['RC_CHANNELS', 'RC_CHANNELS_RAW'],
+    'rssi':      ['RC_CHANNELS', 'RADIO_STATUS'],
+    'signal':    ['RADIO_STATUS', 'RC_CHANNELS'],
+    'link':      ['RADIO_STATUS', 'HEARTBEAT'],
+    'arm':       ['HEARTBEAT', 'SYS_STATUS'],
+    'disarm':    ['HEARTBEAT', 'SYS_STATUS'],
+    'mode':      ['HEARTBEAT'],
+    'flight':    ['HEARTBEAT', 'VFR_HUD', 'GLOBAL_POSITION_INT'],
+    'health':    ['SYS_STATUS', 'HEARTBEAT', 'POWER_STATUS'],
+    'sensor':    ['SYS_STATUS', 'RAW_IMU', 'SCALED_IMU2'],
+    'imu':       ['RAW_IMU', 'SCALED_IMU2', 'SCALED_IMU3'],
+    'accel':     ['RAW_IMU', 'SCALED_IMU2'],
+    'gyro':      ['RAW_IMU', 'SCALED_IMU2'],
+    'baro':      ['SCALED_PRESSURE', 'SCALED_PRESSURE2', 'RAW_PRESSURE'],
+    'pressure':  ['SCALED_PRESSURE', 'SCALED_PRESSURE2'],
+    'temperature': ['SCALED_PRESSURE', 'RAW_IMU', 'SYS_STATUS'],
+    'vibration': ['VIBRATION'],
+    'ekf':       ['EKF_STATUS_REPORT'],
+    'ekf2':      ['EKF_STATUS_REPORT'],
+    'land':      ['HEARTBEAT', 'GLOBAL_POSITION_INT', 'VFR_HUD'],
+    'home':      ['HOME_POSITION', 'GLOBAL_POSITION_INT'],
+    'mission':   ['MISSION_CURRENT', 'MISSION_COUNT', 'MISSION_ITEM_INT'],
+    'waypoint':  ['MISSION_CURRENT', 'MISSION_ITEM_INT'],
+    'fence':     ['FENCE_STATUS'],
+    'geofence':  ['FENCE_STATUS'],
+    'error':     ['SYS_STATUS', 'STATUSTEXT', 'HEARTBEAT'],
+    'warn':      ['SYS_STATUS', 'STATUSTEXT'],
+    'fail':      ['SYS_STATUS', 'STATUSTEXT'],
+    'param':     ['PARAM_VALUE'],
+    'pid':       ['PARAM_VALUE'],
+    'tune':      ['PARAM_VALUE', 'ATTITUDE', 'VFR_HUD'],
+    'stabil':    ['PARAM_VALUE', 'ATTITUDE'],
+    'loiter':    ['PARAM_VALUE', 'GLOBAL_POSITION_INT'],
+    'hover':     ['PARAM_VALUE', 'VFR_HUD'],
+}
+
+# Message types always included regardless of query (heartbeat, status text)
+_DEFAULT_MAVLINK_TYPES = {'HEARTBEAT', 'SYS_STATUS', 'STATUSTEXT'}
+
+
+def _filter_mavlink_ctx(query: str, ctx: dict) -> dict:
+    """Return a filtered subset of ctx relevant to the query.
+
+    If no keyword matches, returns the full ctx unchanged (defensive fallback).
+    Always includes _DEFAULT_MAVLINK_TYPES if present in ctx.
+    """
+    query_lower = query.lower()
+    wanted: set = set(_DEFAULT_MAVLINK_TYPES)
+
+    for keyword, types in _MAVLINK_FILTER_MAP.items():
+        if keyword in query_lower:
+            wanted.update(types)
+
+    if len(wanted) == len(_DEFAULT_MAVLINK_TYPES):
+        # No keyword match — send everything (fallback for open-ended queries)
+        return ctx
+
+    return {k: v for k, v in ctx.items() if k in wanted}
+
+
+# ── Tuning-assistant awareness ─────────────────────────────────────────────────
+_TUNING_KEYWORDS = [
+    'tune', 'tuning', 'pid', 'p gain', 'i gain', 'd gain', 'rate', 'stabilize',
+    'oscillat', 'wobbl', 'overshoot', 'sluggish', 'twitchy', 'hover', 'loiter',
+    'autotune', 'roll rate', 'pitch rate', 'yaw rate', 'acro', 'angle limit',
+    'filter', 'notch', 'vibration', 'noise', 'harmonic',
+]
+
+_TUNING_CONTEXT = """### TUNING ASSISTANT MODE
+You are also an expert ArduPilot/PX4 tuning assistant. When answering tuning queries:
+1. Identify which PIDs or parameters are most relevant (e.g. ATC_RAT_RLL_P, ATC_RAT_PIT_P).
+2. Suggest specific parameter names and conservative start values.
+3. Explain the expected effect of each change in plain language.
+4. Warn about safety: always disarm before changing params, test in a safe open area.
+5. Recommend AutoTune if available and conditions allow.
+Reference: ArduCopter attitude controller params use prefix ATC_, rate controller ATC_RAT_*.
+PX4 uses MC_ROLL_P, MC_ROLLRATE_P, MC_ROLLRATE_I, MC_ROLLRATE_D, etc."""
+
+
+def _is_tuning_query(query: str) -> bool:
+    """Return True if the query appears to be about PID tuning or flight dynamics."""
+    ql = query.lower()
+    return any(kw in ql for kw in _TUNING_KEYWORDS)
+
+
 def get_available_providers():
     """Return list of providers that have API keys configured."""
     providers = []
@@ -354,7 +464,10 @@ def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini
     global _last_seen_params, _params_sent, _conversation_history
 
     ctx_data = mavlink_ctx if mavlink_ctx is not None else jarvis_mav_data
-    mavlink_context = json.dumps(list(ctx_data.values()))  # compact — no indent
+    filtered_ctx = _filter_mavlink_ctx(query, ctx_data)
+    mavlink_context = json.dumps(list(filtered_ctx.values()))  # compact — no indent
+    if len(filtered_ctx) < len(ctx_data):
+        agent_logger.info(f"JARVIS: MAVLink ctx filtered {len(ctx_data)}→{len(filtered_ctx)} msg types for query")
 
     # Build param section: full on first call, delta only on subsequent calls
     param_section = ""
@@ -386,8 +499,13 @@ def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini
         print(f">>> JARVIS [{provider}] prompt: {len(prompt)} chars | history: {len(history_window)//2} turns")
         agent_logger.info(f"Sending query to {provider} API (history={len(history_window)//2} turns)")
 
+        system_instruction = SYSTEM_INSTRUCTION
+        if _is_tuning_query(query):
+            system_instruction += "\n\n" + _TUNING_CONTEXT
+            agent_logger.info("JARVIS: tuning query detected — injecting tuning assistant context")
+
         response_text, input_tok, output_tok = _dispatch(
-            provider, prompt, SYSTEM_INSTRUCTION, history_window or None
+            provider, prompt, system_instruction, history_window or None
         )
 
         # Track tokens

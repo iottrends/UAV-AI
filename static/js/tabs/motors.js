@@ -7,6 +7,74 @@ window._motorTab = {
    testTimestamps: {1:0, 2:0, 3:0, 4:0}
 };
 
+// ── Rolling motor output chart ────────────────────────────────────────────
+(function() {
+   var motorChart = null;
+   var MAX_POINTS = 120;   // ~30 s at 4 Hz
+   var chartLabels = [];
+   var M_COLORS = ['#f1453d', '#2b98f0', '#50ae55', '#fdc02f'];
+   var datasets = M_COLORS.map(function(c, i) {
+      return {
+         label: 'M' + (i + 1),
+         data: [],
+         borderColor: c,
+         backgroundColor: c.replace(')', ',0.06)').replace('rgb', 'rgba'),
+         tension: 0.3, pointRadius: 0, borderWidth: 1.5
+      };
+   });
+
+   function initChart() {
+      if (motorChart) return;
+      var canvas = document.getElementById('motorRollingChart');
+      if (!canvas || typeof Chart === 'undefined') return;
+      motorChart = new Chart(canvas.getContext('2d'), {
+         type: 'line',
+         data: { labels: chartLabels, datasets: datasets },
+         options: {
+            animation: false, responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+               legend: { labels: { color: '#6070a0', font: { family: 'monospace', size: 10 }, boxWidth: 12 } },
+               tooltip: { backgroundColor: '#0a0a1e', titleColor: '#8090c0', bodyColor: '#6070a0' }
+            },
+            scales: {
+               x: { display: false },
+               y: {
+                  min: 900, max: 2100,
+                  grid: { color: '#0f0f28' },
+                  ticks: { color: '#4a5580', font: { family: 'monospace', size: 10 }, stepSize: 200 }
+               }
+            }
+         }
+      });
+   }
+
+   function pushChart(servoOutputs) {
+      if (!motorChart) { initChart(); if (!motorChart) return; }
+      chartLabels.push('');
+      for (var i = 0; i < 4; i++) {
+         datasets[i].data.push(servoOutputs[i] || 1000);
+      }
+      if (chartLabels.length > MAX_POINTS) {
+         chartLabels.shift();
+         for (var j = 0; j < 4; j++) datasets[j].data.shift();
+      }
+      motorChart.update('none');
+   }
+
+   // Hook into tab visibility for lazy init
+   document.querySelectorAll('.menu-item[data-tab]').forEach(function(item) {
+      item.addEventListener('click', function() {
+         if (item.getAttribute('data-tab') === 'motors') {
+            setTimeout(initChart, 80);
+         }
+      });
+   });
+
+   // Expose push function for onSystemStatus
+   window._motorTab._pushChart = pushChart;
+})();
+
 (function() {
    var MT = window._motorTab;
    var enableToggle = document.getElementById('motorEnableToggle');
@@ -157,6 +225,10 @@ window._motorTab = {
                diagEl.setAttribute('fill', isActive2 ? 'var(--success-color)' : '#444');
             }
          }
+      }
+      // Push servo outputs to rolling chart
+      if (data.servo_outputs && window._motorTab._pushChart) {
+         window._motorTab._pushChart(data.servo_outputs);
       }
    };
 

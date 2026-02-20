@@ -652,6 +652,400 @@ CONFIGS_DIR = _writable_path('configs')
 os.makedirs(CONFIGS_DIR, exist_ok=True)
 MAX_CONFIGS = 5
 
+# Domain config schemas (Copter-first baseline)
+_COPTER_MODE_IDS = {
+    0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27
+}
+_SERIAL_PROTOCOL_IDS = {
+    -1, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+    40, 41, 42, 43, 44
+}
+_SERIAL_BAUD_IDS = {1, 2, 4, 9, 19, 38, 57, 111, 115, 230, 460, 500, 921, 1500}
+_AUX_FUNCTION_CATALOG = {
+    # General
+    0: "Disabled",
+    2: "Flip",
+    3: "Simple Mode",
+    4: "RTL",
+    5: "Save Trim",
+    7: "Save Waypoint",
+    9: "Camera Trigger",
+    10: "RangeFinder Enable",
+    11: "Fence Enable",
+    13: "Super Simple Mode",
+    14: "Acro Trainer",
+    16: "Auto Mode",
+    17: "AutoTune",
+    18: "Land",
+    19: "Gripper",
+    21: "Parachute Enable",
+    22: "Parachute Release",
+    23: "Parachute 3-Position",
+    26: "GPS Disable",
+    27: "Relay 1",
+    28: "Relay 2",
+    29: "Landing Gear",
+    30: "Lost Copter Sound / Beeper",
+    31: "Motor Emergency Stop",
+    32: "Motor Interlock",
+    33: "Brake with Yaw",
+    34: "Relay 3",
+    35: "Relay 4",
+    36: "Heli External RSC",
+    38: "Wind Vane Home Heading",
+    39: "Limit Max Speed",
+    40: "Proximity Avoidance",
+    41: "Arm/Disarm",
+    42: "Smart RTL",
+    44: "Winch Enable",
+    45: "Winch Control",
+    46: "RC Override Enable",
+    47: "User Function 1",
+    48: "User Function 2",
+    49: "User Function 3",
+    52: "Acro Balance",
+    55: "Guided Mode",
+    56: "Loiter Enable",
+    58: "Clear Waypoints",
+    60: "ZigZag Mode",
+    61: "ZigZag Save Waypoint",
+    62: "Compass Learn",
+    65: "GPS Disable Yaw",
+    66: "Brake Mode",
+    72: "Mount Lock",
+    73: "Retract Mount",
+    74: "Washer Pump",
+    80: "Disarm",
+    82: "Smart RTL or Disarm",
+    84: "Arm/Disarm (AirSpeed Check)",
+    90: "Camera Auto Focus Lock",
+    94: "VTX Channel",
+    95: "VTX Power",
+    100: "Kill IMU2 (Heli)",
+    101: "Camera Mode Toggle",
+    105: "Generator",
+    110: "EKF Source Select",
+    150: "Scripting Function 1",
+    151: "Scripting Function 2",
+    152: "Scripting Function 3",
+    153: "Scripting Function 4",
+    154: "Scripting Function 5",
+    155: "Scripting Function 6",
+    156: "Scripting Function 7",
+    157: "Scripting Function 8",
+    158: "Scripting Function 9",
+    159: "Scripting Function 10",
+}
+
+CONFIG_DOMAIN_SCHEMAS = {
+    "serial_ports": {
+        "requires_connected": True,
+        "params": {
+            **{f"SERIAL{i}_PROTOCOL": {"type": "int", "enum": _SERIAL_PROTOCOL_IDS, "default": 0} for i in range(8)},
+            **{f"SERIAL{i}_BAUD": {"type": "int", "enum": _SERIAL_BAUD_IDS, "default": 57} for i in range(8)},
+            **{f"SERIAL{i}_OPTIONS": {"type": "int", "min": 0, "max": 65535, "default": 0} for i in range(8)},
+        },
+        "warnings": ["Serial port changes may require FC reboot to take effect."],
+    },
+    "rc_mapping": {
+        "requires_connected": True,
+        "params": {
+            "RCMAP_ROLL": {"type": "int", "min": 1, "max": 16, "default": 1},
+            "RCMAP_PITCH": {"type": "int", "min": 1, "max": 16, "default": 2},
+            "RCMAP_THROTTLE": {"type": "int", "min": 1, "max": 16, "default": 3},
+            "RCMAP_YAW": {"type": "int", "min": 1, "max": 16, "default": 4},
+        },
+        "warnings": [],
+    },
+    "flight_modes": {
+        "requires_connected": True,
+        "params": {
+            "FLTMODE_CH": {"type": "int", "min": 1, "max": 16, "default": 5},
+            **{f"FLTMODE{i}": {"type": "int", "enum": _COPTER_MODE_IDS, "default": 0} for i in range(1, 7)},
+        },
+        "warnings": [],
+    },
+    "failsafe": {
+        "requires_connected": True,
+        "params": {
+            "FS_THR_ENABLE": {"type": "int", "enum": {0, 1, 2}, "default": 1},
+            "FS_THR_VALUE": {"type": "int", "min": 800, "max": 2200, "default": 975},
+            "FS_GCS_ENABLE": {"type": "int", "enum": {0, 1, 2}, "default": 0},
+            "FS_OPTIONS": {"type": "int", "min": 0, "max": 65535, "default": 0},
+            "BATT_FS_LOW_ACT": {"type": "int", "enum": {0, 1, 2, 3, 4}, "default": 2},
+            "BATT_FS_CRT_ACT": {"type": "int", "enum": {0, 1, 2, 3, 4}, "default": 1},
+        },
+        "warnings": [],
+    },
+    "aux_functions": {
+        "requires_connected": True,
+        "params": {
+            **{f"RC{i}_OPTION": {"type": "int", "min": 0, "max": 300, "default": 0} for i in range(7, 13)},
+        },
+        "warnings": ["Aux functions typically activate when channel PWM is above 1800."],
+    },
+}
+_config_apply_lock = threading.Lock()
+
+
+def _to_number(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _values_equal(left, right, tolerance=0.0001):
+    left_num = _to_number(left)
+    right_num = _to_number(right)
+    if left_num is None or right_num is None:
+        return left == right
+    return abs(left_num - right_num) <= tolerance
+
+
+def _get_domain_params(domain):
+    schema = CONFIG_DOMAIN_SCHEMAS[domain]
+    params = {}
+    for name, spec in schema["params"].items():
+        if validator and hasattr(validator, "params_dict") and name in validator.params_dict:
+            params[name] = validator.params_dict.get(name)
+        else:
+            params[name] = spec.get("default")
+    return params
+
+
+def _normalize_and_validate_domain_changes(domain, raw_changes):
+    schema = CONFIG_DOMAIN_SCHEMAS[domain]
+    normalized = {}
+    invalid = []
+    warnings = list(schema.get("warnings", []))
+
+    for param, raw_value in raw_changes.items():
+        spec = schema["params"].get(param)
+        if not spec:
+            invalid.append({"param": param, "reason": "unknown parameter for this domain"})
+            continue
+
+        num = _to_number(raw_value)
+        if num is None:
+            invalid.append({"param": param, "reason": "value must be numeric"})
+            continue
+
+        if spec.get("type") == "int":
+            if abs(num - round(num)) > 1e-6:
+                invalid.append({"param": param, "reason": "value must be an integer"})
+                continue
+            value = int(round(num))
+        else:
+            value = float(num)
+
+        enum_values = spec.get("enum")
+        if enum_values is not None and value not in enum_values:
+            invalid.append({"param": param, "reason": f"value {value} not in allowed set"})
+            continue
+
+        min_val = spec.get("min")
+        max_val = spec.get("max")
+        if min_val is not None and value < min_val:
+            invalid.append({"param": param, "reason": f"value {value} below minimum {min_val}"})
+            continue
+        if max_val is not None and value > max_val:
+            invalid.append({"param": param, "reason": f"value {value} above maximum {max_val}"})
+            continue
+
+        normalized[param] = value
+
+    if invalid:
+        return normalized, invalid, warnings
+
+    merged = _get_domain_params(domain)
+    merged.update(normalized)
+
+    if domain == "rc_mapping":
+        mapped = [merged["RCMAP_ROLL"], merged["RCMAP_PITCH"], merged["RCMAP_THROTTLE"], merged["RCMAP_YAW"]]
+        if len(set(mapped)) != len(mapped):
+            invalid.append({"param": "RCMAP_*", "reason": "roll/pitch/throttle/yaw channels must be unique"})
+
+    if domain == "failsafe":
+        if merged["FS_THR_ENABLE"] > 0 and not (800 <= merged["FS_THR_VALUE"] <= 2200):
+            invalid.append({"param": "FS_THR_VALUE", "reason": "must be 800-2200 when FS_THR_ENABLE is enabled"})
+
+    return normalized, invalid, warnings
+
+
+@app.route('/api/config/domains/<domain>', methods=['GET'])
+def get_config_domain(domain):
+    """Return current FC values for a configuration domain."""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+    if domain not in CONFIG_DOMAIN_SCHEMAS:
+        return jsonify({"status": "error", "message": f"Unknown domain: {domain}"}), 404
+    if not validator.params_dict:
+        return jsonify({"status": "error", "message": "No parameters loaded from drone"}), 400
+
+    schema = CONFIG_DOMAIN_SCHEMAS[domain]
+    if schema.get("requires_connected") and not validator.is_connected:
+        return jsonify({"status": "error", "message": "Drone not connected"}), 400
+
+    return jsonify({
+        "status": "success",
+        "domain": domain,
+        "vehicle_type": "Copter",
+        "params": _get_domain_params(domain),
+        "metadata": {
+            "editable": bool(validator.is_connected),
+            "source": "fc",
+            "warnings": schema.get("warnings", []),
+            "function_catalog": _AUX_FUNCTION_CATALOG if domain == "aux_functions" else {},
+            "activation_pwm": 1800 if domain == "aux_functions" else None,
+        }
+    })
+
+
+@app.route('/api/config/domains/<domain>/preview', methods=['POST'])
+def preview_config_domain_changes(domain):
+    """Validate and compute diff for domain changes without writing to FC."""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+    if domain not in CONFIG_DOMAIN_SCHEMAS:
+        return jsonify({"status": "error", "message": f"Unknown domain: {domain}"}), 404
+
+    payload = request.get_json(force=True) or {}
+    changes = payload.get("changes")
+    if not isinstance(changes, dict):
+        return jsonify({"status": "error", "message": "'changes' must be an object"}), 400
+
+    normalized, invalid, warnings = _normalize_and_validate_domain_changes(domain, changes)
+    if invalid:
+        return jsonify({
+            "status": "error",
+            "domain": domain,
+            "invalid": invalid,
+            "warnings": warnings,
+        }), 400
+
+    current = _get_domain_params(domain)
+    diff = []
+    for param, new_val in normalized.items():
+        old_val = current.get(param)
+        changed = not _values_equal(old_val, new_val)
+        diff.append({
+            "param": param,
+            "old": old_val,
+            "new": new_val,
+            "changed": changed,
+        })
+
+    diff.sort(key=lambda x: x["param"])
+    has_changes = any(item["changed"] for item in diff)
+
+    return jsonify({
+        "status": "success",
+        "domain": domain,
+        "diff": diff,
+        "has_changes": has_changes,
+        "warnings": warnings,
+        "invalid": [],
+    })
+
+
+@app.route('/api/config/domains/<domain>/apply', methods=['POST'])
+def apply_config_domain_changes(domain):
+    """Write domain changes to FC and verify read-back values."""
+    if not validator:
+        return jsonify({"status": "error", "message": "Backend not initialized"}), 500
+    if domain not in CONFIG_DOMAIN_SCHEMAS:
+        return jsonify({"status": "error", "message": f"Unknown domain: {domain}"}), 404
+    if not validator.is_connected:
+        return jsonify({"status": "error", "message": "Drone not connected"}), 400
+
+    payload = request.get_json(force=True) or {}
+    changes = payload.get("changes")
+    if not isinstance(changes, dict):
+        return jsonify({"status": "error", "message": "'changes' must be an object"}), 400
+    tolerance = float(payload.get("tolerance", 0.0001))
+    verify_timeout_ms = int(payload.get("verify_timeout_ms", 5000))
+
+    normalized, invalid, warnings = _normalize_and_validate_domain_changes(domain, changes)
+    if invalid:
+        return jsonify({
+            "status": "error",
+            "domain": domain,
+            "invalid": invalid,
+            "warnings": warnings,
+        }), 400
+
+    current = _get_domain_params(domain)
+    changed = {k: v for k, v in normalized.items() if not _values_equal(current.get(k), v, tolerance)}
+    unchanged_count = len(normalized) - len(changed)
+    if not changed:
+        return jsonify({
+            "status": "success",
+            "domain": domain,
+            "applied": 0,
+            "verified": 0,
+            "unchanged": unchanged_count,
+            "failed": [],
+            "mismatched": [],
+            "warnings": warnings,
+            "duration_ms": 0,
+        })
+
+    started = time.time()
+    failed = []
+    sent = {}
+    with _config_apply_lock:
+        for param, value in changed.items():
+            try:
+                ok = validator.update_parameter(param, value)
+            except Exception as e:
+                ok = False
+                logger.error(f"Error updating parameter {param}: {e}")
+            if ok:
+                sent[param] = value
+            else:
+                failed.append({"param": param, "reason": "send_failed"})
+
+    deadline = time.time() + (verify_timeout_ms / 1000.0)
+    pending = dict(sent)
+    verified = []
+    while pending and time.time() < deadline:
+        to_remove = []
+        for param, expected in pending.items():
+            actual = validator.params_dict.get(param)
+            if _values_equal(actual, expected, tolerance):
+                verified.append(param)
+                to_remove.append(param)
+        for param in to_remove:
+            pending.pop(param, None)
+        if pending:
+            time.sleep(0.1)
+
+    mismatched = []
+    for param, expected in pending.items():
+        mismatched.append({
+            "param": param,
+            "expected": expected,
+            "actual": validator.params_dict.get(param),
+            "reason": "verify_timeout_or_mismatch",
+        })
+
+    duration_ms = int((time.time() - started) * 1000)
+    success = not failed and not mismatched
+    result = {
+        "status": "success" if success else "partial",
+        "domain": domain,
+        "applied": len(sent),
+        "verified": len(verified),
+        "unchanged": unchanged_count,
+        "failed": failed,
+        "mismatched": mismatched,
+        "warnings": warnings,
+        "duration_ms": duration_ms,
+    }
+    return jsonify(result), (200 if success else 207)
+
 
 @app.route('/api/configs', methods=['GET'])
 def list_configs():
@@ -1804,6 +2198,79 @@ def update_system_health():
         else:
             servo_outputs = [1000, 1000, 1000, 1000]
 
+        # ── Pre-flight readiness checks ───────────────────────────────────
+        preflight_checks = []
+
+        # GPS
+        if gps_fix >= 3:
+            preflight_checks.append({"id": "gps", "label": "GPS Lock", "status": "ok",
+                "detail": f"{satellites} sats, Fix {gps_fix}"})
+        elif gps_fix > 0:
+            preflight_checks.append({"id": "gps", "label": "GPS Lock", "status": "warn",
+                "detail": f"{satellites} sats, Fix {gps_fix} (need 3D fix)"})
+        else:
+            preflight_checks.append({"id": "gps", "label": "GPS Lock", "status": "fail",
+                "detail": "No GPS fix"})
+
+        # Battery
+        if battery_voltage <= 0:
+            preflight_checks.append({"id": "batt", "label": "Battery", "status": "warn",
+                "detail": "No battery data"})
+        elif battery_status == "CRITICAL":
+            preflight_checks.append({"id": "batt", "label": "Battery", "status": "fail",
+                "detail": f"{battery_voltage:.2f}V — CRITICAL"})
+        elif battery_status == "WARNING":
+            preflight_checks.append({"id": "batt", "label": "Battery", "status": "warn",
+                "detail": f"{battery_voltage:.2f}V — LOW"})
+        else:
+            preflight_checks.append({"id": "batt", "label": "Battery", "status": "ok",
+                "detail": f"{battery_voltage:.2f}V ({battery_percentage}%)"})
+
+        # Compass
+        if compass_enabled and compass_use:
+            preflight_checks.append({"id": "compass", "label": "Compass", "status": "ok",
+                "detail": "Enabled & calibrated"})
+        else:
+            preflight_checks.append({"id": "compass", "label": "Compass", "status": "fail",
+                "detail": "Disabled (COMPASS_USE=0)"})
+
+        # RC signal
+        if rc_nonzero >= 4:
+            preflight_checks.append({"id": "rc", "label": "RC Signal", "status": "ok",
+                "detail": f"{rc_chancount} channels active"})
+        elif rc_nonzero > 0:
+            preflight_checks.append({"id": "rc", "label": "RC Signal", "status": "warn",
+                "detail": f"Only {rc_nonzero} channels active"})
+        else:
+            preflight_checks.append({"id": "rc", "label": "RC Signal", "status": "fail",
+                "detail": "No RC input detected"})
+
+        # Armed state
+        if is_armed:
+            preflight_checks.append({"id": "arm", "label": "Armed State", "status": "warn",
+                "detail": "ARMED"})
+        else:
+            preflight_checks.append({"id": "arm", "label": "Armed State", "status": "ok",
+                "detail": "Disarmed (safe)"})
+
+        # Pre-arm STATUSTEXT errors
+        statustext_msg = mavlink_buffer.get("STATUSTEXT")
+        arm_error = ""
+        if statustext_msg:
+            txt = statustext_msg.get("text", "")
+            if "PreArm" in txt or "PreARM" in txt:
+                arm_error = txt.strip()
+        if arm_error:
+            preflight_checks.append({"id": "prearm", "label": "Pre-arm Check", "status": "fail",
+                "detail": arm_error})
+        else:
+            preflight_checks.append({"id": "prearm", "label": "Pre-arm Check", "status": "ok",
+                "detail": "No errors"})
+
+        pf_fails = sum(1 for c in preflight_checks if c["status"] == "fail")
+        pf_warns = sum(1 for c in preflight_checks if c["status"] == "warn")
+        overall_readiness = "NOT READY" if pf_fails > 0 else ("CAUTION" if pf_warns > 0 else "READY")
+
         # Update system health
         last_system_health = {
             "score": health_score,
@@ -1852,6 +2319,8 @@ def update_system_health():
             "groundspeed": vfr_groundspeed,
             "airspeed": vfr_airspeed,
             "servo_outputs": servo_outputs,
+            "preflight": preflight_checks,
+            "overall_readiness": overall_readiness,
         }
 
         # Add MAVLink link latency from TIMESYNC
@@ -1887,39 +2356,100 @@ def update_system_health():
 #####################################################################
 ######################################################################
 
-def telemetry_update_loop():
-    """Continuously update and broadcast telemetry data"""
-    logger.info("Starting telemetry update loop")
-    param_update_counter = 0
-    
-    while True:
-        start = time.perf_counter()   # high-resolution timer
-        try:
-            # Update system health from validator data
-            if validator and validator.hardware_validated and connected_clients:
-                # Snapshot the 100-msg queue and build ai_mavlink_ctx
-                validator.snapshot_rx_queue()
+def _fast_telemetry_loop():
+    """Emit attitude + RC data at 20 Hz for smooth HUD/RC-tab updates.
 
-                # Copy the snapshot context to our local buffer
+    Snapshots the MAVLink queue on every cycle (no flush — flush belongs to
+    the slow loop) so the data is always fresh from the serial stream.
+    Emits a lightweight 'attitude' SocketIO event consumed by drone-view and
+    the RC tab without touching the heavy health-check path.
+    """
+    FAST_INTERVAL = 0.05   # 20 Hz = 50 ms
+    logger.info("Starting fast telemetry loop (20 Hz)")
+    while True:
+        t0 = time.perf_counter()
+        try:
+            if validator and validator.hardware_validated and connected_clients:
+                # Fresh snapshot — no flush; _process_message clears at 100
+                validator.snapshot_rx_queue()
+                ctx = validator.ai_mavlink_ctx
+
+                attitude = ctx.get("ATTITUDE")
+                vfr      = ctx.get("VFR_HUD")
+                servo    = ctx.get("SERVO_OUTPUT_RAW")
+                rc       = ctx.get("RC_CHANNELS")
+
+                roll = pitch = yaw = 0.0
+                if attitude:
+                    roll  = round(math.degrees(attitude.get("roll",  0)), 1)
+                    pitch = round(math.degrees(attitude.get("pitch", 0)), 1)
+                    yaw   = round(math.degrees(attitude.get("yaw",   0)), 1)
+
+                rc_channels  = [rc.get(f"chan{i}_raw", 0) for i in range(1, 17)] if rc else [0] * 16
+                rc_rssi      = rc.get("rssi",     0) if rc else 0
+                rc_chancount = rc.get("chancount", 0) if rc else 0
+
+                servo_outputs = [servo.get(f"servo{i}_raw", 1000) for i in range(1, 5)] if servo else [1000] * 4
+
+                socketio.emit('attitude', {
+                    "attitude_roll":  roll,
+                    "attitude_pitch": pitch,
+                    "attitude_yaw":   yaw,
+                    "altitude":    vfr.get("alt",         0) if vfr else 0,
+                    "heading":     vfr.get("heading",     0) if vfr else 0,
+                    "climb":       vfr.get("climb",       0) if vfr else 0,
+                    "groundspeed": vfr.get("groundspeed", 0) if vfr else 0,
+                    "airspeed":    vfr.get("airspeed",    0) if vfr else 0,
+                    "rc_channels":   rc_channels,
+                    "rc_rssi":       rc_rssi,
+                    "rc_chancount":  rc_chancount,
+                    "servo_outputs": servo_outputs,
+                })
+        except Exception as e:
+            logger.error(f"Fast telemetry error: {e}")
+
+        elapsed = time.perf_counter() - t0
+        time.sleep(max(0.0, FAST_INTERVAL - elapsed))
+
+
+def telemetry_update_loop():
+    """Full system-health snapshot and broadcast at 2 Hz (slow path).
+
+    Reads from ai_mavlink_ctx (persistent LKV cache updated by snapshot_rx_queue)
+    and emits the heavyweight 'system_status' event: battery, GPS, params,
+    subsystems, ESC telemetry, flight modes, RC map, etc.
+    The deque is NOT flushed here — _process_message clears it after every
+    100-message batch write to the traffic log.
+    """
+    SLOW_INTERVAL = 0.5   # 2 Hz = 500 ms
+    logger.info("Starting slow telemetry loop (2 Hz)")
+    while True:
+        t0 = time.perf_counter()
+        try:
+            if validator and validator.hardware_validated and connected_clients:
+                # Snapshot and copy to shared mavlink_buffer
+                validator.snapshot_rx_queue()
                 global mavlink_buffer
                 mavlink_buffer = validator.ai_mavlink_ctx.copy()
 
-                # Update and broadcast system health
+                # Full health computation + broadcast
                 update_system_health()
 
-                # Flush the queue after we're done processing
-                validator.flush_rx_queue()
-                elapsed_ms = (time.perf_counter() - start) * 1000
-#                print(f"[Telemetry Loop] {elapsed_ms:.2f} ms", flush=True)
-                
-                time.sleep(0.3)  # Sleep to avoid excessive updates
-
+                # No flush here — _process_message owns the flush trigger.
+                # It writes 100 messages as a batch then clears the deque.
+                # Calling flush_rx_queue() every 500ms would prevent the
+                # deque from ever reaching 100, breaking the traffic log.
             else:
-                time.sleep(1)  # Sleep to avoid excessive updates
+                time.sleep(1)
+                continue
 
         except Exception as e:
             logger.error(f"Error in telemetry update loop: {str(e)}")
-            time.sleep(5)  # Sleep longer on error
+            time.sleep(5)
+            continue
+
+        elapsed = time.perf_counter() - t0
+        time.sleep(max(0.0, SLOW_INTERVAL - elapsed))
 
 #########################################################################
 def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=False, loggers=None, stt_recorder=None):
@@ -1951,7 +2481,9 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
         else:
             logger.warning(f"Source index.html not found at {source_index}")
 
-    # Start telemetry update thread
+    # Start fast (20 Hz attitude) and slow (2 Hz health) telemetry threads
+    fast_thread = threading.Thread(target=_fast_telemetry_loop, daemon=True)
+    fast_thread.start()
     telemetry_thread = threading.Thread(target=telemetry_update_loop, daemon=True)
     telemetry_thread.start()
 

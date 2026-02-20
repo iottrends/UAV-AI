@@ -288,16 +288,18 @@ class MavlinkHandler:
         pass
 ############################################################################################
     def snapshot_rx_queue(self):
-        """Copy the rx queue and build ai_mavlink_ctx (latest msg per type).
-        Call at the START of the telemetry loop."""
+        """Update ai_mavlink_ctx with the latest message of each type from
+        the rx deque.  ai_mavlink_ctx is a *persistent* last-known-value cache
+        and is NEVER wiped — only keys present in the current snapshot are
+        overwritten.  This prevents the fast loop from emitting zeroes when
+        the slow loop has just flushed the deque but new messages haven't
+        arrived yet (the "flicker" race condition)."""
         with self._rx_mav_lock:
             self._telemetry_snapshot = list(self.rx_mav_msg)
 
-        # Build ai_mavlink_ctx: last message of each type from the snapshot
-        ctx = {}
+        # Update in-place: only overwrite keys we actually received this cycle
         for m in self._telemetry_snapshot:
-            ctx[m.get("mavpackettype", "UNKNOWN")] = m
-        self.ai_mavlink_ctx = ctx
+            self.ai_mavlink_ctx[m.get("mavpackettype", "UNKNOWN")] = m
 
     def flush_rx_queue(self):
         """Clear the rx queue. Call at the END of the telemetry loop."""
@@ -650,6 +652,8 @@ class MavlinkHandler:
     def disconnect(self):
         """Disconnect from MAVLink."""
         self.is_connected = False
+        # Clear the LKV cache so stale data doesn't survive into the next session
+        self.ai_mavlink_ctx = {}
         # Flush remaining buffered messages before closing
         if self.rx_mav_msg:
             self._write_traffic_records([{"dir": "rx", "data": m} for m in self.rx_mav_msg])

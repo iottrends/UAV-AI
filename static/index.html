@@ -226,6 +226,15 @@
                      Got it, hide this
                   </button>
                </div>
+               <!-- Pre-flight Readiness -->
+               <div class="card preflight-panel" id="preflightPanel">
+                  <div class="preflight-header">
+                     <span class="card-title" style="margin:0">PRE-FLIGHT READINESS</span>
+                     <span class="preflight-badge" id="preflightBadge">--</span>
+                  </div>
+                  <div class="preflight-checks" id="preflightChecks"></div>
+               </div>
+
                <div class="card">
                   <div class="card-title">SUBSYSTEM STATUS</div>
                   <table class="subsystem-table" id="subsystemTable">
@@ -292,6 +301,7 @@
                   </div>
                   <div style="margin-top:1rem; display:flex; gap:0.5rem; justify-content:flex-end;">
                      <button class="modal-button cancel-button" id="serialRefreshBtn">Refresh</button>
+                     <button class="modal-button cancel-button" id="serialPreviewBtn">Preview</button>
                      <button class="modal-button connect-button" id="serialSaveBtn">Save &amp; Reboot</button>
                   </div>
                   <div id="serialStatus" style="margin-top:0.5rem; font-size:0.85rem;"></div>
@@ -708,6 +718,14 @@
                      </div>
                   </div>
                </div>
+               <!-- Motor Output Chart -->
+               <div class="motor-chart-panel card" style="margin-top: 1rem;">
+                  <div class="motor-chart-title">MOTOR OUTPUT (PWM μs)</div>
+                  <div class="motor-chart-wrap">
+                     <canvas id="motorRollingChart"></canvas>
+                  </div>
+               </div>
+
                <div class="card" style="margin-top: 1rem;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                      <div class="card-title" style="margin-bottom: 0;">ESC TELEMETRY</div>
@@ -818,6 +836,65 @@
                      </div>
                   </div>
 
+               </div>
+
+               <!-- Config panels: Read -> Edit -> Preview -> Apply -> Verify -->
+               <div class="rc-config-grid">
+                  <div class="rc-config-card">
+                     <div class="rc-config-header">
+                        <span class="rc-section-title" style="border:none;padding:0;background:none;">RC MAPPING</span>
+                        <div class="rc-config-actions">
+                           <button class="modal-button cancel-button" id="rcMapRefreshBtn">Refresh</button>
+                           <button class="modal-button cancel-button" id="rcMapPreviewBtn">Preview</button>
+                           <button class="modal-button connect-button" id="rcMapApplyBtn">Apply</button>
+                        </div>
+                     </div>
+                     <div id="rcMapForm" class="rc-config-form"></div>
+                     <div id="rcMapStatus" class="rc-config-status"></div>
+                     <div id="rcMapDiff" class="rc-config-diff"></div>
+                  </div>
+
+                  <div class="rc-config-card">
+                     <div class="rc-config-header">
+                        <span class="rc-section-title" style="border:none;padding:0;background:none;">FLIGHT MODES CONFIG</span>
+                        <div class="rc-config-actions">
+                           <button class="modal-button cancel-button" id="fltModesRefreshBtn">Refresh</button>
+                           <button class="modal-button cancel-button" id="fltModesPreviewBtn">Preview</button>
+                           <button class="modal-button connect-button" id="fltModesApplyBtn">Apply</button>
+                        </div>
+                     </div>
+                     <div id="fltModesForm" class="rc-config-form"></div>
+                     <div id="fltModesStatus" class="rc-config-status"></div>
+                     <div id="fltModesDiff" class="rc-config-diff"></div>
+                  </div>
+
+                  <div class="rc-config-card">
+                     <div class="rc-config-header">
+                        <span class="rc-section-title" style="border:none;padding:0;background:none;">FAILSAFE CONFIG</span>
+                        <div class="rc-config-actions">
+                           <button class="modal-button cancel-button" id="failsafeRefreshBtn">Refresh</button>
+                           <button class="modal-button cancel-button" id="failsafePreviewBtn">Preview</button>
+                           <button class="modal-button connect-button" id="failsafeApplyBtn">Apply</button>
+                        </div>
+                     </div>
+                     <div id="failsafeForm" class="rc-config-form"></div>
+                     <div id="failsafeStatus" class="rc-config-status"></div>
+                     <div id="failsafeDiff" class="rc-config-diff"></div>
+                  </div>
+
+                  <div class="rc-config-card">
+                     <div class="rc-config-header">
+                        <span class="rc-section-title" style="border:none;padding:0;background:none;">AUXILIARY SWITCH ASSIGNMENTS</span>
+                        <div class="rc-config-actions">
+                           <button class="modal-button cancel-button" id="auxRefreshBtn">Refresh</button>
+                           <button class="modal-button cancel-button" id="auxPreviewBtn">Preview</button>
+                           <button class="modal-button connect-button" id="auxApplyBtn">Apply</button>
+                        </div>
+                     </div>
+                     <div id="auxFunctionsForm" class="rc-config-form rc-config-form-wide"></div>
+                     <div id="auxStatus" class="rc-config-status"></div>
+                     <div id="auxDiff" class="rc-config-diff"></div>
+                  </div>
                </div>
 
             </div>

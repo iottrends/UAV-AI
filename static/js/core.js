@@ -261,6 +261,13 @@ document.addEventListener('DOMContentLoaded', function() {
          }
       });
 
+      // Fast attitude updates (20 Hz) — routes through the same hooks so
+      // drone-view and rc-modes update at full rate without waiting for the
+      // heavyweight system_status (2 Hz) payload.
+      socket.on('attitude', function(data) {
+         window._app.systemStatusHooks.forEach(function(fn) { fn(data); });
+      });
+
       // Listen for parameter progress updates
       socket.on('param_progress', function(data) {
          const headerParamsValue = document.getElementById('headerParamsValue');
@@ -447,6 +454,35 @@ document.addEventListener('DOMContentLoaded', function() {
 
          if (motor4 && motor4Output) motor4Output.textContent = motor4.output + '%';
          if (motor4 && motor4Status) motor4Status.textContent = motor4.status;
+      }
+
+      // Update pre-flight readiness panel
+      var pfBadge = document.getElementById('preflightBadge');
+      var pfChecks = document.getElementById('preflightChecks');
+      if (pfBadge && data.overall_readiness) {
+         pfBadge.textContent = data.overall_readiness;
+         pfBadge.className = 'preflight-badge ' +
+            (data.overall_readiness === 'READY' ? 'pf-ready' :
+             data.overall_readiness === 'CAUTION' ? 'pf-caution' : 'pf-notready');
+      }
+      if (pfChecks && Array.isArray(data.preflight)) {
+         pfChecks.innerHTML = '';
+         data.preflight.forEach(function(chk) {
+            var row = document.createElement('div');
+            row.className = 'pf-check';
+            var dot = document.createElement('div');
+            dot.className = 'pf-dot pf-' + chk.status;
+            var lbl = document.createElement('span');
+            lbl.className = 'pf-label';
+            lbl.textContent = chk.name;
+            var det = document.createElement('span');
+            det.className = 'pf-detail';
+            det.textContent = chk.detail || '';
+            row.appendChild(dot);
+            row.appendChild(lbl);
+            row.appendChild(det);
+            pfChecks.appendChild(row);
+         });
       }
 
       // Update subsystem table
