@@ -15,27 +15,28 @@
     };
 
     // ===== Configurable OSD =====
+    // valWidth: fixed ch width reserved for the value column — prevents layout jitter on update
     var OSD_FIELDS = [
-        { key: 'bat_volt',   label: 'BAT',      unit: 'V',    path: function(d) { return d.battery ? d.battery.voltage.toFixed(2) : null; } },
-        { key: 'bat_pct',    label: 'BAT',      unit: '%',    path: function(d) { return d.battery ? d.battery.percentage : null; } },
-        { key: 'gps_fix',    label: 'GPS',      unit: '',     path: function(d) { return d.gps ? (['No GPS','No Fix','2D','3D','DGPS','RTK F','RTK'][d.gps.fix_type] || d.gps.fix_type) : null; } },
-        { key: 'gps_sats',   label: 'SATS',     unit: '',     path: function(d) { return d.gps ? d.gps.satellites_visible : null; } },
-        { key: 'gps_lat',    label: 'LAT',      unit: '',     path: function(d) { return d.gps && d.gps.lat !== undefined ? d.gps.lat.toFixed(7) : null; } },
-        { key: 'gps_lon',    label: 'LON',      unit: '',     path: function(d) { return d.gps && d.gps.lon !== undefined ? d.gps.lon.toFixed(7) : null; } },
-        { key: 'alt',        label: 'ALT',      unit: 'm',    path: function(d) { return d.altitude !== undefined ? d.altitude.toFixed(1) : null; } },
-        { key: 'gndspd',     label: 'GND SPD',  unit: 'm/s',  path: function(d) { return d.groundspeed !== undefined ? d.groundspeed.toFixed(1) : null; } },
-        { key: 'airspd',     label: 'AIR SPD',  unit: 'm/s',  path: function(d) { return d.airspeed !== undefined ? d.airspeed.toFixed(1) : null; } },
-        { key: 'vspd',       label: 'V/S',      unit: 'm/s',  path: function(d) { return d.climb !== undefined ? d.climb.toFixed(1) : null; } },
-        { key: 'hdg',        label: 'HDG',      unit: '\u00B0',    path: function(d) { return d.heading !== undefined ? d.heading : null; } },
-        { key: 'mode',       label: 'MODE',     unit: '',     path: function(d) { return d.current_mode !== undefined ? (COPTER_MODES[d.current_mode] || d.current_mode) : null; } },
-        { key: 'armed',      label: 'STATE',    unit: '',     path: function(d) { return d.armed !== undefined ? (d.armed ? 'ARMED' : 'DISARMED') : null; } },
-        { key: 'roll',       label: 'ROLL',     unit: '\u00B0',    path: function(d) { return d.attitude_roll !== undefined ? d.attitude_roll.toFixed(1) : null; } },
-        { key: 'pitch',      label: 'PITCH',    unit: '\u00B0',    path: function(d) { return d.attitude_pitch !== undefined ? d.attitude_pitch.toFixed(1) : null; } },
-        { key: 'yaw',        label: 'YAW',      unit: '\u00B0',    path: function(d) { return d.attitude_yaw !== undefined ? d.attitude_yaw.toFixed(1) : null; } },
-        { key: 'rc_rssi',    label: 'RSSI',     unit: '',     path: function(d) { return d.rc_rssi !== undefined ? d.rc_rssi : null; } },
-        { key: 'latency',    label: 'LINK',     unit: 'ms',   path: function(d) { return d.latency !== undefined ? d.latency : null; } },
-        { key: 'pkt_rate',   label: 'RX',       unit: 'pkt/s', path: function(d) { return d.link_stats ? d.link_stats.pkt_rate : null; } },
-        { key: 'link_spd',   label: 'BW',       unit: 'B/s',  path: function(d) { return d.link_stats ? Math.round(d.link_stats.byte_rate) : null; } },
+        { key: 'bat_volt',   label: 'BAT',      unit: 'V',     valWidth: 7,  path: function(d) { return d.battery ? d.battery.voltage.toFixed(2) : null; } },
+        { key: 'bat_pct',    label: 'BAT',      unit: '%',     valWidth: 5,  path: function(d) { return d.battery ? d.battery.percentage : null; } },
+        { key: 'gps_fix',    label: 'GPS',      unit: '',      valWidth: 6,  path: function(d) { return d.gps ? (['No GPS','No Fix','2D','3D','DGPS','RTK F','RTK'][d.gps.fix_type] || d.gps.fix_type) : null; } },
+        { key: 'gps_sats',   label: 'SATS',     unit: '',      valWidth: 3,  path: function(d) { return d.gps ? d.gps.satellites_visible : null; } },
+        { key: 'gps_lat',    label: 'LAT',      unit: '',      valWidth: 11, path: function(d) { return d.gps && d.gps.lat !== undefined ? d.gps.lat.toFixed(7) : null; } },
+        { key: 'gps_lon',    label: 'LON',      unit: '',      valWidth: 12, path: function(d) { return d.gps && d.gps.lon !== undefined ? d.gps.lon.toFixed(7) : null; } },
+        { key: 'alt',        label: 'ALT',      unit: 'm',     valWidth: 8,  path: function(d) { return d.altitude !== undefined ? d.altitude.toFixed(1) : null; } },
+        { key: 'gndspd',     label: 'GND SPD',  unit: 'm/s',  valWidth: 8,  path: function(d) { return d.groundspeed !== undefined ? d.groundspeed.toFixed(1) : null; } },
+        { key: 'airspd',     label: 'AIR SPD',  unit: 'm/s',  valWidth: 8,  path: function(d) { return d.airspeed !== undefined ? d.airspeed.toFixed(1) : null; } },
+        { key: 'vspd',       label: 'V/S',      unit: 'm/s',  valWidth: 9,  path: function(d) { return d.climb !== undefined ? d.climb.toFixed(1) : null; } },
+        { key: 'hdg',        label: 'HDG',      unit: '\u00B0', valWidth: 5, path: function(d) { return d.heading !== undefined ? d.heading : null; } },
+        { key: 'mode',       label: 'MODE',     unit: '',      valWidth: 10, path: function(d) { return d.current_mode !== undefined ? (COPTER_MODES[d.current_mode] || d.current_mode) : null; } },
+        { key: 'armed',      label: 'STATE',    unit: '',      valWidth: 8,  path: function(d) { return d.armed !== undefined ? (d.armed ? 'ARMED' : 'DISARMED') : null; } },
+        { key: 'roll',       label: 'ROLL',     unit: '\u00B0', valWidth: 8, path: function(d) { return d.attitude_roll !== undefined ? d.attitude_roll.toFixed(1) : null; } },
+        { key: 'pitch',      label: 'PITCH',    unit: '\u00B0', valWidth: 8, path: function(d) { return d.attitude_pitch !== undefined ? d.attitude_pitch.toFixed(1) : null; } },
+        { key: 'yaw',        label: 'YAW',      unit: '\u00B0', valWidth: 8, path: function(d) { return d.attitude_yaw !== undefined ? d.attitude_yaw.toFixed(1) : null; } },
+        { key: 'rc_rssi',    label: 'RSSI',     unit: '',      valWidth: 3,  path: function(d) { return d.rc_rssi !== undefined ? d.rc_rssi : null; } },
+        { key: 'latency',    label: 'LINK',     unit: 'ms',    valWidth: 7,  path: function(d) { return d.latency !== undefined ? d.latency : null; } },
+        { key: 'pkt_rate',   label: 'RX',       unit: 'pkt/s', valWidth: 9, path: function(d) { return d.link_stats ? d.link_stats.pkt_rate : null; } },
+        { key: 'link_spd',   label: 'BW',       unit: 'B/s',   valWidth: 9, path: function(d) { return d.link_stats ? Math.round(d.link_stats.byte_rate) : null; } },
     ];
 
     var OSD_STORAGE_KEY = 'uav-ai-osd-fields';
@@ -99,6 +100,8 @@
                 lbl.textContent = field.label;
                 var valSpan = document.createElement('span');
                 valSpan.className = 'osd-value';
+                // Pin to a fixed width so the item never resizes on value change
+                valSpan.style.width = field.valWidth + 'ch';
                 valSpan.textContent = text;
                 div.appendChild(lbl);
                 div.appendChild(valSpan);

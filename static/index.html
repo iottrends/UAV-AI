@@ -4,6 +4,9 @@
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>UAV-AI Assistant</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
       <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
       <link rel="stylesheet" href="/static/css/style.css">
       <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
@@ -17,8 +20,8 @@
          <div class="connection-status">
             <span id="connectionText">Disconnected</span>
             <div class="status-indicator" id="connectionIndicator"></div>
-            <span id="headerParamsText" style="margin-left: 15px; display: none;">Params: <span id="headerParamsValue">0%</span></span>
-            <span id="headerLatencyText" style="margin-left: 15px; display: none;">Latency: <span id="headerLatencyValue">0ms</span></span>
+            <span id="headerParamsText" class="header-stat" style="display: none;">Params: <span id="headerParamsValue" class="telemetry-value">0%</span></span>
+            <span id="headerLatencyText" class="header-stat" style="display: none;">Latency: <span id="headerLatencyValue" class="telemetry-value">0ms</span></span>
             <div id="copilotBadge" class="copilot-badge" style="display:none;" title="Click to toggle co-pilot mode. Shift+click for auto mode.">
                <i class="fas fa-robot"></i> CO-PILOT
             </div>
@@ -42,51 +45,64 @@
                <span>Disconnect Drone</span>
                <i class="fas fa-times"></i>
             </div>
+
+            <!-- ── Status ── -->
+            <div class="nav-group-label">Status</div>
             <div class="menu-item active" data-tab="dashboard">
                <i class="fas fa-tachometer-alt"></i>
                Dashboard
-            </div>
-            <div class="menu-item" data-tab="serial-ports">
-               <i class="fas fa-plug"></i>
-               Serial Ports
-            </div>
-            <div class="menu-item" data-tab="calibration">
-               <i class="fas fa-crosshairs"></i>
-               Calibration
-            </div>
-            <div class="menu-item" data-tab="firmware">
-               <i class="fas fa-microchip"></i>
-               Firmware
-            </div>
-            <div class="menu-item" data-tab="parameters">
-               <i class="fas fa-sliders-h"></i>
-               Parameters
-            </div>
-            <div class="menu-item" data-tab="logs">
-               <i class="fas fa-file-alt"></i>
-               Logs
-            </div>
-            <div class="menu-item" data-tab="latency-params">
-               <i class="fas fa-tachometer-alt"></i>
-               Latency & Parameters
-            </div>
-            <div class="menu-item" data-tab="configs">
-               <i class="fas fa-save"></i>
-               Configs
-            </div>
-            <div class="menu-item" data-tab="motors">
-               <i class="fas fa-cog"></i>
-               Motors
-            </div>
-            <div class="menu-item" data-tab="receiver">
-               <i class="fas fa-broadcast-tower"></i>
-               RC & Modes
             </div>
             <div class="menu-item" data-tab="drone-view">
                <i class="fas fa-plane"></i>
                Drone View
             </div>
-            <div style="flex-grow: 1;"></div>
+
+            <!-- ── Configure ── -->
+            <div class="nav-group-label">Configure</div>
+            <div class="menu-item" data-tab="parameters">
+               <i class="fas fa-sliders-h"></i>
+               Parameters
+            </div>
+            <div class="menu-item" data-tab="receiver">
+               <i class="fas fa-broadcast-tower"></i>
+               RC &amp; Modes
+            </div>
+            <div class="menu-item" data-tab="serial-ports">
+               <i class="fas fa-plug"></i>
+               Serial Ports
+            </div>
+            <div class="menu-item" data-tab="configs">
+               <i class="fas fa-save"></i>
+               Configs
+            </div>
+
+            <!-- ── Maintenance ── -->
+            <div class="nav-group-label">Maintenance</div>
+            <div class="menu-item" data-tab="calibration">
+               <i class="fas fa-crosshairs"></i>
+               Calibration
+            </div>
+            <div class="menu-item" data-tab="motors">
+               <i class="fas fa-cog"></i>
+               Motors
+            </div>
+            <div class="menu-item" data-tab="firmware">
+               <i class="fas fa-microchip"></i>
+               Firmware
+            </div>
+
+            <!-- ── Analysis ── -->
+            <div class="nav-group-label">Analysis</div>
+            <div class="menu-item" data-tab="logs">
+               <i class="fas fa-file-alt"></i>
+               Logs
+            </div>
+            <div class="menu-item" data-tab="latency-params">
+               <i class="fas fa-chart-line"></i>
+               Latency
+            </div>
+
+            <div class="nav-spacer"></div>
             <div class="menu-item" data-tab="settings">
                <i class="fas fa-cog"></i>
                Settings
@@ -136,17 +152,17 @@
                <div class="cards-row">
                   <div class="card">
                      <div class="card-title">BATTERY STATUS</div>
+                     <div class="status-text" id="batteryText">-- / -- Threshold</div>
                      <div class="status-bar">
-                        <div class="status-indicator-bar" id="batteryIndicator" style="background-color: var(--warning-color);"></div>
-                        <div class="status-text" id="batteryText">-- / -- Threshold</div>
+                        <div class="status-indicator-bar" id="batteryIndicator"></div>
                      </div>
                      <div class="critical-text" id="batteryStatus">--</div>
                   </div>
                   <div class="card">
                      <div class="card-title">GPS STATUS</div>
+                     <div class="status-text" id="gpsText">Fix Type: -- (No Fix)</div>
                      <div class="status-bar">
-                        <div class="status-indicator-bar" id="gpsIndicator" style="background-color: var(--warning-color);"></div>
-                        <div class="status-text" id="gpsText">Fix Type: -- (No Fix)</div>
+                        <div class="status-indicator-bar" id="gpsIndicator"></div>
                      </div>
                      <div class="critical-text" id="gpsSatellites">-- SATELLITES VISIBLE</div>
                   </div>
@@ -205,15 +221,15 @@
                <!-- First-Run Tour Card -->
                <div class="card first-run-card" id="firstRunCard" style="display: none;">
                   <div class="card-title">Welcome to UAV-AI</div>
-                  <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.75rem;">
+                  <p class="hint-text">
                      New here? Follow these three steps to see UAV-AI in action.
                   </p>
-                  <ol style="margin-left:1.25rem; font-size:0.85rem; color:var(--text-color);">
-                     <li style="margin-bottom:0.4rem;">
+                  <ol class="u-text-sm u-mb-2 first-run-list">
+                     <li class="u-mb-1">
                         <strong>Connect your drone:</strong>
                         Click <em>Connect Drone</em> in the left sidebar and choose Serial or UDP.
                      </li>
-                     <li style="margin-bottom:0.4rem;">
+                     <li class="u-mb-1">
                         <strong>Test Co-pilot:</strong>
                         In the chat, type <code>gps status</code> to get an instant answer (no cloud).
                      </li>
@@ -222,14 +238,14 @@
                         Once connected, ask <code>why is my compass off?</code> for a full AI diagnosis.
                      </li>
                   </ol>
-                  <button id="dismissFirstRun" class="action-button" style="margin-top:0.75rem;">
+                  <button id="dismissFirstRun" class="action-button u-mt-2">
                      Got it, hide this
                   </button>
                </div>
                <!-- Pre-flight Readiness -->
                <div class="card preflight-panel" id="preflightPanel">
                   <div class="preflight-header">
-                     <span class="card-title" style="margin:0">PRE-FLIGHT READINESS</span>
+                     <span class="card-title u-mb-0">PRE-FLIGHT READINESS</span>
                      <span class="preflight-badge" id="preflightBadge">--</span>
                   </div>
                   <div class="preflight-checks" id="preflightChecks"></div>
@@ -279,14 +295,12 @@
                </div>
             </div>
             <!-- Serial Ports Tab -->
-            <div class="tab-content" id="serial-ports-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel" id="serial-ports-tab" style="display: none;">
                <h2 class="dashboard-title">Serial Port Configuration</h2>
                <div class="card">
                   <div class="card-title">UART ASSIGNMENT</div>
-                  <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1rem;">
-                     Assign peripherals to serial ports. Changes require Save &amp; Reboot.
-                  </p>
-                  <div style="overflow-x:auto;">
+                  <p class="hint-text">Assign peripherals to serial ports. Changes require Save &amp; Reboot.</p>
+                  <div class="scroll-x">
                      <table class="serial-port-table" id="serialPortTable">
                         <thead>
                            <tr>
@@ -299,29 +313,29 @@
                         <tbody id="serialPortBody"></tbody>
                      </table>
                   </div>
-                  <div style="margin-top:1rem; display:flex; gap:0.5rem; justify-content:flex-end;">
-                     <button class="modal-button cancel-button" id="serialRefreshBtn">Refresh</button>
-                     <button class="modal-button cancel-button" id="serialPreviewBtn">Preview</button>
-                     <button class="modal-button connect-button" id="serialSaveBtn">Save &amp; Reboot</button>
+                  <div class="flex-row u-mt-2 u-justify-end">
+                     <button class="btn btn-ghost" id="serialRefreshBtn">Refresh</button>
+                     <button class="btn btn-ghost" id="serialPreviewBtn">Preview</button>
+                     <button class="btn btn-primary" id="serialSaveBtn">Save &amp; Reboot</button>
                   </div>
-                  <div id="serialStatus" style="margin-top:0.5rem; font-size:0.85rem;"></div>
+                  <div id="serialStatus" class="hint-text u-mt-1"></div>
                </div>
             </div>
             <!-- Firmware Tab -->
-            <div class="tab-content" id="firmware-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel" id="firmware-tab" style="display: none;">
                <h2 class="dashboard-title">Firmware</h2>
-               <p style="color: var(--text-muted); margin-bottom: 1rem;">Flash ArduPilot firmware from a local file or the online firmware server.</p>
+               <p class="hint-text">Flash ArduPilot firmware from a local file or the online firmware server.</p>
 
                <!-- Current Firmware Info -->
-               <div class="card" style="margin-bottom: 1rem;">
+               <div class="card u-mb-2">
                   <div class="card-title"><i class="fas fa-info-circle"></i> Current Firmware</div>
-                  <div id="fwCurrentInfo" style="font-size: 0.85rem; color: var(--text-muted);">
+                  <div id="fwCurrentInfo" class="hint-text u-mb-0">
                      Not connected — connect a flight controller to see firmware info.
                   </div>
                </div>
 
                <!-- Flash Method Tabs -->
-               <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+               <div class="flex-row u-mb-2">
                   <button id="fwMethodSerial" class="fw-method-btn fw-method-active" onclick="window._fwTab && window._fwTab.setMethod('serial')">
                      <i class="fas fa-plug"></i> Serial (.apj)
                   </button>
@@ -332,17 +346,16 @@
 
                <!-- Serial Flash Panel -->
                <div id="fwSerialPanel">
-                  <!-- Flash Local File -->
-                  <div class="card" style="margin-bottom: 1rem;">
+                  <div class="card u-mb-2">
                      <div class="card-title"><i class="fas fa-file-upload"></i> Flash Local File</div>
-                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">Select an ArduPilot <code>.apj</code> firmware file from your computer.</p>
-                     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                        <input type="file" id="fwLocalFile" accept=".apj" style="font-size: 0.85rem;">
-                        <button id="fwFlashLocalBtn" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; white-space: nowrap;" disabled>
+                     <p class="hint-text">Select an ArduPilot <code>.apj</code> firmware file from your computer.</p>
+                     <div class="flex-row flex-wrap">
+                        <input type="file" id="fwLocalFile" accept=".apj" class="u-text-sm">
+                        <button id="fwFlashLocalBtn" class="btn btn-primary" disabled>
                            <i class="fas fa-bolt"></i> Flash Selected File
                         </button>
                      </div>
-                     <div id="fwLocalStatus" style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);"></div>
+                     <div id="fwLocalStatus" class="hint-text u-mt-1 u-mb-0"></div>
                   </div>
                </div>
 
@@ -350,42 +363,38 @@
                <div id="fwDfuPanel" style="display:none;">
 
                   <!-- Step 1: Enter DFU -->
-                  <div class="card" style="margin-bottom: 1rem;">
+                  <div class="card u-mb-2">
                      <div class="card-title"><i class="fas fa-microchip"></i> Step 1 — Enter DFU Mode</div>
-                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">
-                        Click the button to enter DFU mode automatically. If that fails, hold the <strong>BOOT</strong> button on the FC and replug the USB cable.
-                     </p>
-                     <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-                        <button id="dfuEnterBtn" style="background: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
+                     <p class="hint-text">Click the button to enter DFU mode automatically. If that fails, hold the <strong>BOOT</strong> button on the FC and replug the USB cable.</p>
+                     <div class="flex-row flex-wrap">
+                        <button id="dfuEnterBtn" class="btn btn-primary">
                            <i class="fas fa-sign-in-alt"></i> Enter DFU Mode
                         </button>
-                        <button id="dfuDetectBtn" style="background: var(--secondary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
+                        <button id="dfuDetectBtn" class="btn btn-ghost">
                            <i class="fas fa-search"></i> Detect Board
                         </button>
-                        <span id="dfuStatusChip" style="font-size: 0.8rem; padding: 0.25rem 0.75rem; border-radius: 12px; background: #444; color: #fff; font-family: monospace;">Not detected</span>
+                        <span id="dfuStatusChip" class="dfu-chip">Not detected</span>
                      </div>
                   </div>
 
                   <!-- Board info panel (shown after detection) -->
-                  <div class="card" id="dfuBoardCard" style="margin-bottom: 1rem; display: none;">
+                  <div class="card u-mb-2" id="dfuBoardCard" style="display: none;">
                      <div class="card-title"><i class="fas fa-circuit-board"></i> Detected Board</div>
-                     <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
-                        <tr><td style="padding: 0.3rem 0.5rem; font-weight: 600; width: 140px;">Manufacturer</td><td id="dfuBoardMfr">--</td></tr>
-                        <tr><td style="padding: 0.3rem 0.5rem; font-weight: 600;">Model</td><td id="dfuBoardModel">--</td></tr>
-                        <tr><td style="padding: 0.3rem 0.5rem; font-weight: 600;">USB ID</td><td id="dfuBoardUsb">--</td></tr>
-                        <tr><td style="padding: 0.3rem 0.5rem; font-weight: 600;">USB Descriptor</td><td id="dfuBoardDesc">--</td></tr>
+                     <table class="data-table">
+                        <tr><td class="u-semibold" style="width:140px;">Manufacturer</td><td id="dfuBoardMfr">--</td></tr>
+                        <tr><td class="u-semibold">Model</td><td id="dfuBoardModel">--</td></tr>
+                        <tr><td class="u-semibold">USB ID</td><td id="dfuBoardUsb">--</td></tr>
+                        <tr><td class="u-semibold">USB Descriptor</td><td id="dfuBoardDesc">--</td></tr>
                      </table>
                   </div>
 
                   <!-- Step 2: Select firmware -->
-                  <div class="card" style="margin-bottom: 1rem;">
+                  <div class="card u-mb-2">
                      <div class="card-title"><i class="fas fa-file-code"></i> Step 2 — Select Firmware (.bin)</div>
-                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">
-                        Upload a local <code>.bin</code> file, or use the Online Firmware list below (select a firmware and click <strong>DFU Flash</strong>).
-                     </p>
-                     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                        <input type="file" id="dfuLocalFile" accept=".bin" style="font-size: 0.85rem;">
-                        <button id="dfuFlashLocalBtn" style="background: var(--danger-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; white-space: nowrap;" disabled>
+                     <p class="hint-text">Upload a local <code>.bin</code> file, or use the Online Firmware list below (select a firmware and click <strong>DFU Flash</strong>).</p>
+                     <div class="flex-row flex-wrap">
+                        <input type="file" id="dfuLocalFile" accept=".bin" class="u-text-sm">
+                        <button id="dfuFlashLocalBtn" class="btn btn-danger" disabled>
                            <i class="fas fa-bolt"></i> DFU Flash Selected File
                         </button>
                      </div>
@@ -394,10 +403,10 @@
                </div>
 
                <!-- Online Firmware (shared by both Serial and DFU) -->
-               <div class="card" style="margin-bottom: 1rem;">
+               <div class="card u-mb-2">
                   <div class="card-title"><i class="fas fa-cloud-download-alt"></i> Online Firmware</div>
-                  <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem;">
-                     <select id="fwVehicleFilter" style="padding: 0.4rem 0.6rem; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.85rem;">
+                  <div class="flex-row flex-wrap u-mb-2">
+                     <select id="fwVehicleFilter" class="form-control" style="width:auto;">
                         <option value="">All Vehicle Types</option>
                         <option value="Copter">Copter</option>
                         <option value="Plane">Plane</option>
@@ -406,38 +415,38 @@
                         <option value="Tracker">Tracker</option>
                         <option value="Heli">Heli</option>
                      </select>
-                     <button id="fwRefreshManifest" style="background-color: var(--secondary-color); color: white; border: none; border-radius: 5px; padding: 0.4rem 0.8rem; cursor: pointer; font-size: 0.85rem;">
+                     <button id="fwRefreshManifest" class="btn btn-ghost btn-sm">
                         <i class="fas fa-sync-alt"></i> Refresh
                      </button>
                   </div>
-                  <div id="fwOnlineList" style="max-height: 300px; overflow-y: auto; font-size: 0.85rem;">
-                     <p style="color: var(--text-muted);">Click Refresh to fetch available firmware.</p>
+                  <div id="fwOnlineList" class="u-text-sm" style="max-height: 300px; overflow-y: auto;">
+                     <p class="u-text-secondary">Click Refresh to fetch available firmware.</p>
                   </div>
                </div>
 
                <!-- Flash Progress -->
-               <div class="card" id="fwProgressCard" style="margin-bottom: 1rem; display: none;">
+               <div class="card u-mb-2" id="fwProgressCard" style="display: none;">
                   <div class="card-title"><i class="fas fa-tasks"></i> Flash Progress</div>
-                  <div id="fwProgressStage" style="font-weight: 600; margin-bottom: 0.5rem;">Idle</div>
-                  <div style="background: var(--bg-color); border-radius: 5px; overflow: hidden; height: 20px; margin-bottom: 0.5rem;">
-                     <div id="fwProgressBar" style="height: 100%; width: 0%; background: var(--primary-color); transition: width 0.3s ease; border-radius: 5px;"></div>
+                  <div id="fwProgressStage" class="u-semibold u-mb-1">Idle</div>
+                  <div class="progress-track u-mb-1">
+                     <div id="fwProgressBar" class="progress-fill" style="width:0%;"></div>
                   </div>
-                  <div id="fwProgressLog" style="background: #1a1a2e; color: #a0ffa0; font-family: monospace; font-size: 0.75rem; padding: 0.75rem; border-radius: 5px; max-height: 200px; overflow-y: auto; white-space: pre-wrap;"></div>
+                  <div id="fwProgressLog" class="fw-log"></div>
                </div>
             </div>
 
             <!-- Parameters Tab -->
-            <div class="tab-content" id="parameters-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel" id="parameters-tab" style="display: none;">
                <h2 class="dashboard-title">Parameters</h2>
-               <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
-                  <div style="display: flex; align-items: center;">
-                     <input type="text" id="paramSearch" placeholder="Search parameters..." style="padding: 0.5rem; border-radius: 5px; border: 1px solid #ddd; margin-right: 0.5rem;">
-                     <button id="searchBtn" class="action-button" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
-                     <i class="fas fa-search"></i>
+               <div class="flex-between u-mb-2">
+                  <div class="flex-row">
+                     <input type="text" id="paramSearch" placeholder="Search parameters..." class="form-control" style="width:220px;">
+                     <button id="searchBtn" class="btn btn-primary btn-icon">
+                        <i class="fas fa-search"></i>
                      </button>
                   </div>
-                  <div style="display: flex; align-items: center; gap: 0.5rem;">
-                     <select id="categoryFilter" style="padding: 0.5rem; border-radius: 5px; border: 1px solid #ddd;">
+                  <div class="flex-row">
+                     <select id="categoryFilter" class="form-control" style="width:auto;">
                         <option value="All Categories">All Categories</option>
                         <option value="System">System</option>
                         <option value="GPS">GPS</option>
@@ -466,23 +475,23 @@
                         <option value="Streaming">Streaming</option>
                         <option value="Miscellaneous">Miscellaneous</option>
                      </select>
-                     <button id="refreshParams" class="action-button" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
-                     <i class="fas fa-sync-alt"></i> Refresh
+                     <button id="refreshParams" class="btn btn-ghost btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
                      </button>
-                     <button id="saveParams" class="action-button" style="background-color: var(--success-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
-                     <i class="fas fa-save"></i> Save Changes
+                     <button id="saveParams" class="btn btn-success btn-sm">
+                        <i class="fas fa-save"></i> Save Changes
                      </button>
                   </div>
                </div>
-               <div style="overflow-x: auto; overflow-y: auto;">
-                  <table id="parametersTable" style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
+               <div class="scroll-x">
+                  <table id="parametersTable" class="data-table">
                      <thead>
-                        <tr style="background-color: var(--light-color); text-align: left;">
-                           <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Name</th>
-                           <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Value</th>
-                           <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Description</th>
-                           <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Range</th>
-                           <th style="padding: 0.75rem; border-bottom: 1px solid #ddd;">Actions</th>
+                        <tr>
+                           <th>Name</th>
+                           <th>Value</th>
+                           <th>Description</th>
+                           <th>Range</th>
+                           <th>Actions</th>
                         </tr>
                      </thead>
                      <tbody id="parametersTableBody">
@@ -491,23 +500,21 @@
                </div>
             </div>
             <!-- Logs Tab -->
-            <div class="tab-content" id="logs-tab" style="display: none; flex: 1; background-color: var(--dark-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px); color: #e0e0e0;">
+            <div class="tab-content tab-panel tab-panel-dark" id="logs-tab" style="display: none;">
 
                <!-- Top: Upload + FC Fetch -->
-               <div style="display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1rem; flex-wrap: wrap;">
-                  <!-- Upload area -->
+               <div class="flex-row flex-wrap flex-gap-2 u-mb-2 u-items-start">
                   <div class="log-upload-area" id="logUploadArea">
-                     <i class="fas fa-cloud-upload-alt" style="font-size: 1.5rem; color: var(--primary-color);"></i>
-                     <p style="margin: 0.5rem 0 0.25rem; font-weight: bold;">Upload Log File</p>
-                     <p style="font-size: 0.75rem; color: #888;">Drag & drop .bin or .tlog, or click to browse</p>
+                     <i class="fas fa-cloud-upload-alt u-text-lg u-text-accent"></i>
+                     <p class="u-semibold u-mt-1">Upload Log File</p>
+                     <p class="u-text-xs u-text-secondary">Drag &amp; drop .bin or .tlog, or click to browse</p>
                      <input type="file" id="logFileInput" accept=".bin,.tlog" style="display:none;">
                   </div>
-                  <!-- FC Fetch -->
-                  <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                     <button id="fetchLogsButton" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                  <div class="flex-col">
+                     <button id="fetchLogsButton" class="btn btn-primary">
                         <i class="fas fa-download"></i> Fetch FC Logs
                      </button>
-                     <div id="logContent" style="font-size: 0.8rem; color: #aaa;"></div>
+                     <div id="logContent" class="hint-text u-mb-0"></div>
                   </div>
                </div>
 
@@ -521,181 +528,180 @@
 
             </div>
             <!-- Latency & Parameters Tab -->
-            <div class="tab-content" id="latency-params-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel" id="latency-params-tab" style="display: none;">
                <h2 class="dashboard-title">Latency & Parameters</h2>
                <div class="card">
                   <div class="card-title">LATENCY MONITOR</div>
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                     <div>
-                        <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);" id="currentLatency">-- ms</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">Current Latency</div>
+                  <div class="flex-between u-mb-2">
+                     <div class="stat-block">
+                        <div class="stat-value" id="currentLatency">-- ms</div>
+                        <div class="stat-label">Current Latency</div>
                      </div>
-                     <div>
-                        <div style="font-size: 1.2rem; font-weight: bold;" id="avgLatency">-- ms</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">Average</div>
+                     <div class="stat-block">
+                        <div class="stat-value-sm telemetry-value" id="avgLatency">-- ms</div>
+                        <div class="stat-label">Average</div>
                      </div>
-                     <div>
-                        <div style="font-size: 1.2rem; font-weight: bold;" id="maxLatency">-- ms</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">Maximum</div>
+                     <div class="stat-block">
+                        <div class="stat-value-sm telemetry-value" id="maxLatency">-- ms</div>
+                        <div class="stat-label">Maximum</div>
                      </div>
-                     <div>
-                        <div style="font-size: 1.2rem; font-weight: bold;" id="minLatency">-- ms</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">Minimum</div>
+                     <div class="stat-block">
+                        <div class="stat-value-sm telemetry-value" id="minLatency">-- ms</div>
+                        <div class="stat-label">Minimum</div>
                      </div>
                   </div>
-                  <div style="height: 200px; background-color: #f7f9fa; border-radius: 5px; padding: 1rem; position: relative; margin-bottom: 1rem;">
+                  <div class="chart-container u-mb-2">
                      <canvas id="latencyChart" width="100%" height="100%"></canvas>
-                     <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted); font-size: 0.9rem; display: none;" id="noLatencyData">No latency data available</div>
+                     <div id="noLatencyData" class="hint-text chart-empty-state" style="display:none;">No latency data available</div>
                   </div>
-                  <div style="display: flex; align-items: center; gap: 0.5rem;">
-                     <div style="width: 12px; height: 12px; border-radius: 50%;" id="latencyStatusIndicator"></div>
-                     <div id="latencyStatusText">Latency Status: Unknown</div>
+                  <div class="flex-row">
+                     <div class="status-dot" id="latencyStatusIndicator"></div>
+                     <div id="latencyStatusText" class="u-text-sm">Latency Status: Unknown</div>
                   </div>
                </div>
-               <div class="card" style="margin-top: 1rem;">
+               <div class="card u-mt-2">
                   <div class="card-title">MAVLINK LINK STATS</div>
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                     <div>
-                        <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);" id="linkPktRate">-- pkt/s</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">Incoming Packet Rate</div>
+                  <div class="flex-between">
+                     <div class="stat-block">
+                        <div class="stat-value" id="linkPktRate">-- pkt/s</div>
+                        <div class="stat-label">Incoming Packet Rate</div>
                      </div>
-                     <div>
-                        <div style="font-size: 1.2rem; font-weight: bold;" id="linkByteRate">-- B/s</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">Link Speed</div>
+                     <div class="stat-block">
+                        <div class="stat-value-sm telemetry-value" id="linkByteRate">-- B/s</div>
+                        <div class="stat-label">Link Speed</div>
                      </div>
                   </div>
                </div>
-               <div class="card" style="margin-top: 1rem;">
+               <div class="card u-mt-2">
                   <div class="card-title">PARAMETERS DOWNLOAD PROGRESS</div>
-                  <div style="margin: 1.5rem 0;">
-                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <div style="font-size: 0.9rem; font-weight: bold;" id="paramPercentage">0%</div>
-                        <div style="font-size: 0.9rem; color: var(--text-muted);" id="paramCount">0/0 Parameters</div>
+                  <div class="u-mt-2 u-mb-2">
+                     <div class="flex-between u-mb-1">
+                        <span class="telemetry-value u-semibold" id="paramPercentage">0%</span>
+                        <span class="u-text-secondary u-text-sm" id="paramCount">0/0 Parameters</span>
                      </div>
-                     <div style="height: 20px; background-color: #f0f0f0; border-radius: 10px; overflow: hidden;">
-                        <div id="paramProgressBar" style="height: 100%; width: 0%; background-color: var(--primary-color); border-radius: 10px; transition: width 0.3s ease;"></div>
-                     </div>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-                     <div style="flex: 1; min-width: 200px;">
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">Download Status</div>
-                        <div style="font-size: 1rem; font-weight: bold;" id="paramStatus">Not Started</div>
-                     </div>
-                     <div style="flex: 1; min-width: 200px;">
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">Time Elapsed</div>
-                        <div style="font-size: 1rem; font-weight: bold;" id="paramTimeElapsed">00:00</div>
-                     </div>
-                     <div style="flex: 1; min-width: 200px;">
-                        <div style="font-size: 0.8rem; color: var(--text-muted);">Estimated Time Remaining</div>
-                        <div style="font-size: 1rem; font-weight: bold;" id="paramTimeRemaining">--:--</div>
+                     <div class="progress-track">
+                        <div id="paramProgressBar" class="progress-fill" style="width:0%;"></div>
                      </div>
                   </div>
-                  <div style="margin-top: 1.5rem;">
-                     <div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 0.5rem;">Category Progress</div>
-                     <table style="width: 100%; border-collapse: collapse;">
+                  <div class="flex-row flex-wrap flex-gap-2">
+                     <div class="stat-block">
+                        <div class="stat-label">Download Status</div>
+                        <div class="telemetry-value u-semibold" id="paramStatus">Not Started</div>
+                     </div>
+                     <div class="stat-block">
+                        <div class="stat-label">Time Elapsed</div>
+                        <div class="telemetry-value u-semibold" id="paramTimeElapsed">00:00</div>
+                     </div>
+                     <div class="stat-block">
+                        <div class="stat-label">Est. Time Remaining</div>
+                        <div class="telemetry-value u-semibold" id="paramTimeRemaining">--:--</div>
+                     </div>
+                  </div>
+                  <div class="u-mt-3">
+                     <div class="section-label u-mb-1">Category Progress</div>
+                     <table class="data-table">
                         <thead>
-                           <tr style="background-color: var(--light-color); text-align: left;">
-                              <th style="padding: 0.5rem; font-size: 0.8rem;">Category</th>
-                              <th style="padding: 0.5rem; font-size: 0.8rem;">Progress</th>
-                              <th style="padding: 0.5rem; font-size: 0.8rem;">Count</th>
+                           <tr>
+                              <th>Category</th>
+                              <th>Progress</th>
+                              <th>Count</th>
                            </tr>
                         </thead>
-                        <tbody id="paramCategoriesTable">
-                        </tbody>
+                        <tbody id="paramCategoriesTable"></tbody>
                      </table>
                   </div>
                </div>
             </div>
             <!-- Configs Tab -->
-            <div class="tab-content" id="configs-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel" id="configs-tab" style="display: none;">
                <h2 class="dashboard-title">Golden Config Snapshots</h2>
-               <p style="color: var(--text-muted); margin-bottom: 1rem;">Save and restore up to 5 named parameter configurations for different quads or tunes.</p>
-               <button id="saveConfigBtn" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.6rem 1.2rem; cursor: pointer; font-size: 0.9rem; margin-bottom: 1.5rem;">
+               <p class="hint-text">Save and restore up to 5 named parameter configurations for different quads or tunes.</p>
+               <button id="saveConfigBtn" class="btn btn-primary u-mb-3">
                   <i class="fas fa-plus"></i> Save Current Config
                </button>
-               <div id="saveConfigModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
-                  <div style="background: white; border-radius: 10px; padding: 2rem; width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
-                     <h3 style="margin-bottom: 1rem;">Save Config Snapshot</h3>
-                     <input type="text" id="configNameInput" placeholder="e.g. 5inch-freestyle-6S" style="width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 5px; font-size: 0.95rem; margin-bottom: 1rem;">
-                     <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                        <button id="cancelConfigBtn" style="padding: 0.5rem 1rem; border: 1px solid #ddd; border-radius: 5px; cursor: pointer; background: white;">Cancel</button>
-                        <button id="confirmSaveConfigBtn" style="padding: 0.5rem 1rem; border: none; border-radius: 5px; cursor: pointer; background: var(--primary-color); color: white;">Save</button>
+               <div id="saveConfigModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;">
+                  <div class="panel" style="width:400px; padding:var(--space-4);">
+                     <h3 class="section-title">Save Config Snapshot</h3>
+                     <input type="text" id="configNameInput" placeholder="e.g. 5inch-freestyle-6S" class="form-control u-mb-2">
+                     <div class="flex-row u-justify-end">
+                        <button id="cancelConfigBtn" class="btn btn-ghost">Cancel</button>
+                        <button id="confirmSaveConfigBtn" class="btn btn-primary">Save</button>
                      </div>
                   </div>
                </div>
-               <div id="configList" style="display: flex; flex-direction: column; gap: 1rem;">
-                  <div style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading configs...</div>
+               <div id="configList" class="flex-col flex-gap-2">
+                  <div class="u-text-secondary" style="text-align:center;padding:var(--space-4);">Loading configs...</div>
                </div>
             </div>
             <!-- Calibration Tab -->
-            <div class="tab-content" id="calibration-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel" id="calibration-tab" style="display: none;">
                <h2 class="dashboard-title">Field Calibration</h2>
-               <p style="color: var(--text-muted); margin-bottom: 1rem;">Trigger on-board calibration routines directly from the web UI.</p>
+               <p class="hint-text">Trigger on-board calibration routines directly from the web UI.</p>
                <!-- 3D Quad Model -->
-               <div class="card" style="margin-bottom: 1.5rem; padding: 0; overflow: hidden; background: #0d0d1a;">
-                  <div id="cal3dContainer" style="width: 100%; height: 300px; position: relative;">
-                     <div id="cal3dAttitude" style="position: absolute; bottom: 8px; left: 12px; font-size: 0.75rem; font-family: monospace; color: #8888aa; z-index: 1;">
+               <div class="card cal3d-card u-mb-3">
+                  <div id="cal3dContainer">
+                     <div id="cal3dAttitude" class="telemetry-value">
                         R: <span id="cal3dRoll">0.0</span>&deg; &nbsp; P: <span id="cal3dPitch">0.0</span>&deg; &nbsp; Y: <span id="cal3dYaw">0.0</span>&deg;
                      </div>
                   </div>
                </div>
-               <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
-                  <div class="card cal-card" data-cal="gyro" style="min-width: 200px; flex: 1;">
+               <div class="flex-row flex-wrap flex-gap-2">
+                  <div class="card cal-card" data-cal="gyro">
                      <div class="card-title"><i class="fas fa-sync-alt"></i> Gyro Calibration</div>
-                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Keep the drone still on a flat surface. Takes ~2 seconds.</p>
-                     <button class="cal-btn" data-cal="gyro" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                     <p class="hint-text">Keep the drone still on a flat surface. Takes ~2 seconds.</p>
+                     <button class="cal-btn btn btn-primary" data-cal="gyro">
                         <i class="fas fa-play"></i> Start Gyro Cal
                      </button>
-                     <div class="cal-status" data-cal="gyro" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                     <div class="cal-status" data-cal="gyro">Idle</div>
                   </div>
-                  <div class="card cal-card" data-cal="level" style="min-width: 200px; flex: 1;">
+                  <div class="card cal-card" data-cal="level">
                      <div class="card-title"><i class="fas fa-balance-scale"></i> Level Calibration</div>
-                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Place drone on a level surface. Calibrates accelerometer level.</p>
-                     <button class="cal-btn" data-cal="level" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                     <p class="hint-text">Place drone on a level surface. Calibrates accelerometer level.</p>
+                     <button class="cal-btn btn btn-primary" data-cal="level">
                         <i class="fas fa-play"></i> Start Level Cal
                      </button>
-                     <div class="cal-status" data-cal="level" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                     <div class="cal-status" data-cal="level">Idle</div>
                   </div>
-                  <div class="card cal-card" data-cal="accel" style="min-width: 200px; flex: 1;">
+                  <div class="card cal-card" data-cal="accel">
                      <div class="card-title"><i class="fas fa-arrows-alt"></i> Accelerometer Calibration</div>
-                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Multi-step: you will need to place the drone in 6 orientations.</p>
-                     <button class="cal-btn" data-cal="accel" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                     <p class="hint-text">Multi-step: you will need to place the drone in 6 orientations.</p>
+                     <button class="cal-btn btn btn-primary" data-cal="accel">
                         <i class="fas fa-play"></i> Start Accel Cal
                      </button>
-                     <div class="cal-status" data-cal="accel" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                     <div class="cal-status" data-cal="accel">Idle</div>
                   </div>
-                  <div class="card cal-card" data-cal="compass" style="min-width: 200px; flex: 1;">
+                  <div class="card cal-card" data-cal="compass">
                      <div class="card-title"><i class="fas fa-compass"></i> Compass Calibration</div>
-                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Rotate drone in all orientations during calibration.</p>
-                     <button class="cal-btn" data-cal="compass" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                     <p class="hint-text">Rotate drone in all orientations during calibration.</p>
+                     <button class="cal-btn btn btn-primary" data-cal="compass">
                         <i class="fas fa-play"></i> Start Compass Cal
                      </button>
-                     <div class="cal-status" data-cal="compass" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                     <div class="cal-status" data-cal="compass">Idle</div>
                   </div>
-                  <div class="card cal-card" data-cal="baro" style="min-width: 200px; flex: 1;">
+                  <div class="card cal-card" data-cal="baro">
                      <div class="card-title"><i class="fas fa-thermometer-half"></i> Barometer Calibration</div>
-                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Calibrate barometer ground pressure. Keep drone stationary.</p>
-                     <button class="cal-btn" data-cal="baro" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; width: 100%;">
+                     <p class="hint-text">Calibrate barometer ground pressure. Keep drone stationary.</p>
+                     <button class="cal-btn btn btn-primary" data-cal="baro">
                         <i class="fas fa-play"></i> Start Baro Cal
                      </button>
-                     <div class="cal-status" data-cal="baro" style="margin-top: 0.5rem; font-size: 0.8rem; text-align: center; color: var(--text-muted);">Idle</div>
+                     <div class="cal-status" data-cal="baro">Idle</div>
                   </div>
                </div>
             </div>
             <!-- Motors Tab -->
-            <div class="tab-content" id="motors-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel" id="motors-tab" style="display: none;">
                <h2 class="dashboard-title">Motor Testing</h2>
                <div id="motorSafetyBanner" class="motor-safety-banner">
                   <div class="motor-safety-warning">
                      <i class="fas fa-exclamation-triangle"></i>
                      <span>Remove all propellers before testing! Motors will spin.</span>
                   </div>
-                  <div style="display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem;">
+                  <div class="flex-row u-mt-1">
                      <label class="motor-safety-toggle">
                         <input type="checkbox" id="motorEnableToggle">
                         <span class="motor-toggle-slider"></span>
                      </label>
-                     <span id="motorEnableLabel" style="font-weight: bold; font-size: 0.9rem; color: var(--danger-color);">Motor Test DISABLED</span>
+                     <span id="motorEnableLabel" class="u-semibold u-text-danger">Motor Test DISABLED</span>
                   </div>
                   <div id="motorArmedWarning" class="motor-armed-warning" style="display: none;">
                      <i class="fas fa-shield-alt"></i> ARM DETECTED — motor test disabled
@@ -710,7 +716,7 @@
                            <input type="range" min="0" max="100" value="0" class="motor-vslider" id="motorSlider1" orient="vertical" disabled>
                         </div>
                         <div class="motor-test-controls">
-                           <label style="font-size:0.7rem; color: var(--text-muted);">Duration (s)</label>
+                           <label class="telemetry-label">Duration (s)</label>
                            <input type="number" min="1" max="10" value="3" class="motor-duration-input" id="motorDur1" disabled>
                            <button class="motor-test-btn" id="motorTestBtn1" disabled><i class="fas fa-play"></i> Test</button>
                            <button class="motor-stop-btn" id="motorStopBtn1" disabled><i class="fas fa-stop"></i> Stop</button>
@@ -724,7 +730,7 @@
                            <input type="range" min="0" max="100" value="0" class="motor-vslider" id="motorSlider2" orient="vertical" disabled>
                         </div>
                         <div class="motor-test-controls">
-                           <label style="font-size:0.7rem; color: var(--text-muted);">Duration (s)</label>
+                           <label class="telemetry-label">Duration (s)</label>
                            <input type="number" min="1" max="10" value="3" class="motor-duration-input" id="motorDur2" disabled>
                            <button class="motor-test-btn" id="motorTestBtn2" disabled><i class="fas fa-play"></i> Test</button>
                            <button class="motor-stop-btn" id="motorStopBtn2" disabled><i class="fas fa-stop"></i> Stop</button>
@@ -755,7 +761,7 @@
                            <input type="range" min="0" max="100" value="0" class="motor-vslider" id="motorSlider3" orient="vertical" disabled>
                         </div>
                         <div class="motor-test-controls">
-                           <label style="font-size:0.7rem; color: var(--text-muted);">Duration (s)</label>
+                           <label class="telemetry-label">Duration (s)</label>
                            <input type="number" min="1" max="10" value="3" class="motor-duration-input" id="motorDur3" disabled>
                            <button class="motor-test-btn" id="motorTestBtn3" disabled><i class="fas fa-play"></i> Test</button>
                            <button class="motor-stop-btn" id="motorStopBtn3" disabled><i class="fas fa-stop"></i> Stop</button>
@@ -769,7 +775,7 @@
                            <input type="range" min="0" max="100" value="0" class="motor-vslider" id="motorSlider4" orient="vertical" disabled>
                         </div>
                         <div class="motor-test-controls">
-                           <label style="font-size:0.7rem; color: var(--text-muted);">Duration (s)</label>
+                           <label class="telemetry-label">Duration (s)</label>
                            <input type="number" min="1" max="10" value="3" class="motor-duration-input" id="motorDur4" disabled>
                            <button class="motor-test-btn" id="motorTestBtn4" disabled><i class="fas fa-play"></i> Test</button>
                            <button class="motor-stop-btn" id="motorStopBtn4" disabled><i class="fas fa-stop"></i> Stop</button>
@@ -779,19 +785,19 @@
                   </div>
                </div>
                <!-- Motor Output Chart -->
-               <div class="motor-chart-panel card" style="margin-top: 1rem;">
+               <div class="motor-chart-panel card">
                   <div class="motor-chart-title">MOTOR OUTPUT (PWM μs)</div>
                   <div class="motor-chart-wrap">
                      <canvas id="motorRollingChart"></canvas>
                   </div>
                </div>
 
-               <div class="card" style="margin-top: 1rem;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                     <div class="card-title" style="margin-bottom: 0;">ESC TELEMETRY</div>
-                     <div style="font-size: 0.8rem;">
-                        <span style="color: var(--text-muted);">Protocol:</span>
-                        <span id="escProtocolBadge" style="background-color: var(--primary-color); color: white; padding: 0.2rem 0.6rem; border-radius: 10px; font-weight: bold; font-size: 0.75rem;">--</span>
+               <div class="card u-mt-2">
+                  <div class="flex-between u-mb-1">
+                     <div class="card-title u-mb-0">ESC TELEMETRY</div>
+                     <div class="flex-row flex-gap-1">
+                        <span class="u-text-dim">Protocol:</span>
+                        <span id="escProtocolBadge" class="badge badge-info">--</span>
                      </div>
                   </div>
                   <table class="subsystem-table" id="escTelemetryTable">
@@ -815,7 +821,7 @@
                </div>
             </div>
             <!-- RC & Modes Tab -->
-            <div class="tab-content" id="receiver-tab" style="display: none; flex: 1; background-color: #0d0d1a; border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel tab-panel-cockpit" id="receiver-tab" style="display: none;">
 
                <!-- Signal header -->
                <div class="rc-header-strip">
@@ -889,7 +895,7 @@
                   <div class="rc-bottom-right">
                      <div class="rc-section">
                         <div class="rc-modes-header">
-                           <span class="rc-section-title" style="border:none;padding:0;background:none;">FLIGHT MODES</span>
+                           <span class="rc-section-title rc-section-title--inline">FLIGHT MODES</span>
                            <span class="rc-mode-active-badge" id="rcCurrentModeBadge">--</span>
                         </div>
                         <div class="rc-mode-slots" id="rcModeSlots"></div>
@@ -902,7 +908,7 @@
                <div class="rc-config-grid">
                   <div class="rc-config-card">
                      <div class="rc-config-header">
-                        <span class="rc-section-title" style="border:none;padding:0;background:none;">RC MAPPING</span>
+                        <span class="rc-section-title rc-section-title--inline">RC MAPPING</span>
                         <div class="rc-config-actions">
                            <button class="modal-button cancel-button" id="rcMapRefreshBtn">Refresh</button>
                            <button class="modal-button cancel-button" id="rcMapPreviewBtn">Preview</button>
@@ -916,7 +922,7 @@
 
                   <div class="rc-config-card">
                      <div class="rc-config-header">
-                        <span class="rc-section-title" style="border:none;padding:0;background:none;">FLIGHT MODES CONFIG</span>
+                        <span class="rc-section-title rc-section-title--inline">FLIGHT MODES CONFIG</span>
                         <div class="rc-config-actions">
                            <button class="modal-button cancel-button" id="fltModesRefreshBtn">Refresh</button>
                            <button class="modal-button cancel-button" id="fltModesPreviewBtn">Preview</button>
@@ -930,7 +936,7 @@
 
                   <div class="rc-config-card">
                      <div class="rc-config-header">
-                        <span class="rc-section-title" style="border:none;padding:0;background:none;">FAILSAFE CONFIG</span>
+                        <span class="rc-section-title rc-section-title--inline">FAILSAFE CONFIG</span>
                         <div class="rc-config-actions">
                            <button class="modal-button cancel-button" id="failsafeRefreshBtn">Refresh</button>
                            <button class="modal-button cancel-button" id="failsafePreviewBtn">Preview</button>
@@ -944,7 +950,7 @@
 
                   <div class="rc-config-card">
                      <div class="rc-config-header">
-                        <span class="rc-section-title" style="border:none;padding:0;background:none;">AUXILIARY SWITCH ASSIGNMENTS</span>
+                        <span class="rc-section-title rc-section-title--inline">AUXILIARY SWITCH ASSIGNMENTS</span>
                         <div class="rc-config-actions">
                            <button class="modal-button cancel-button" id="auxRefreshBtn">Refresh</button>
                            <button class="modal-button cancel-button" id="auxPreviewBtn">Preview</button>
@@ -960,7 +966,7 @@
             </div>
 
             <!-- Drone View Tab -->
-            <div class="tab-content" id="drone-view-tab" style="display: none; flex: 1; background-color: #0d0d1a; border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel tab-panel-cockpit" id="drone-view-tab" style="display: none;">
                <div class="drone-view-container">
                   <!-- Top bar: mode + armed + heading -->
                   <div class="drone-top-bar">
@@ -975,8 +981,8 @@
                         <div class="drone-altitude-value" id="dvAltitude">0.0</div>
                         <div class="drone-altitude-unit">m</div>
                      </div>
-                     <div class="drone-canvas-wrapper" id="dvCanvasWrapper" style="position: relative;">
-                        <div id="dv3dContainer" style="width: 100%; height: 100%;"></div>
+                     <div class="drone-canvas-wrapper" id="dvCanvasWrapper">
+                        <div id="dv3dContainer"></div>
                      </div>
                      <div class="drone-altitude-panel">
                         <div class="drone-altitude-label">V/S</div>
@@ -1022,70 +1028,70 @@
             </div>
 
             <!-- Settings Tab -->
-            <div class="tab-content" id="settings-tab" style="display: none; flex: 1; background-color: var(--white-color); border-radius: var(--border-radius); padding: 1.5rem; box-shadow: var(--card-shadow); overflow-y: auto; max-height: calc(100vh - 120px);">
+            <div class="tab-content tab-panel" id="settings-tab" style="display: none;">
                <h2 class="dashboard-title"><i class="fas fa-cog"></i> Settings</h2>
-               <div class="card" style="margin-bottom: 1.5rem;">
+               <div class="card u-mb-3">
                   <div class="card-title">API KEYS</div>
-                  <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                  <p class="hint-text">
                      Configure API keys for AI providers. Keys are stored in <code>.env</code> on the device.
                   </p>
-                  <div id="apiKeysContainer" style="display: flex; flex-direction: column; gap: 1rem;">
+                  <div id="apiKeysContainer" class="flex-col flex-gap-2">
                      <!-- Gemini -->
-                     <div class="api-key-card" data-provider="gemini" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                           <div style="display: flex; align-items: center; gap: 0.5rem;">
+                     <div class="api-key-card" data-provider="gemini">
+                        <div class="flex-between u-mb-1">
+                           <div class="flex-row flex-gap-1">
                               <i class="fas fa-robot" style="color: #4285f4;"></i>
                               <strong>Google Gemini</strong>
                            </div>
-                           <span class="api-key-status" data-provider="gemini" style="font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 10px; background: #f0f0f0; color: var(--text-muted);">Not configured</span>
+                           <span class="api-key-status" data-provider="gemini">Not configured</span>
                         </div>
-                        <div class="api-key-preview" data-provider="gemini" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; font-family: monospace; display: none;"></div>
-                        <div style="display: flex; gap: 0.5rem;">
-                           <input type="password" class="api-key-input" data-provider="gemini" placeholder="AIza..." style="flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 5px; font-size: 0.85rem;">
-                           <button class="api-key-save" data-provider="gemini" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85rem;">
+                        <div class="api-key-preview" data-provider="gemini" style="display: none;"></div>
+                        <div class="flex-row flex-gap-1">
+                           <input type="password" class="api-key-input form-control u-flex-1" data-provider="gemini" placeholder="AIza...">
+                           <button class="api-key-save btn btn-primary btn-sm" data-provider="gemini">
                               <i class="fas fa-save"></i> Save
                            </button>
-                           <button class="api-key-delete" data-provider="gemini" style="background-color: var(--danger-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.85rem; display: none;">
+                           <button class="api-key-delete btn btn-danger btn-sm btn-icon" data-provider="gemini" style="display: none;">
                               <i class="fas fa-trash"></i>
                            </button>
                         </div>
                      </div>
                      <!-- OpenAI -->
-                     <div class="api-key-card" data-provider="openai" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                           <div style="display: flex; align-items: center; gap: 0.5rem;">
+                     <div class="api-key-card" data-provider="openai">
+                        <div class="flex-between u-mb-1">
+                           <div class="flex-row flex-gap-1">
                               <i class="fas fa-brain" style="color: #10a37f;"></i>
                               <strong>OpenAI (GPT-4o)</strong>
                            </div>
-                           <span class="api-key-status" data-provider="openai" style="font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 10px; background: #f0f0f0; color: var(--text-muted);">Not configured</span>
+                           <span class="api-key-status" data-provider="openai">Not configured</span>
                         </div>
-                        <div class="api-key-preview" data-provider="openai" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; font-family: monospace; display: none;"></div>
-                        <div style="display: flex; gap: 0.5rem;">
-                           <input type="password" class="api-key-input" data-provider="openai" placeholder="sk-..." style="flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 5px; font-size: 0.85rem;">
-                           <button class="api-key-save" data-provider="openai" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85rem;">
+                        <div class="api-key-preview" data-provider="openai" style="display: none;"></div>
+                        <div class="flex-row flex-gap-1">
+                           <input type="password" class="api-key-input form-control u-flex-1" data-provider="openai" placeholder="sk-...">
+                           <button class="api-key-save btn btn-primary btn-sm" data-provider="openai">
                               <i class="fas fa-save"></i> Save
                            </button>
-                           <button class="api-key-delete" data-provider="openai" style="background-color: var(--danger-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.85rem; display: none;">
+                           <button class="api-key-delete btn btn-danger btn-sm btn-icon" data-provider="openai" style="display: none;">
                               <i class="fas fa-trash"></i>
                            </button>
                         </div>
                      </div>
                      <!-- Anthropic -->
-                     <div class="api-key-card" data-provider="claude" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                           <div style="display: flex; align-items: center; gap: 0.5rem;">
+                     <div class="api-key-card" data-provider="claude">
+                        <div class="flex-between u-mb-1">
+                           <div class="flex-row flex-gap-1">
                               <i class="fas fa-comment-dots" style="color: #d97706;"></i>
                               <strong>Anthropic (Claude)</strong>
                            </div>
-                           <span class="api-key-status" data-provider="claude" style="font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 10px; background: #f0f0f0; color: var(--text-muted);">Not configured</span>
+                           <span class="api-key-status" data-provider="claude">Not configured</span>
                         </div>
-                        <div class="api-key-preview" data-provider="claude" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; font-family: monospace; display: none;"></div>
-                        <div style="display: flex; gap: 0.5rem;">
-                           <input type="password" class="api-key-input" data-provider="claude" placeholder="sk-ant-..." style="flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 5px; font-size: 0.85rem;">
-                           <button class="api-key-save" data-provider="claude" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85rem;">
+                        <div class="api-key-preview" data-provider="claude" style="display: none;"></div>
+                        <div class="flex-row flex-gap-1">
+                           <input type="password" class="api-key-input form-control u-flex-1" data-provider="claude" placeholder="sk-ant-...">
+                           <button class="api-key-save btn btn-primary btn-sm" data-provider="claude">
                               <i class="fas fa-save"></i> Save
                            </button>
-                           <button class="api-key-delete" data-provider="claude" style="background-color: var(--danger-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.85rem; display: none;">
+                           <button class="api-key-delete btn btn-danger btn-sm btn-icon" data-provider="claude" style="display: none;">
                               <i class="fas fa-trash"></i>
                            </button>
                         </div>
@@ -1096,11 +1102,11 @@
 
             <!-- OSD Configuration Modal -->
             <div class="modal" id="osdConfigModal">
-               <div class="modal-content" style="max-width: 500px; background: #1a1a2e; color: #e0e0e0;">
-                  <div class="modal-title" style="color: #e0e0e0;">Configure OSD</div>
-                  <p style="font-size: 0.8rem; color: #888; margin-bottom: 1rem;">Select fields to display on the drone view.</p>
+               <div class="modal-content modal-content-dark">
+                  <div class="modal-title">Configure OSD</div>
+                  <p class="hint-text">Select fields to display on the drone view.</p>
                   <div id="osdFieldList"></div>
-                  <div class="modal-buttons" style="margin-top: 1rem;">
+                  <div class="modal-buttons u-mt-2">
                      <button class="modal-button cancel-button" id="osdConfigClose">Close</button>
                      <button class="modal-button connect-button" id="osdConfigClear">Clear All</button>
                   </div>
@@ -1136,7 +1142,7 @@
       <div class="modal" id="connectionModal">
          <div class="modal-content">
             <div class="modal-title">Connect to Drone</div>
-            <div class="form-group" style="display:flex;gap:1.5rem;align-items:center;">
+            <div class="form-group flex-row flex-gap-3">
                <label><input type="radio" name="connType" value="serial" checked onchange="toggleConnFields()"> Serial</label>
                <label><input type="radio" name="connType" value="ip" onchange="toggleConnFields()"> IP (UDP)</label>
             </div>

@@ -409,6 +409,8 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       if (batteryIndicator) {
+         var batPct = Math.min(100, Math.max(0, data.battery.percentage));
+         batteryIndicator.style.width = batPct + '%';
          batteryIndicator.style.backgroundColor =
             data.battery.status === 'CRITICAL' ? 'var(--danger-color)' :
             data.battery.status === 'WARNING' ? 'var(--warning-color)' : 'var(--success-color)';
@@ -423,6 +425,12 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       if (gpsIndicator) {
+         // Scale: 0 sats = 0%, 10+ sats = 100%. Min useful = 3 sats (2D fix).
+         var sats = data.gps.satellites_visible || 0;
+         var gpsPct = Math.min(100, Math.round((sats / 10) * 100));
+         // Cap at 20% if no fix at all
+         if (data.gps.fix_type < 2) gpsPct = Math.min(gpsPct, 20);
+         gpsIndicator.style.width = gpsPct + '%';
          gpsIndicator.style.backgroundColor =
             data.gps.fix_type < 2 ? 'var(--danger-color)' :
             data.gps.fix_type < 3 ? 'var(--warning-color)' : 'var(--success-color)';
