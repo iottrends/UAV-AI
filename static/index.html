@@ -320,20 +320,80 @@
                   </div>
                </div>
 
-               <!-- Flash Local File -->
-               <div class="card" style="margin-bottom: 1rem;">
-                  <div class="card-title"><i class="fas fa-file-upload"></i> Flash Local File</div>
-                  <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">Select an ArduPilot <code>.apj</code> firmware file from your computer.</p>
-                  <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                     <input type="file" id="fwLocalFile" accept=".apj" style="font-size: 0.85rem;">
-                     <button id="fwFlashLocalBtn" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; white-space: nowrap;" disabled>
-                        <i class="fas fa-bolt"></i> Flash Selected File
-                     </button>
-                  </div>
-                  <div id="fwLocalStatus" style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);"></div>
+               <!-- Flash Method Tabs -->
+               <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                  <button id="fwMethodSerial" class="fw-method-btn fw-method-active" onclick="window._fwTab && window._fwTab.setMethod('serial')">
+                     <i class="fas fa-plug"></i> Serial (.apj)
+                  </button>
+                  <button id="fwMethodDfu" class="fw-method-btn" onclick="window._fwTab && window._fwTab.setMethod('dfu')">
+                     <i class="fas fa-microchip"></i> DFU (.bin)
+                  </button>
                </div>
 
-               <!-- Online Firmware -->
+               <!-- Serial Flash Panel -->
+               <div id="fwSerialPanel">
+                  <!-- Flash Local File -->
+                  <div class="card" style="margin-bottom: 1rem;">
+                     <div class="card-title"><i class="fas fa-file-upload"></i> Flash Local File</div>
+                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">Select an ArduPilot <code>.apj</code> firmware file from your computer.</p>
+                     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                        <input type="file" id="fwLocalFile" accept=".apj" style="font-size: 0.85rem;">
+                        <button id="fwFlashLocalBtn" style="background-color: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; white-space: nowrap;" disabled>
+                           <i class="fas fa-bolt"></i> Flash Selected File
+                        </button>
+                     </div>
+                     <div id="fwLocalStatus" style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);"></div>
+                  </div>
+               </div>
+
+               <!-- DFU Flash Panel -->
+               <div id="fwDfuPanel" style="display:none;">
+
+                  <!-- Step 1: Enter DFU -->
+                  <div class="card" style="margin-bottom: 1rem;">
+                     <div class="card-title"><i class="fas fa-microchip"></i> Step 1 — Enter DFU Mode</div>
+                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                        Click the button to enter DFU mode automatically. If that fails, hold the <strong>BOOT</strong> button on the FC and replug the USB cable.
+                     </p>
+                     <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                        <button id="dfuEnterBtn" style="background: var(--primary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
+                           <i class="fas fa-sign-in-alt"></i> Enter DFU Mode
+                        </button>
+                        <button id="dfuDetectBtn" style="background: var(--secondary-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer;">
+                           <i class="fas fa-search"></i> Detect Board
+                        </button>
+                        <span id="dfuStatusChip" style="font-size: 0.8rem; padding: 0.25rem 0.75rem; border-radius: 12px; background: #444; color: #fff; font-family: monospace;">Not detected</span>
+                     </div>
+                  </div>
+
+                  <!-- Board info panel (shown after detection) -->
+                  <div class="card" id="dfuBoardCard" style="margin-bottom: 1rem; display: none;">
+                     <div class="card-title"><i class="fas fa-circuit-board"></i> Detected Board</div>
+                     <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                        <tr><td style="padding: 0.3rem 0.5rem; font-weight: 600; width: 140px;">Manufacturer</td><td id="dfuBoardMfr">--</td></tr>
+                        <tr><td style="padding: 0.3rem 0.5rem; font-weight: 600;">Model</td><td id="dfuBoardModel">--</td></tr>
+                        <tr><td style="padding: 0.3rem 0.5rem; font-weight: 600;">USB ID</td><td id="dfuBoardUsb">--</td></tr>
+                        <tr><td style="padding: 0.3rem 0.5rem; font-weight: 600;">USB Descriptor</td><td id="dfuBoardDesc">--</td></tr>
+                     </table>
+                  </div>
+
+                  <!-- Step 2: Select firmware -->
+                  <div class="card" style="margin-bottom: 1rem;">
+                     <div class="card-title"><i class="fas fa-file-code"></i> Step 2 — Select Firmware (.bin)</div>
+                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                        Upload a local <code>.bin</code> file, or use the Online Firmware list below (select a firmware and click <strong>DFU Flash</strong>).
+                     </p>
+                     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                        <input type="file" id="dfuLocalFile" accept=".bin" style="font-size: 0.85rem;">
+                        <button id="dfuFlashLocalBtn" style="background: var(--danger-color); color: white; border: none; border-radius: 5px; padding: 0.5rem 1rem; cursor: pointer; white-space: nowrap;" disabled>
+                           <i class="fas fa-bolt"></i> DFU Flash Selected File
+                        </button>
+                     </div>
+                  </div>
+
+               </div>
+
+               <!-- Online Firmware (shared by both Serial and DFU) -->
                <div class="card" style="margin-bottom: 1rem;">
                   <div class="card-title"><i class="fas fa-cloud-download-alt"></i> Online Firmware</div>
                   <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem;">

@@ -13,3 +13,4 @@ google-cloud-speech==2.26.0
 Flask-Cors==4.0.1
 pytest
 pyinstaller
+pyusb

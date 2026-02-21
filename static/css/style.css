@@ -1404,6 +1404,15 @@ padding: 0.5rem;
 }
 .serial-port-label { font-size: 0.75rem; color: var(--text-muted); }
 
+/* ── Firmware flash method toggle ───────────────────────────────────────── */
+.fw-method-btn {
+   padding: 0.45rem 1.1rem; border: 2px solid var(--primary-color);
+   border-radius: 6px; background: transparent; color: var(--primary-color);
+   font-size: 0.85rem; cursor: pointer; font-weight: 600; transition: all 0.15s;
+}
+.fw-method-btn:hover { background: var(--primary-color); color: white; }
+.fw-method-active { background: var(--primary-color) !important; color: white !important; }
+
 /* ── Pre-flight readiness panel ───────────────────────────────────── */
 .preflight-panel { padding: 1rem; }
 .preflight-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }

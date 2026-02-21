@@ -55,6 +55,9 @@ connection_params = {
 copilot_active = False         # Current co-pilot mode state
 copilot_user_override = None   # None=auto, True=forced on, False=forced off
 
+# Maintenance mode state
+maintenance_mode = False
+
 # Current LLM provider (used by voice commands and as default)
 current_provider = "gemini"
 
@@ -345,6 +348,7 @@ def get_firmware_info():
 # Firmware Flashing
 ####################################################################################
 import firmware_flasher
+import dfu_flasher
 import urllib.request
 
 FIRMWARE_CACHE_DIR = None  # initialized lazily after _writable_path is defined
@@ -636,6 +640,197 @@ def get_flash_status():
             "status": "success",
             "flash": dict(_flash_state),
         })
+
+
+####################################################################################
+# DFU Flashing (pyusb / STM32 DfuSe)
+####################################################################################
+
+@app.route('/api/firmware/dfu/detect', methods=['GET'])
+def dfu_detect():
+    """Scan USB for an STM32 DFU device and return board info."""
+    device = dfu_flasher.find_dfu_device()
+    if device is None:
+        return jsonify({'status': 'not_found', 'message': 'No DFU device detected (0x0483:0xDF11)'})
+
+    try:
+        try:
+            if device.is_kernel_driver_active(0):
+                device.detach_kernel_driver(0)
+        except (AttributeError, NotImplementedError):
+            pass
+        import usb.util as _uutil
+        _uutil.claim_interface(device, 0)
+        flasher = dfu_flasher.DfuFlasher()
+        flasher._dev = device
+        info = flasher.read_board_info()
+        _uutil.release_interface(device, 0)
+        _uutil.dispose_resources(device)
+    except Exception as e:
+        logger.warning(f"DFU detect board info error: {e}")
+        info = {
+            'vid': device.idVendor,
+            'pid': device.idProduct,
+            'vid_str': f'0x{device.idVendor:04X}',
+            'pid_str': f'0x{device.idProduct:04X}',
+            'manufacturer': dfu_flasher.get_manufacturer_from_vid(device.idVendor),
+            'model': '',
+            'usb_manufacturer': '',
+            'usb_product': '',
+        }
+
+    return jsonify({'status': 'found', 'device': info})
+
+
+@app.route('/api/firmware/dfu/enter', methods=['POST'])
+def dfu_enter():
+    """
+    Trigger DFU entry automatically.
+    1. MAVLink reboot-to-bootloader if connected.
+    2. 1200-baud pulse on the serial port as fallback.
+    Returns the method used so the UI can guide the user.
+    """
+    # Method 1: MAVLink (cleanest — board is already connected)
+    if validator and validator.is_connected:
+        ok = validator.reboot_to_bootloader()
+        if ok:
+            validator.disconnect()
+            return jsonify({
+                'status': 'success',
+                'method': 'mavlink',
+                'message': 'Reboot-to-bootloader command sent via MAVLink. '
+                           'Waiting for DFU device to enumerate...',
+            })
+
+    # Method 2: 1200-baud pulse (board present but MAVLink not running)
+    port = connection_params.get('port', '')
+    if port and not port.startswith('udp'):
+        ok = dfu_flasher.enter_dfu_via_1200baud(port)
+        if ok:
+            return jsonify({
+                'status': 'success',
+                'method': '1200baud',
+                'message': f'1200-baud trigger sent on {port}. '
+                           'Waiting for DFU device to enumerate...',
+            })
+
+    # Nothing worked — instruct user to do it manually
+    return jsonify({
+        'status': 'manual',
+        'message': 'Could not trigger DFU automatically. '
+                   'Hold the BOOT button and replug the USB cable.',
+    })
+
+
+@app.route('/api/firmware/dfu/flash', methods=['POST'])
+def flash_firmware_dfu():
+    """
+    Start a DFU flash.  Accepts:
+      - Multipart file upload  (.bin)
+      - JSON body { "path": "/absolute/path/to/firmware.bin" }
+    Streams progress via Socket.IO 'firmware_flash_progress' / 'firmware_flash_complete'.
+    """
+    global _flash_state
+
+    with _flash_lock:
+        if _flash_state.get('status') == 'flashing':
+            return jsonify({'status': 'error', 'message': 'Flash already in progress'}), 409
+
+    try:
+        bin_data = None
+
+        if 'file' in request.files:
+            uploaded = request.files['file']
+            if not uploaded.filename.lower().endswith('.bin'):
+                return jsonify({'status': 'error', 'message': 'DFU flash requires a .bin file'}), 400
+            bin_data = uploaded.read()
+        else:
+            payload  = request.get_json(force=True) or {}
+            bin_path = payload.get('path', '')
+            if not bin_path or not os.path.exists(bin_path):
+                return jsonify({'status': 'error', 'message': 'No .bin file provided or file not found'}), 400
+            with open(bin_path, 'rb') as fh:
+                bin_data = fh.read()
+
+        if not bin_data:
+            return jsonify({'status': 'error', 'message': 'Empty firmware file'}), 400
+
+        def do_dfu_flash():
+            global _flash_state
+            with _flash_lock:
+                _flash_state = {
+                    'status': 'flashing', 'stage': 'dfu_detect',
+                    'percent': 0, 'message': 'Starting DFU flash...', 'result': None,
+                }
+            socketio.emit('firmware_flash_progress', {
+                'stage': 'dfu_detect', 'percent': 0, 'message': 'Starting DFU flash...',
+            })
+
+            def progress_cb(stage, percent, message):
+                with _flash_lock:
+                    _flash_state['stage']   = stage
+                    _flash_state['percent'] = percent
+                    _flash_state['message'] = message
+                socketio.emit('firmware_flash_progress', {
+                    'stage': stage, 'percent': percent, 'message': message,
+                })
+
+            flasher = dfu_flasher.DfuFlasher()
+            result  = flasher.flash(bin_data, progress_cb=progress_cb)
+
+            with _flash_lock:
+                _flash_state['status']  = 'complete' if result['success'] else 'error'
+                _flash_state['message'] = result['message']
+                _flash_state['result']  = result
+
+            socketio.emit('firmware_flash_complete', result)
+
+        threading.Thread(target=do_dfu_flash, daemon=True).start()
+        return jsonify({'status': 'success', 'message': 'DFU flash started'})
+
+    except Exception as e:
+        logger.error(f"DFU flash start error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/firmware/dfu/download', methods=['POST'])
+def dfu_download_bin():
+    """
+    Download a .bin firmware file from firmware.ardupilot.org.
+    Derives the .bin URL from the .apj URL (same path, different extension).
+    Accepts JSON body { "url": "https://firmware.ardupilot.org/...apj" }
+                   or { "bin_url": "https://firmware.ardupilot.org/...bin" }
+    """
+    payload = request.get_json(force=True) or {}
+    url = payload.get('bin_url') or payload.get('url', '').replace('.apj', '.bin')
+
+    if not url.startswith('https://firmware.ardupilot.org/'):
+        return jsonify({'status': 'error', 'message': 'URL must be from firmware.ardupilot.org'}), 400
+
+    try:
+        cache_dir  = _get_firmware_cache_dir()
+        filename   = os.path.basename(url)
+        if not filename.endswith('.bin'):
+            filename += '.bin'
+        local_path = os.path.join(cache_dir, filename)
+
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            data = resp.read()
+
+        with open(local_path, 'wb') as fh:
+            fh.write(data)
+
+        logger.info(f"Downloaded .bin firmware to {local_path} ({len(data)} bytes)")
+        return jsonify({
+            'status':   'success',
+            'path':     local_path,
+            'filename': filename,
+            'size':     len(data),
+        })
+
+    except Exception as e:
+        logger.error(f"DFU firmware download error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 ####################################################################################

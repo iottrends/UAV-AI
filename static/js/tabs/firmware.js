@@ -101,8 +101,9 @@
             html += '<td style="padding:0.3rem 0.5rem;">' + (fw.version || 'unknown') + '</td>';
             html += '<td style="padding:0.3rem 0.5rem;">' + (fw.platform || '') + '</td>';
             html += '<td style="padding:0.3rem 0.5rem;">' + (fw.board_id || '') + '</td>';
-            html += '<td style="padding:0.3rem 0.5rem; text-align:right;">';
-            html += '<button class="fw-download-btn" data-url="' + fw.url + '" style="background:var(--primary-color); color:white; border:none; border-radius:4px; padding:0.2rem 0.6rem; cursor:pointer; font-size:0.75rem;"><i class="fas fa-download"></i> Flash</button>';
+            html += '<td style="padding:0.3rem 0.5rem; text-align:right; white-space:nowrap;">';
+            html += '<button class="fw-download-btn" data-url="' + fw.url + '" style="background:var(--primary-color); color:white; border:none; border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer; font-size:0.75rem; margin-right:0.25rem;"><i class="fas fa-plug"></i> Serial</button>';
+            html += '<button class="fw-dfu-btn" data-url="' + fw.url + '" style="background:var(--secondary-color); color:white; border:none; border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer; font-size:0.75rem;"><i class="fas fa-microchip"></i> DFU</button>';
             html += '</td></tr>';
          });
 
@@ -119,11 +120,18 @@
 
       container.innerHTML = html;
 
-      // Attach click handlers to download+flash buttons
+      // Serial flash buttons
       container.querySelectorAll('.fw-download-btn').forEach(function(btn) {
          btn.addEventListener('click', function() {
-            var url = this.getAttribute('data-url');
-            downloadAndFlash(url);
+            downloadAndFlash(this.getAttribute('data-url'));
+         });
+      });
+      // DFU flash buttons
+      container.querySelectorAll('.fw-dfu-btn').forEach(function(btn) {
+         btn.addEventListener('click', function() {
+            if (window._fwTab && window._fwTab.dfuDownloadAndFlash) {
+               window._fwTab.dfuDownloadAndFlash(this.getAttribute('data-url'));
+            }
          });
       });
    }
@@ -289,14 +297,227 @@
       });
    }
 
+   // ───── Flash Method Toggle (Serial / DFU) ─────
+   var currentMethod = 'serial';   // 'serial' | 'dfu'
+
+   function setMethod(method) {
+      currentMethod = method;
+      var serialPanel = el('fwSerialPanel');
+      var dfuPanel    = el('fwDfuPanel');
+      var btnSerial   = el('fwMethodSerial');
+      var btnDfu      = el('fwMethodDfu');
+
+      if (serialPanel) serialPanel.style.display = method === 'serial' ? '' : 'none';
+      if (dfuPanel)    dfuPanel.style.display    = method === 'dfu'    ? '' : 'none';
+
+      if (btnSerial) btnSerial.classList.toggle('fw-method-active', method === 'serial');
+      if (btnDfu)    btnDfu.classList.toggle('fw-method-active',    method === 'dfu');
+   }
+
+   // Expose for inline onclick handlers in HTML
+   window._fwTab = window._fwTab || {};
+   window._fwTab.setMethod = setMethod;
+
+   // ───── DFU: Enter DFU Mode ─────
+   var _dfuDetectTimer = null;
+
+   function dfuSetChip(text, ok) {
+      var chip = el('dfuStatusChip');
+      if (!chip) return;
+      chip.textContent = text;
+      chip.style.background = ok === true  ? 'var(--success-color)' :
+                              ok === false ? 'var(--danger-color)'  : '#555';
+      chip.style.color = '#fff';
+   }
+
+   function dfuShowBoardCard(info) {
+      var card = el('dfuBoardCard');
+      if (!card) return;
+      el('dfuBoardMfr').textContent   = info.manufacturer  || '--';
+      el('dfuBoardModel').textContent = info.model && info.model !== '' ? info.model : info.usb_product || '--';
+      el('dfuBoardUsb').textContent   = (info.vid_str || '') + ' : ' + (info.pid_str || '');
+      el('dfuBoardDesc').textContent  = [info.usb_manufacturer, info.usb_product].filter(Boolean).join(' / ') || '--';
+      card.style.display = '';
+   }
+
+   function dfuDetectBoard() {
+      dfuSetChip('Scanning...', null);
+      fetch('/api/firmware/dfu/detect')
+         .then(function(r) { return r.json(); })
+         .then(function(data) {
+            if (data.status === 'found') {
+               dfuSetChip('DFU DETECTED', true);
+               dfuShowBoardCard(data.device);
+               stopDfuPoll();
+            } else {
+               dfuSetChip('Not detected', false);
+               var card = el('dfuBoardCard');
+               if (card) card.style.display = 'none';
+            }
+         })
+         .catch(function() {
+            dfuSetChip('Scan error', false);
+         });
+   }
+
+   function startDfuPoll() {
+      dfuDetectBoard();
+      if (!_dfuDetectTimer) {
+         _dfuDetectTimer = setInterval(dfuDetectBoard, 2000);
+      }
+   }
+
+   function stopDfuPoll() {
+      if (_dfuDetectTimer) {
+         clearInterval(_dfuDetectTimer);
+         _dfuDetectTimer = null;
+      }
+   }
+
+   function dfuEnter() {
+      var btn = el('dfuEnterBtn');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Triggering...'; }
+      dfuSetChip('Entering DFU...', null);
+
+      fetch('/api/firmware/dfu/enter', { method: 'POST' })
+         .then(function(r) { return r.json(); })
+         .then(function(data) {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Enter DFU Mode'; }
+            if (data.status === 'success') {
+               appendLog('DFU trigger: ' + data.message + ' (method: ' + data.method + ')');
+               dfuSetChip('Waiting...', null);
+               startDfuPoll();  // poll every 2s until device appears
+            } else if (data.status === 'manual') {
+               appendLog('⚠ ' + data.message);
+               dfuSetChip('Manual required', false);
+               startDfuPoll();  // still poll in case user presses BOOT button
+            } else {
+               appendLog('ERROR: ' + (data.message || 'DFU entry failed'));
+               dfuSetChip('Failed', false);
+            }
+         })
+         .catch(function(err) {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Enter DFU Mode'; }
+            appendLog('ERROR: ' + err.message);
+            dfuSetChip('Error', false);
+         });
+   }
+
+   // ───── DFU: Flash Local .bin ─────
+   function dfuFlashLocalFile() {
+      var fileInput = el('dfuLocalFile');
+      if (!fileInput || !fileInput.files || !fileInput.files.length) return;
+
+      if (!confirm('Flash via DFU?\n\nBoard: ' + (el('dfuBoardMfr') ? el('dfuBoardMfr').textContent : '?') +
+                   ' ' + (el('dfuBoardModel') ? el('dfuBoardModel').textContent : '') +
+                   '\n\nThis will erase and reflash the flight controller.\n\nProceed?')) return;
+
+      showProgress();
+      appendLog('Uploading .bin file for DFU flash...');
+
+      var formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+
+      fetch('/api/firmware/dfu/flash', { method: 'POST', body: formData })
+         .then(function(r) { return r.json(); })
+         .then(function(data) {
+            if (data.status === 'success') {
+               appendLog('DFU flash started...');
+            } else {
+               appendLog('ERROR: ' + (data.message || 'DFU flash failed to start'));
+            }
+         })
+         .catch(function(err) { appendLog('ERROR: ' + err.message); });
+   }
+
+   // ───── DFU: Download .bin from server and flash ─────
+   function dfuDownloadAndFlash(apjUrl) {
+      if (!confirm('Download firmware and flash via DFU?\n\nThe board must already be in DFU mode.\n\nProceed?')) return;
+
+      showProgress();
+      appendLog('Downloading .bin from server...');
+
+      fetch('/api/firmware/dfu/download', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ url: apjUrl }),
+      })
+         .then(function(r) { return r.json(); })
+         .then(function(data) {
+            if (data.status === 'success') {
+               appendLog('Download complete: ' + data.filename + ' (' + data.size + ' bytes)');
+               // Start flash
+               fetch('/api/firmware/dfu/flash', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ path: data.path }),
+               })
+                  .then(function(r) { return r.json(); })
+                  .then(function(d) {
+                     if (d.status === 'success') appendLog('DFU flash started...');
+                     else appendLog('ERROR: ' + (d.message || 'DFU flash failed'));
+                  });
+            } else {
+               appendLog('ERROR: ' + (data.message || 'Download failed'));
+            }
+         })
+         .catch(function(err) { appendLog('ERROR: ' + err.message); });
+   }
+
+   // ───── Update manifest render to add DFU Flash button ─────
+   var _origRenderManifest = renderManifest;
+   // Extend the flash button in renderManifest to show a DFU option
+   // (done by patching the click handler below in init)
+
+   // ───── Extended stage labels for DFU ─────
+   var DFU_STAGE_LABELS = {
+      'dfu_detect': 'Detecting DFU Device',
+      'dfu_init':   'Initialising DFU',
+      'erase':      'Erasing Flash',
+      'program':    'Programming',
+      'verify':     'Verifying',
+      'reboot':     'Rebooting',
+   };
+
+   var _origUpdateProgress = updateProgress;
+   function updateProgress(data) {
+      // Merge DFU stage labels into existing map
+      var bar   = el('fwProgressBar');
+      var stage = el('fwProgressStage');
+      var card  = el('fwProgressCard');
+
+      if (card) card.style.display = '';
+      if (bar && data.percent >= 0) bar.style.width = (data.percent || 0) + '%';
+
+      var allLabels = {
+         'init':       'Initializing',
+         'reboot':     'Rebooting to Bootloader',
+         'parse':      'Parsing Firmware',
+         'connect':    'Connecting to Bootloader',
+         'info':       'Reading Device Info',
+         'erase':      'Erasing Flash',
+         'program':    'Programming',
+         'verify':     'Verifying CRC',
+         'dfu_detect': 'Detecting DFU Device',
+         'dfu_init':   'Initialising DFU Interface',
+      };
+
+      if (stage) {
+         var lbl = allLabels[data.stage] || data.stage || '';
+         stage.textContent = lbl + (data.percent >= 0 ? ' (' + data.percent + '%)' : '');
+      }
+      if (data.message) appendLog(data.message);
+   }
+
    // ───── Init ─────
    function init() {
-      // Wait for socket
+      // Resolve socket (may not exist at IIFE parse time)
       if (!socket && window._app) socket = window._app.socket;
+      if (!socket && window._app && window._app.socket) socket = window._app.socket;
 
-      // File input enable/disable flash button
+      // Serial: file input → enable flash button
       var fileInput = el('fwLocalFile');
-      var flashBtn = el('fwFlashLocalBtn');
+      var flashBtn  = el('fwFlashLocalBtn');
       if (fileInput && flashBtn) {
          fileInput.addEventListener('change', function() {
             flashBtn.disabled = !fileInput.files || !fileInput.files.length;
@@ -304,25 +525,49 @@
          flashBtn.addEventListener('click', flashLocalFile);
       }
 
+      // DFU: file input → enable DFU flash button
+      var dfuFileInput = el('dfuLocalFile');
+      var dfuFlashBtn  = el('dfuFlashLocalBtn');
+      if (dfuFileInput && dfuFlashBtn) {
+         dfuFileInput.addEventListener('change', function() {
+            dfuFlashBtn.disabled = !dfuFileInput.files || !dfuFileInput.files.length;
+         });
+         dfuFlashBtn.addEventListener('click', dfuFlashLocalFile);
+      }
+
+      // DFU: Enter DFU button
+      var enterBtn = el('dfuEnterBtn');
+      if (enterBtn) enterBtn.addEventListener('click', dfuEnter);
+
+      // DFU: Detect board button
+      var detectBtn = el('dfuDetectBtn');
+      if (detectBtn) detectBtn.addEventListener('click', dfuDetectBoard);
+
       // Refresh manifest button
       var refreshBtn = el('fwRefreshManifest');
-      if (refreshBtn) {
-         refreshBtn.addEventListener('click', refreshManifest);
-      }
+      if (refreshBtn) refreshBtn.addEventListener('click', refreshManifest);
 
       // Vehicle type filter
       var vehicleFilter = el('fwVehicleFilter');
-      if (vehicleFilter) {
-         vehicleFilter.addEventListener('change', renderManifest);
-      }
+      if (vehicleFilter) vehicleFilter.addEventListener('change', renderManifest);
 
+      // Socket listeners (re-resolve socket first)
       setupSocketListeners();
+
+      // Fix socket reference if resolved late
+      setTimeout(function() {
+         if (!socket && window._app) {
+            socket = window._app.socket;
+            setupSocketListeners();
+         }
+      }, 500);
 
       // Refresh firmware info when tab becomes visible
       document.querySelectorAll('.menu-item').forEach(function(item) {
          item.addEventListener('click', function() {
             if (this.getAttribute('data-tab') === 'firmware') {
                refreshCurrentFirmware();
+               // Stop DFU poll when leaving the tab would be handled by setMethod
             }
          });
       });
@@ -334,5 +579,8 @@
    } else {
       init();
    }
+
+   // Expose dfuDownloadAndFlash for manifest button use
+   window._fwTab.dfuDownloadAndFlash = dfuDownloadAndFlash;
 
 })();
