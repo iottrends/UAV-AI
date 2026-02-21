@@ -247,8 +247,12 @@ class MavlinkHandler:
         self.param_count = msg.param_count
         param_index = msg.param_index
 
+        # Skip sentinel values (0xFFFF = unknown index in MAVLink spec)
+        if param_index >= self.param_count:
+            return
+
         # Always update progress so system_status broadcasts have current value
-        self.param_progress = (param_index + 1) / self.param_count * 100
+        self.param_progress = min(100.0, (param_index + 1) / self.param_count * 100)
 
         # Log and emit progress periodically
         if param_index % 50 == 0 or param_index == self.param_count - 1:

@@ -146,14 +146,14 @@
       }
 
       if (data.params !== undefined) {
-         var percentage = data.params.percentage || 0;
+         var percentage = Math.min(100, Math.max(0, data.params.percentage || 0));
          var downloaded = data.params.downloaded || 0;
          var total = data.params.total || 0;
          var status = data.params.status || 'Not Started';
          var timeElapsed = data.params.time_elapsed || '00:00';
          var timeRemaining = data.params.time_remaining || '--:--';
 
-         if (paramPercentage) paramPercentage.textContent = percentage + '%';
+         if (paramPercentage) paramPercentage.textContent = percentage.toFixed(1) + '%';
          if (paramProgressBar) paramProgressBar.style.width = percentage + '%';
          if (paramCount) paramCount.textContent = downloaded + '/' + total + ' Parameters';
          if (paramStatus) paramStatus.textContent = status;

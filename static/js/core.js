@@ -377,7 +377,8 @@ document.addEventListener('DOMContentLoaded', function() {
       const headerLatencyValue = document.getElementById('headerLatencyValue');
 
       if (headerParamsValue && data.params && data.params.percentage !== undefined) {
-         headerParamsValue.textContent = data.params.percentage + '%';
+         var clampedPct = Math.min(100, Math.max(0, data.params.percentage));
+         headerParamsValue.textContent = clampedPct.toFixed(1) + '%';
       }
 
       if (headerLatencyValue && data.latency !== undefined) {
