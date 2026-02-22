@@ -2527,6 +2527,137 @@ padding: 0.5rem;
    min-height: 1rem;
 }
 
+/* ── MAGFit Motor Interference Wizard ───────────────────────────────── */
+.magfit-card {
+   margin-top: 1rem;
+}
+.magfit-src-badge {
+   margin-left: 0.6rem;
+   font-size: 0.68rem;
+   padding: 0.15rem 0.5rem;
+   border-radius: 999px;
+   background: var(--accent);
+   color: #fff;
+   font-weight: 600;
+   vertical-align: middle;
+   text-transform: uppercase;
+   letter-spacing: 0.05em;
+}
+.magfit-current-row {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   gap: 1rem;
+   margin-bottom: 0.75rem;
+   font-size: 0.78rem;
+}
+.magfit-cur-label {
+   color: var(--text-dim);
+   font-size: 0.72rem;
+   text-transform: uppercase;
+   letter-spacing: 0.05em;
+}
+.magfit-cur-val {
+   color: var(--text-secondary);
+   font-family: monospace;
+   font-size: 0.8rem;
+}
+.magfit-actions-top {
+   display: flex;
+   align-items: center;
+   margin-bottom: 1rem;
+}
+.magfit-chart-header {
+   display: flex;
+   align-items: center;
+   gap: 0.5rem;
+   margin-bottom: 0.5rem;
+   flex-wrap: wrap;
+}
+.magfit-axis-btn {
+   padding: 0.2rem 0.65rem;
+   font-size: 0.75rem;
+   font-weight: 600;
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   background: var(--surface-3);
+   color: var(--text-secondary);
+   cursor: pointer;
+   transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.magfit-axis-btn.active,
+.magfit-axis-btn:hover {
+   background: var(--accent);
+   color: #fff;
+   border-color: var(--accent);
+}
+.magfit-legend {
+   margin-left: auto;
+   display: flex;
+   align-items: center;
+   font-size: 0.72rem;
+   color: var(--text-dim);
+   gap: 0.25rem;
+}
+.magfit-legend-dot {
+   display: inline-block;
+   width: 10px;
+   height: 10px;
+   border-radius: 50%;
+}
+.magfit-legend-dot.raw  { background: rgba(231,76,60,0.8); }
+.magfit-legend-dot.corr { background: rgba(46,204,113,0.8); }
+
+.magfit-result-grid {
+   display: grid;
+   grid-template-columns: repeat(4, 1fr);
+   gap: 0.6rem;
+   margin: 0.75rem 0;
+}
+.magfit-result-cell {
+   background: var(--surface-3);
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   padding: 0.5rem 0.6rem;
+   display: flex;
+   flex-direction: column;
+   gap: 0.15rem;
+}
+.magfit-result-cell.quality-good   { border-color: var(--success-color); }
+.magfit-result-cell.quality-fair   { border-color: var(--warning-color); }
+.magfit-result-cell.quality-poor   { border-color: var(--danger-color); }
+.magfit-result-label {
+   font-size: 0.65rem;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+   color: var(--text-dim);
+}
+.magfit-result-value {
+   font-size: 0.95rem;
+   font-weight: 700;
+   color: var(--text-primary);
+   font-family: monospace;
+}
+.magfit-result-sub {
+   font-size: 0.65rem;
+   color: var(--text-dim);
+}
+.magfit-apply-row {
+   display: flex;
+   align-items: center;
+   gap: 0.75rem;
+   flex-wrap: wrap;
+   margin-top: 0.25rem;
+}
+.magfit-armed-warn {
+   display: flex;
+   align-items: center;
+   gap: 0.4rem;
+   font-size: 0.78rem;
+   color: var(--danger-color);
+   font-weight: 600;
+}
+
 /* ══════════════════════════════════════════════════════════════════════ */
 
 @media (max-width: 768px) {

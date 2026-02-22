@@ -940,6 +940,74 @@
                      <div class="cal-status" data-cal="baro">Idle</div>
                   </div>
                </div>
+
+               <!-- MAGFit Motor Interference Wizard -->
+               <div class="card magfit-card u-mt-3" id="magfitCard">
+                  <div class="card-title">
+                     <i class="fas fa-magnet"></i> Motor Interference (MAGFit)
+                     <span class="magfit-src-badge" id="magfitSrcBadge" style="display:none;"></span>
+                  </div>
+                  <p class="hint-text">
+                     Fit <code>COMPASS_MOT_X/Y/Z</code> compensation coefficients from a flight log.
+                     Load a log in the <strong>Logs</strong> tab first, then click Analyse.
+                  </p>
+
+                  <!-- Current COMPASS_MOT values -->
+                  <div class="magfit-current-row" id="magfitCurrentRow">
+                     <span class="magfit-cur-label">Current params:</span>
+                     <span class="magfit-cur-val">COMPASS_MOT_X&nbsp;=&nbsp;<span id="mfCurX">--</span></span>
+                     <span class="magfit-cur-val">COMPASS_MOT_Y&nbsp;=&nbsp;<span id="mfCurY">--</span></span>
+                     <span class="magfit-cur-val">COMPASS_MOT_Z&nbsp;=&nbsp;<span id="mfCurZ">--</span></span>
+                  </div>
+
+                  <!-- Analyse button -->
+                  <div class="magfit-actions-top">
+                     <button id="magfitRunBtn" class="btn btn-primary btn-sm">
+                        <i class="fas fa-chart-scatter"></i> Analyse Log
+                     </button>
+                     <span id="magfitRunStatus" class="hint-text" style="margin-left:0.75rem;"></span>
+                  </div>
+
+                  <!-- Results panel — hidden until analysis done -->
+                  <div id="magfitResults" style="display:none;">
+
+                     <!-- Axis selector + chart -->
+                     <div class="magfit-chart-header">
+                        <span class="filter-ctrl-label">ΔMag (Earth frame) vs <span id="magfitIndLabel">Throttle</span>:</span>
+                        <button class="magfit-axis-btn active" data-mfaxis="x">X</button>
+                        <button class="magfit-axis-btn" data-mfaxis="y">Y</button>
+                        <button class="magfit-axis-btn" data-mfaxis="z">Z</button>
+                        <span class="magfit-legend">
+                           <span class="magfit-legend-dot raw"></span> Raw &nbsp;
+                           <span class="magfit-legend-dot corr"></span> Corrected
+                        </span>
+                     </div>
+                     <div class="spectrum-chart-wrap" style="height:260px;">
+                        <canvas id="magfitCanvas"></canvas>
+                     </div>
+
+                     <!-- Numeric results -->
+                     <div class="magfit-result-grid" id="magfitResultGrid">
+                        <!-- filled by JS -->
+                     </div>
+
+                     <!-- Armed warning + Apply -->
+                     <div class="magfit-apply-row">
+                        <div id="magfitArmedWarn" class="magfit-armed-warn" style="display:none;">
+                           <i class="fas fa-exclamation-triangle"></i>
+                           Disarm the vehicle before writing compass parameters.
+                        </div>
+                        <button id="magfitApplyBtn" class="btn btn-success btn-sm" style="display:none;" disabled>
+                           <i class="fas fa-upload"></i> Apply to FC
+                        </button>
+                        <button id="magfitClearBtn" class="btn btn-ghost btn-sm" style="display:none;">
+                           <i class="fas fa-times"></i> Clear
+                        </button>
+                     </div>
+
+                  </div>
+               </div>
+
             </div>
             <!-- Motors Tab -->
             <div class="tab-content tab-panel" id="motors-tab" style="display: none;">

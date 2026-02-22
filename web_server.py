@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import math
+import numpy as np
 import signal
 import threading
 import time
@@ -2063,6 +2064,183 @@ def get_log_flight_summary():
         stats['errors'] = errors[:5]
 
     return jsonify({'status': 'success', 'stats': stats})
+
+
+@app.route('/api/magfit', methods=['GET'])
+def get_magfit():
+    """
+    Compute COMPASS_MOT_X/Y/Z coefficients from the loaded flight log.
+
+    Method:
+      1. Rotate each MAG sample into Earth frame using ATT roll+pitch (removes
+         tilt-induced variation so only motor interference remains).
+      2. Independent variable: Battery current (A) when available; falls back
+         to mean normalised RCOU throttle (0-1). Current is the physically
+         correct variable because the magnetic field scales with Amps.
+      3. Fit  earth_mag = k * ind + c  per axis via numpy.linalg.lstsq.
+         The slope  k  is the COMPASS_MOT coefficient.
+      4. Return raw and corrected scatter points so the UI can preview the
+         "before / after" improvement before the pilot applies the fix.
+    """
+    if not log_parser_instance or not log_parser_instance._is_parsed:
+        return jsonify({'status': 'error', 'message': 'No log loaded'}), 400
+
+    pd = log_parser_instance.parsed_data
+
+    mag_msgs  = pd.get('MAG', [])
+    att_msgs  = pd.get('ATT', [])
+    rcou_msgs = pd.get('RCOU', [])
+    bat_msgs  = pd.get('BAT', pd.get('CURR', []))
+
+    if not mag_msgs:
+        return jsonify({'status': 'error', 'message': 'No MAG messages in log'}), 400
+    if not att_msgs:
+        return jsonify({'status': 'error', 'message': 'No ATT messages in log'}), 400
+    if not rcou_msgs and not bat_msgs:
+        return jsonify({'status': 'error', 'message': 'No RCOU or BAT/CURR messages in log'}), 400
+
+    # ── Build fast time-sorted lookup arrays ──────────────────────────────
+    def _sort(msgs):
+        return sorted(msgs, key=lambda m: m.get('TimeUS', 0))
+
+    att_sorted  = _sort(att_msgs)
+    att_times   = [m.get('TimeUS', 0) for m in att_sorted]
+
+    use_current = False
+    ind_sorted  = []
+    ind_times   = []
+    if bat_msgs:
+        # Check that current field exists and has useful range
+        sample_curr = [m.get('Curr', m.get('I')) for m in bat_msgs[:50] if m.get('Curr', m.get('I')) is not None]
+        if sample_curr and max(sample_curr) > 0.5:
+            use_current = True
+            ind_sorted = _sort(bat_msgs)
+            ind_times  = [m.get('TimeUS', 0) for m in ind_sorted]
+
+    if not use_current and rcou_msgs:
+        ind_sorted = _sort(rcou_msgs)
+        ind_times  = [m.get('TimeUS', 0) for m in ind_sorted]
+
+    if not ind_sorted:
+        return jsonify({'status': 'error', 'message': 'No usable current or throttle data in log'}), 400
+
+    ind_label = 'Current (A)' if use_current else 'Throttle (0-1)'
+
+    # ── Nearest-neighbour lookup via binary search ────────────────────────
+    import bisect
+
+    def _nearest(sorted_times, sorted_msgs, t, *fields):
+        idx = bisect.bisect_left(sorted_times, t)
+        idx = min(idx, len(sorted_msgs) - 1)
+        if idx > 0 and abs(sorted_times[idx-1] - t) < abs(sorted_times[idx] - t):
+            idx -= 1
+        m = sorted_msgs[idx]
+        return tuple(m.get(f) for f in fields)
+
+    # ── Process each MAG sample ───────────────────────────────────────────
+    samples = []
+    for mag in mag_msgs:
+        t  = mag.get('TimeUS', 0)
+        mx = mag.get('MagX')
+        my = mag.get('MagY')
+        mz = mag.get('MagZ')
+        if mx is None or my is None or mz is None:
+            continue
+
+        roll_deg, pitch_deg = _nearest(att_times, att_sorted, t, 'Roll', 'Pitch')
+        if roll_deg is None or pitch_deg is None:
+            continue
+
+        roll  = math.radians(float(roll_deg))
+        pitch = math.radians(float(pitch_deg))
+
+        # Rotate body → Earth (remove roll + pitch tilt, ignore yaw since
+        # Earth-field horizontal direction is constant during the flight)
+        cp, sp = math.cos(pitch), math.sin(pitch)
+        cr, sr = math.cos(roll),  math.sin(roll)
+        ex =  cp*mx + sp*sr*my + sp*cr*mz
+        ey =          cr*my    -    sr*mz
+        ez = -sp*mx + cp*sr*my + cp*cr*mz
+
+        # Independent variable
+        if use_current:
+            (raw_curr,) = _nearest(ind_times, ind_sorted, t, 'Curr')
+            if raw_curr is None:
+                (raw_curr,) = _nearest(ind_times, ind_sorted, t, 'I')
+            ind_val = float(raw_curr) if raw_curr is not None else None
+        else:
+            c1, c2, c3, c4 = _nearest(ind_times, ind_sorted, t, 'C1', 'C2', 'C3', 'C4')
+            vals = [v for v in (c1, c2, c3, c4) if v is not None]
+            if not vals:
+                continue
+            ind_val = (sum(vals) / len(vals) - 1000.0) / 1000.0  # 0-1
+
+        if ind_val is None or ind_val < 0:
+            continue
+
+        samples.append((float(ind_val), float(ex), float(ey), float(ez)))
+
+    if len(samples) < 50:
+        return jsonify({
+            'status': 'error',
+            'message': f'Insufficient aligned samples ({len(samples)}). '
+                       'Log needs both MAG and throttle/current data across a range of throttle levels.'
+        }), 400
+
+    # ── Least-squares fit: earth_mag = k * ind + c ───────────────────────
+    ind_arr = np.array([s[0] for s in samples])
+    ex_arr  = np.array([s[1] for s in samples])
+    ey_arr  = np.array([s[2] for s in samples])
+    ez_arr  = np.array([s[3] for s in samples])
+
+    A = np.column_stack([ind_arr, np.ones(len(samples))])  # [ind, 1]
+
+    def _lstsq(Y):
+        coefs, _, _, _ = np.linalg.lstsq(A, Y, rcond=None)
+        pred   = A @ coefs
+        ss_res = float(np.sum((Y - pred) ** 2))
+        ss_tot = float(np.sum((Y - float(np.mean(Y))) ** 2))
+        r2     = 1.0 - ss_res / ss_tot if ss_tot > 1e-9 else 0.0
+        return float(coefs[0]), float(coefs[1]), round(r2, 3)
+
+    k_x, c_x, r2_x = _lstsq(ex_arr)
+    k_y, c_y, r2_y = _lstsq(ey_arr)
+    k_z, c_z, r2_z = _lstsq(ez_arr)
+
+    avg_r2  = (r2_x + r2_y + r2_z) / 3.0
+    quality = 'good' if avg_r2 > 0.6 else ('fair' if avg_r2 > 0.3 else 'poor')
+
+    # ── Downsample scatter to ≤ 600 points for the chart ─────────────────
+    max_pts = 600
+    step    = max(1, len(samples) // max_pts)
+    scatter = []
+    for i in range(0, len(samples), step):
+        ind, ex, ey, ez = samples[i]
+        scatter.append({
+            'ind':    round(ind, 3),
+            'raw_x':  round(ex, 2),
+            'raw_y':  round(ey, 2),
+            'raw_z':  round(ez, 2),
+            'corr_x': round(ex - k_x * ind, 2),
+            'corr_y': round(ey - k_y * ind, 2),
+            'corr_z': round(ez - k_z * ind, 2),
+        })
+
+    return jsonify({
+        'status':       'success',
+        'k_x':          round(k_x, 4),
+        'k_y':          round(k_y, 4),
+        'k_z':          round(k_z, 4),
+        'r2_x':         r2_x,
+        'r2_y':         r2_y,
+        'r2_z':         r2_z,
+        'quality':      quality,
+        'sample_count': len(samples),
+        'use_current':  use_current,
+        'ind_label':    ind_label,
+        'ind_max':      round(float(np.max(ind_arr)), 2),
+        'scatter':      scatter,
+    })
 
 
 @app.route('/api/log_message/<msg_type>', methods=['GET'])
