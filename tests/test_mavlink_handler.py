@@ -76,6 +76,15 @@ def test_request_helpers_append_tx(handler):
 
 
 def test_update_parameter_success(handler):
+    # Define a side effect for wait() that clears the pending update
+    def simulate_echo(*args, **kwargs):
+        handler._pending_param_updates.clear()
+        return True
+
+    handler._param_update_condition = MagicMock()
+    handler._param_update_condition.wait.side_effect = simulate_echo
+    handler._param_update_condition.__enter__.return_value = handler._param_update_condition
+
     ok = handler.update_parameter("TEST_PARAM", 42)
     assert ok is True
     handler.mav_conn.mav.param_set_send.assert_called_once()

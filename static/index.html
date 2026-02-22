@@ -265,33 +265,67 @@
                      </tbody>
                   </table>
                </div>
-               <!-- Firmware Information Card -->
+               <!-- Hardware Inventory Card -->
                <div class="card">
-                  <div class="card-title">FIRMWARE INFORMATION</div>
-                  <table class="subsystem-table">
-                     <tbody>
-                        <tr>
-                           <td>Firmware Version</td>
-                           <td id="firmwareVersion">--</td>
-                        </tr>
-                        <tr>
-                           <td>Custom Version</td>
-                           <td id="customVersion">--</td>
-                        </tr>
-                        <tr>
-                           <td>Board Version</td>
-                           <td id="boardVersion">--</td>
-                        </tr>
-                        <tr>
-                           <td>Vendor/Product ID</td>
-                           <td id="vendorProductId">--</td>
-                        </tr>
-                        <tr>
-                           <td>Capabilities</td>
-                           <td id="capabilities">--</td>
-                        </tr>
-                     </tbody>
-                  </table>
+                  <div class="card-title">HARDWARE INVENTORY</div>
+
+                  <!-- Firmware row -->
+                  <div class="hw-firmware-row">
+                     <span class="hw-fw-label">Firmware</span>
+                     <span id="firmwareVersion" class="hw-fw-value">--</span>
+                     <span id="hwFwBadge" class="badge badge-info" style="display:none;"></span>
+                  </div>
+
+                  <!-- Sensor grid: IMU / Baro / Compass / GPS -->
+                  <div class="hw-sensor-grid">
+                     <div class="hw-sensor-cell">
+                        <div class="hw-sensor-icon"><i class="fas fa-microchip"></i></div>
+                        <div class="hw-sensor-label">IMU</div>
+                        <div class="hw-sensor-value" id="hwImu">--</div>
+                     </div>
+                     <div class="hw-sensor-cell">
+                        <div class="hw-sensor-icon"><i class="fas fa-tachometer-alt"></i></div>
+                        <div class="hw-sensor-label">Barometer</div>
+                        <div class="hw-sensor-value" id="hwBaro">--</div>
+                     </div>
+                     <div class="hw-sensor-cell">
+                        <div class="hw-sensor-icon"><i class="fas fa-compass"></i></div>
+                        <div class="hw-sensor-label">Compass</div>
+                        <div class="hw-sensor-value" id="hwCompass">--</div>
+                     </div>
+                     <div class="hw-sensor-cell">
+                        <div class="hw-sensor-icon"><i class="fas fa-satellite"></i></div>
+                        <div class="hw-sensor-label">GPS</div>
+                        <div class="hw-sensor-value" id="hwGps">--</div>
+                     </div>
+                  </div>
+
+                  <!-- ESC + system stats row -->
+                  <div class="hw-stats-row">
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">ESC Protocol</span>
+                        <span class="hw-stat-value" id="hwEsc">--</span>
+                     </div>
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">CPU Load</span>
+                        <div class="hw-stat-bar-wrap">
+                           <div class="hw-stat-bar" id="hwCpuBar"></div>
+                        </div>
+                        <span class="hw-stat-value" id="hwCpuLoad">--%</span>
+                     </div>
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">Free RAM</span>
+                        <span class="hw-stat-value" id="hwFreeRam">-- KB</span>
+                     </div>
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">Msg Drop Rate</span>
+                        <span class="hw-stat-value" id="hwDropRate">--%</span>
+                     </div>
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">Flash Storage</span>
+                        <span class="hw-stat-value" id="hwFlash">-- MB</span>
+                     </div>
+                  </div>
                </div>
             </div>
             <!-- Serial Ports Tab -->

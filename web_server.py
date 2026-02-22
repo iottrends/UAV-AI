@@ -2367,6 +2367,74 @@ def update_system_health():
                 rc_uart = f"SERIAL{i}"
                 break
 
+        # Hardware inventory — detect sensor models from device IDs + system stats
+        _GYRO_TYPES = {
+            0x01: "ICM-42688", 0x02: "ICM-42605", 0x09: "BMI160",
+            0x10: "L3GD20",    0x11: "ICM-20608", 0x16: "ICM-20689",
+            0x17: "ICM-20602", 0x21: "MPU-6000",  0x24: "MPU-9250",
+            0x28: "BMI270",    0x2B: "ICM-42670",  0x32: "ICM-45686",
+        }
+        _BARO_TYPES = {
+            0x01: "BMP280",  0x02: "BMP388",   0x03: "DPS310",
+            0x04: "MS5611",  0x05: "MS5607",   0x06: "TSYS01",
+            0x07: "ICP-10111", 0x09: "SPL06",  0x0A: "BMP390",
+        }
+        _COMPASS_TYPES = {
+            0x01: "HMC5843", 0x02: "HMC5883",  0x03: "LSM303D",
+            0x04: "IST8310", 0x05: "LSM9DS1",  0x06: "AK8963",
+            0x07: "RM3100",  0x08: "QMC5883",  0x09: "AK09916",
+            0x0A: "MMC3416", 0x0C: "IST8308",  0x0D: "MMC5883",
+        }
+        _GPS_TYPES = {
+            0: "None", 1: "Auto", 2: "uBlox", 3: "MTK", 4: "MTK19",
+            5: "NMEA", 6: "SiRF", 7: "HIL", 8: "SwiftNav", 9: "DroneCAN",
+            11: "NTRIP", 14: "HERE", 15: "BLH", 16: "uBlox-MB",
+            17: "NOVA", 19: "Unicore", 21: "HERE3", 24: "Trimble",
+        }
+
+        def _devid_name(devid, lookup):
+            try:
+                devid = int(float(devid or 0))
+            except (TypeError, ValueError):
+                devid = 0
+            if devid == 0:
+                return "—"
+            bus_type = devid & 0x3F          # bits 0-5: 1=I2C 2=SPI 3=UAVCAN 4=SITL
+            dev_type = (devid >> 18) & 0x3F  # bits 18-23: chip model
+            if bus_type == 4:
+                return "Simulated"
+            return lookup.get(dev_type, f"ID:{devid:#010x}")
+
+        flat_params = getattr(validator, 'params_dict', {})
+        try:
+            gps_type_val = int(float(flat_params.get("GPS_TYPE", 0) or 0))
+        except (TypeError, ValueError):
+            gps_type_val = 0
+        hardware_inventory = {
+            "imu":           _devid_name(flat_params.get("INS_GYRO_ID", 0), _GYRO_TYPES),
+            "baro":          _devid_name(flat_params.get("BARO1_DEVID", 0), _BARO_TYPES),
+            "compass":       _devid_name(flat_params.get("COMPASS_DEV_ID", 0), _COMPASS_TYPES),
+            "gps":           _GPS_TYPES.get(gps_type_val, f"Type {gps_type_val}"),
+            "esc_protocol":  esc_protocol,
+            "cpu_load":      None,
+            "free_ram_kb":   None,
+            "drop_rate":     None,
+            "flash_total_mb": None,
+            "flash_used_mb":  None,
+        }
+        sys_msg = mavlink_buffer.get("SYS_STATUS")
+        if sys_msg:
+            raw_load = sys_msg.get("load", 0)
+            hardware_inventory["cpu_load"]  = round(raw_load / 10.0, 1)
+            hardware_inventory["drop_rate"] = round(sys_msg.get("drop_rate_comm", 0) / 100.0, 1)
+        mem_msg = mavlink_buffer.get("MEMINFO")
+        if mem_msg:
+            hardware_inventory["free_ram_kb"] = round(mem_msg.get("freemem", 0) / 1024)
+        storage_msg = mavlink_buffer.get("STORAGE_INFORMATION")
+        if storage_msg:
+            hardware_inventory["flash_total_mb"] = round(storage_msg.get("total_capacity", 0))
+            hardware_inventory["flash_used_mb"]  = round(storage_msg.get("used_capacity", 0))
+
         # Extract ATTITUDE data (roll/pitch/yaw in degrees)
         attitude_msg = mavlink_buffer.get("ATTITUDE")
         if attitude_msg:
@@ -2516,6 +2584,7 @@ def update_system_health():
             "servo_outputs": servo_outputs,
             "preflight": preflight_checks,
             "overall_readiness": overall_readiness,
+            "hardware": hardware_inventory,
         }
 
         # Add MAVLink link latency from TIMESYNC
@@ -2534,10 +2603,20 @@ def update_system_health():
         
         # Update parameter progress from validator
         if hasattr(validator, 'param_progress'):
+            downloaded = len(validator.params_dict)
+            total = validator.param_count
+            progress = validator.param_progress
+            if total > 0 and downloaded >= total:
+                param_status = "Complete"
+            elif progress > 0:
+                param_status = "Downloading..."
+            else:
+                param_status = "Not Started"
             last_system_health["params"] = {
-                "percentage": validator.param_progress,
-                "downloaded": len(validator.params_dict),
-                "total": validator.param_count
+                "percentage": progress,
+                "downloaded": downloaded,
+                "total": total,
+                "status": param_status
             }
 
         # Broadcast system health to all connected clients
@@ -2685,7 +2764,7 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
     # Start the Flask server in a new thread
     def run_server():
         logger.info(f"Starting web server on {host}:{port}")
-        socketio.run(app, host=host, port=port, debug=debug, use_reloader=False)
+        socketio.run(app, host=host, port=port, debug=debug, use_reloader=False, allow_unsafe_werkzeug=True)
 
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
@@ -2697,4 +2776,4 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
 if __name__ == "__main__":
     # This allows running the web server standalone for testing
     print("Starting web server in standalone mode (no backend)")
-    socketio.run(app, host='127.0.0.1', port=5000, debug=True, use_reloader=False)
+    socketio.run(app, host='127.0.0.1', port=5000, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)

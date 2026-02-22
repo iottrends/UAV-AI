@@ -265,7 +265,8 @@ class MavlinkHandler:
                 "params": {
                     "percentage": self.param_progress,
                     "downloaded": param_index + 1,
-                    "total": self.param_count
+                    "total": self.param_count,
+                    "status": "Downloading..."
                 }
             })
 
@@ -281,15 +282,34 @@ class MavlinkHandler:
                     "params": {
                         "percentage": self.param_progress,
                         "downloaded": param_index + 1,
-                        "total": self.param_count
+                        "total": self.param_count,
+                        "status": "Complete"
                     }
                 })
 
 
 #######################################################################
     def on_params_received(self):
-        """Called when all parameters are received. Override this in subclass."""
-        pass
+        """Called when all parameters are received. Request storage info."""
+        self.request_storage_info()
+
+    def request_storage_info(self):
+        """Request STORAGE_INFORMATION (msg 261) for flash/SD card stats."""
+        if not self.is_connected:
+            return
+        try:
+            self.mav_conn.mav.command_long_send(
+                self.target_system, self.target_component,
+                mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
+                0,   # confirmation
+                261, # STORAGE_INFORMATION message ID
+                1,   # storage_id=1 (primary storage)
+                0, 0, 0, 0, 0
+            )
+            self.tx_mav_msg.append("STORAGE_INFO_REQUEST")
+            mavlink_logger.info("⏳ Requested STORAGE_INFORMATION")
+        except Exception as e:
+            mavlink_logger.debug(f"STORAGE_INFO request error: {e}")
 ############################################################################################
     def snapshot_rx_queue(self):
         """Update ai_mavlink_ctx with the latest message of each type from

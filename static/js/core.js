@@ -445,6 +445,60 @@ document.addEventListener('DOMContentLoaded', function() {
          gpsSatellites.textContent = data.gps.satellites_visible + ' SATELLITES VISIBLE';
       }
 
+      // Update hardware inventory card
+      if (data.hardware) {
+         var hw = data.hardware;
+         var hwImu     = document.getElementById('hwImu');
+         var hwBaro    = document.getElementById('hwBaro');
+         var hwCompass = document.getElementById('hwCompass');
+         var hwGps     = document.getElementById('hwGps');
+         var hwEsc     = document.getElementById('hwEsc');
+         var hwCpuLoad = document.getElementById('hwCpuLoad');
+         var hwCpuBar  = document.getElementById('hwCpuBar');
+         var hwFreeRam = document.getElementById('hwFreeRam');
+         var hwDropRate= document.getElementById('hwDropRate');
+         var hwFlash   = document.getElementById('hwFlash');
+
+         if (hwImu)     hwImu.textContent     = hw.imu     || '--';
+         if (hwBaro)    hwBaro.textContent    = hw.baro    || '--';
+         if (hwCompass) hwCompass.textContent = hw.compass || '--';
+         if (hwGps)     hwGps.textContent     = hw.gps     || '--';
+         if (hwEsc)     hwEsc.textContent     = hw.esc_protocol || '--';
+
+         if (hw.cpu_load !== null && hw.cpu_load !== undefined) {
+            var cpuPct = hw.cpu_load;
+            if (hwCpuLoad) hwCpuLoad.textContent = cpuPct < 1 ? '< 1%' : cpuPct + '%';
+            if (hwCpuBar) {
+               // Minimum 3% bar width so it's always visible even at 0 load (e.g. SITL)
+               hwCpuBar.style.width = Math.max(3, Math.min(100, cpuPct)) + '%';
+               hwCpuBar.style.backgroundColor =
+                  cpuPct > 80 ? 'var(--danger-color)' :
+                  cpuPct > 60 ? 'var(--warning-color)' : 'var(--success-color)';
+            }
+         }
+         if (hw.free_ram_kb !== null && hw.free_ram_kb !== undefined) {
+            if (hwFreeRam) hwFreeRam.textContent = hw.free_ram_kb > 0 ? hw.free_ram_kb + ' KB' : 'N/A';
+         }
+         if (hw.drop_rate !== null && hw.drop_rate !== undefined) {
+            if (hwDropRate) {
+               hwDropRate.textContent = hw.drop_rate + '%';
+               hwDropRate.style.color = hw.drop_rate > 5 ? 'var(--danger-color)' :
+                                        hw.drop_rate > 1 ? 'var(--warning-color)' : '';
+            }
+         }
+         if (hw.flash_total_mb !== null && hw.flash_total_mb !== undefined && hwFlash) {
+            if (hw.flash_total_mb > 0) {
+               var usedMb  = hw.flash_used_mb  || 0;
+               var totalMb = hw.flash_total_mb;
+               // Show in GB if ≥ 1024 MB, otherwise MB
+               var fmt = function(mb) { return mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB'; };
+               hwFlash.textContent = fmt(usedMb) + ' / ' + fmt(totalMb);
+            } else {
+               hwFlash.textContent = 'N/A';
+            }
+         }
+      }
+
       // Update motors if elements exist
       if (data.motors && Array.isArray(data.motors)) {
          const motor1 = data.motors.find(function(motor) { return motor.id === 1; });
@@ -673,29 +727,36 @@ function fetchFirmwareInfo() {
    fetch('/api/firmware')
       .then(function(response) { return response.json(); })
       .then(function(data) {
+         var fwEl    = document.getElementById('firmwareVersion');
+         var badgeEl = document.getElementById('hwFwBadge');
          if (data.status === 'success') {
-            const firmware = data.firmware;
-            document.getElementById('firmwareVersion').textContent = firmware.firmware_version || '--';
-            document.getElementById('customVersion').textContent = firmware.flight_custom_version || '--';
-            document.getElementById('boardVersion').textContent = firmware.board_version || '--';
-            document.getElementById('vendorProductId').textContent = 'Vendor ID: ' + (firmware.vendor_id || '--') + ' / Product ID: ' + (firmware.product_id || '--');
-            document.getElementById('capabilities').textContent = firmware.capabilities ? firmware.capabilities.join(', ') : '--';
+            var firmware = data.firmware;
+            var ver = firmware.firmware_version || '--';
+            if (fwEl) fwEl.textContent = ver;
+            // Show a STABLE / DEV / BETA badge based on version string
+            if (badgeEl) {
+               var vl = ver.toLowerCase();
+               if (vl.includes('stable') || (!vl.includes('dev') && !vl.includes('beta') && ver !== '--')) {
+                  badgeEl.textContent = 'STABLE';
+                  badgeEl.className = 'badge badge-success';
+               } else if (vl.includes('dev')) {
+                  badgeEl.textContent = 'DEV';
+                  badgeEl.className = 'badge badge-warning';
+               } else if (vl.includes('beta')) {
+                  badgeEl.textContent = 'BETA';
+                  badgeEl.className = 'badge badge-info';
+               }
+               badgeEl.style.display = ver !== '--' ? 'inline-block' : 'none';
+            }
          } else {
-            console.error('Failed to fetch firmware info:', data.message);
-            document.getElementById('firmwareVersion').textContent = 'Error';
-            document.getElementById('customVersion').textContent = 'Error';
-            document.getElementById('boardVersion').textContent = 'Error';
-            document.getElementById('vendorProductId').textContent = 'Error';
-            document.getElementById('capabilities').textContent = 'Error';
+            if (fwEl) fwEl.textContent = 'Not connected';
+            if (badgeEl) badgeEl.style.display = 'none';
          }
       })
       .catch(function(error) {
          console.error('Error fetching firmware info:', error);
-         document.getElementById('firmwareVersion').textContent = 'Error';
-         document.getElementById('customVersion').textContent = 'Error';
-         document.getElementById('boardVersion').textContent = 'Error';
-         document.getElementById('vendorProductId').textContent = 'Error';
-         document.getElementById('capabilities').textContent = 'Error';
+         var fwEl = document.getElementById('firmwareVersion');
+         if (fwEl) fwEl.textContent = '--';
       });
 }
 

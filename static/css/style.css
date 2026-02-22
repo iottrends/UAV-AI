@@ -2121,6 +2121,106 @@ padding: 0.5rem;
 .u-justify-end { justify-content: flex-end; }
 .u-text-accent { color: var(--accent); }
 
+/* ══════════════════════════════════════════════════════════════════════
+   Hardware Inventory Card
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Firmware row */
+.hw-firmware-row {
+   display: flex;
+   align-items: center;
+   gap: 0.75rem;
+   margin-bottom: 1rem;
+   padding-bottom: 0.75rem;
+   border-bottom: 1px solid var(--border-subtle);
+}
+.hw-fw-label {
+   font-size: 0.7rem;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+   color: var(--text-dim);
+   white-space: nowrap;
+}
+.hw-fw-value {
+   font-size: 0.9rem;
+   font-weight: 600;
+   color: var(--text-primary);
+   flex: 1;
+}
+
+/* Sensor grid — 4 equal columns */
+.hw-sensor-grid {
+   display: grid;
+   grid-template-columns: repeat(4, 1fr);
+   gap: 0.5rem;
+   margin-bottom: 1rem;
+}
+.hw-sensor-cell {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 0.25rem;
+   background: var(--surface-3);
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   padding: 0.6rem 0.4rem;
+   text-align: center;
+}
+.hw-sensor-icon {
+   font-size: 1.1rem;
+   color: var(--accent);
+}
+.hw-sensor-label {
+   font-size: 0.6rem;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+   color: var(--text-dim);
+}
+.hw-sensor-value {
+   font-size: 0.78rem;
+   font-weight: 600;
+   color: var(--text-primary);
+   line-height: 1.2;
+}
+
+/* Stats row — ESC + CPU + RAM + Drop Rate */
+.hw-stats-row {
+   display: grid;
+   grid-template-columns: 2fr 2fr 1fr 1fr;
+   gap: 0.75rem;
+   align-items: center;
+}
+.hw-stat-item {
+   display: flex;
+   flex-direction: column;
+   gap: 0.2rem;
+}
+.hw-stat-label {
+   font-size: 0.6rem;
+   text-transform: uppercase;
+   letter-spacing: 0.05em;
+   color: var(--text-dim);
+}
+.hw-stat-value {
+   font-size: 0.82rem;
+   font-weight: 600;
+   color: var(--text-primary);
+}
+.hw-stat-bar-wrap {
+   height: 5px;
+   background: var(--surface-3);
+   border-radius: 3px;
+   overflow: hidden;
+   margin: 2px 0;
+}
+.hw-stat-bar {
+   height: 100%;
+   width: 0%;
+   background: var(--success-color);
+   border-radius: 3px;
+   transition: width 0.6s ease, background-color 0.3s ease;
+}
+
 /* ══════════════════════════════════════════════════════════════════════ */
 
 @media (max-width: 768px) {
