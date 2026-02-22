@@ -1612,6 +1612,85 @@ padding: 0.5rem;
 }
 .log-analyst-input:focus { border-color: var(--primary-color); }
 
+/* ===== Filter Visualizer ===== */
+.filter-viz-controls {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   gap: 0.75rem;
+   margin-bottom: 0.5rem;
+}
+.filter-ctrl-label {
+   font-size: 0.78rem;
+   color: #888;
+   font-weight: 600;
+}
+.filter-series-toggle {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.3rem;
+   font-size: 0.8rem;
+   cursor: pointer;
+   user-select: none;
+}
+.filter-params-summary {
+   font-size: 0.75rem;
+   color: #666;
+   margin-bottom: 0.5rem;
+   min-height: 1.1em;
+}
+
+/* ===== Spectrum (FFT) sub-tab ===== */
+.spectrum-controls {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   gap: 0.75rem;
+   margin-bottom: 0.6rem;
+}
+.spectrum-ctrl-group {
+   display: flex;
+   align-items: center;
+   gap: 0.25rem;
+}
+.spectrum-ctrl-label {
+   font-size: 0.78rem;
+   color: #888;
+   margin-right: 0.25rem;
+   font-weight: 600;
+}
+.spectrum-axis-btn,
+.spectrum-src-btn {
+   padding: 0.3rem 0.7rem;
+   border: 1px solid #444;
+   background: transparent;
+   color: #888;
+   border-radius: 5px;
+   font-size: 0.78rem;
+   cursor: pointer;
+   transition: all 0.2s;
+}
+.spectrum-axis-btn:hover,
+.spectrum-src-btn:hover  { border-color: #666; color: #ccc; }
+.spectrum-axis-btn.active,
+.spectrum-src-btn.active { border-color: var(--primary-color); color: var(--primary-color); background: rgba(52,152,219,0.1); }
+.spectrum-peaks {
+   font-size: 0.78rem;
+   color: #888;
+   margin-bottom: 0.5rem;
+   min-height: 1.2em;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.spectrum-chart-wrap {
+   position: relative;
+   height: 320px;
+   background: #12121f;
+   border-radius: 8px;
+   padding: 0.75rem;
+}
+
 /* ===== Co-Pilot Badge ===== */
 .copilot-badge {
    padding: 0.25rem 0.75rem;
@@ -2318,6 +2397,134 @@ padding: 0.5rem;
    background: var(--success-color);
    border-radius: 3px;
    transition: width 0.6s ease, background-color 0.3s ease;
+}
+
+/* ── Step Predictor ─────────────────────────────────────────────────── */
+.step-mode-bar {
+   display: flex;
+   gap: 0.4rem;
+   margin-bottom: 1rem;
+}
+.step-mode-btn {
+   padding: 0.3rem 0.9rem;
+   font-size: 0.78rem;
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   background: var(--surface-3);
+   color: var(--text-secondary);
+   cursor: pointer;
+   transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.step-mode-btn.active,
+.step-mode-btn:hover {
+   background: var(--accent);
+   color: #fff;
+   border-color: var(--accent);
+}
+
+/* Flight Feel sliders */
+.step-feel-grid {
+   display: flex;
+   flex-direction: column;
+   gap: 0.55rem;
+   margin-bottom: 1rem;
+}
+.step-feel-row {
+   display: grid;
+   grid-template-columns: 120px 1fr 44px 140px;
+   align-items: center;
+   gap: 0.5rem;
+}
+.step-feel-label {
+   font-size: 0.78rem;
+   color: var(--text-secondary);
+   font-weight: 500;
+}
+.step-feel-slider {
+   width: 100%;
+   accent-color: var(--accent);
+   cursor: pointer;
+}
+.step-feel-val {
+   font-size: 0.78rem;
+   font-weight: 600;
+   color: var(--accent);
+   text-align: right;
+   min-width: 38px;
+}
+.step-feel-hint {
+   font-size: 0.68rem;
+   color: var(--text-dim);
+   font-family: monospace;
+}
+
+/* Expert P/I/D grid */
+.step-expert-grid {
+   display: flex;
+   flex-direction: column;
+   gap: 0.35rem;
+   margin-bottom: 1rem;
+}
+.step-expert-header {
+   display: grid;
+   grid-template-columns: 60px repeat(3, 1fr);
+   gap: 0.4rem;
+   padding: 0 0.2rem;
+}
+.step-expert-header span {
+   font-size: 0.7rem;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+   color: var(--text-dim);
+   text-align: center;
+}
+.step-expert-header span:first-child {
+   text-align: left;
+}
+.step-expert-row {
+   display: grid;
+   grid-template-columns: 60px repeat(3, 1fr);
+   align-items: center;
+   gap: 0.4rem;
+}
+.step-expert-row span {
+   font-size: 0.78rem;
+   font-weight: 600;
+   color: var(--text-secondary);
+}
+.step-expert-input {
+   width: 100%;
+   padding: 0.25rem 0.4rem;
+   font-size: 0.78rem;
+   background: var(--surface-3);
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   color: var(--text-primary);
+   text-align: center;
+}
+.step-expert-input:focus {
+   outline: none;
+   border-color: var(--accent);
+}
+
+/* Step chart header & param summary */
+.step-chart-header {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   margin-bottom: 0.4rem;
+}
+.step-chart-header span {
+   font-size: 0.75rem;
+   color: var(--text-secondary);
+}
+.step-param-summary {
+   font-size: 0.7rem;
+   color: var(--text-dim);
+   font-family: monospace;
+   margin-bottom: 0.6rem;
+   line-height: 1.6;
+   min-height: 1rem;
 }
 
 /* ══════════════════════════════════════════════════════════════════════ */

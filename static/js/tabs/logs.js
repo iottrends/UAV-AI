@@ -86,11 +86,31 @@ document.addEventListener('DOMContentLoaded', function() {
          // Remove the last "Analysing..." spinner
          var spinning = analystMessages && analystMessages.querySelector('.analyst-msg-jarvis:last-child .fa-spin');
          if (spinning) spinning.closest('.analyst-msg').remove();
-         var text = data.analysis || data.response || data.message || data.error || 'No response.';
-         if (data.analysis && typeof window._app.renderSimpleMarkdown === 'function') {
-            text = window._app.renderSimpleMarkdown(data.analysis);
+
+         var text = '';
+         if (data.error) {
+            text = '<span style="color:var(--danger-color);">' + data.error + '</span>';
+         } else if (data.source === 'log_analysis' && data.analysis) {
+            // Log analysis: markdown text
+            text = typeof window._app.renderSimpleMarkdown === 'function'
+               ? window._app.renderSimpleMarkdown(data.analysis)
+               : data.analysis;
+         } else if (data.response && typeof data.response === 'object') {
+            // JARVIS dict response: extract message + format extras
+            var resp = data.response;
+            text = (resp.message || '') + '<br>';
+            if (typeof window._app.formatResponse === 'function') {
+               text += window._app.formatResponse(resp);
+            }
+         } else if (data.response && typeof data.response === 'string') {
+            text = data.response;
+         } else if (data.message && typeof data.message === 'string') {
+            text = data.message;
+         } else {
+            text = 'No response.';
          }
-         addAnalystMessage(text, 'jarvis');
+
+         if (text) addAnalystMessage(text, 'jarvis');
       });
    }
    setupAnalystSocketHandler();
@@ -192,6 +212,9 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatus(data.message);
             clearCharts();
             renderDefaultCharts(data.summary.message_types);
+
+            // Init Spectrum panel
+            initSpectrumPanel();
 
             // Fetch flight summary stats and populate AI Analyst panel
             fetch('/api/log_summary')
@@ -452,6 +475,321 @@ document.addEventListener('DOMContentLoaded', function() {
       });
 
       vizArea.appendChild(selectorDiv);
+   }
+
+   // ---- Spectrum (FFT) sub-tab ----
+
+   var spectrumChart    = null;
+   var spectrumAxis     = 'roll';    // roll | pitch | yaw
+   var spectrumSrc      = 'imu';     // imu  | rate
+   var spectrumCachedData = {};      // keyed by "src:axis"
+
+   var spectrumNoLog  = document.getElementById('spectrumNoLog');
+   var spectrumPanel  = document.getElementById('spectrumPanel');
+   var spectrumPeaks  = document.getElementById('spectrumPeaks');
+   var spectrumCanvas = document.getElementById('spectrumCanvas');
+   var spectrumAskJarvis = document.getElementById('spectrumAskJarvis');
+
+   // Axis and source toggle buttons
+   document.querySelectorAll('.spectrum-axis-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+         document.querySelectorAll('.spectrum-axis-btn').forEach(function(b) { b.classList.remove('active'); });
+         btn.classList.add('active');
+         spectrumAxis = btn.dataset.axis;
+         renderSpectrum();
+      });
+   });
+   document.querySelectorAll('.spectrum-src-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+         document.querySelectorAll('.spectrum-src-btn').forEach(function(b) { b.classList.remove('active'); });
+         btn.classList.add('active');
+         spectrumSrc = btn.dataset.src;
+         renderSpectrum();
+      });
+   });
+
+   // --- Pure JS Cooley-Tukey radix-2 FFT ---
+   function fft(re, im) {
+      var n = re.length;
+      // Bit-reversal permutation
+      for (var i = 1, j = 0; i < n; i++) {
+         var bit = n >> 1;
+         for (; j & bit; bit >>= 1) j ^= bit;
+         j ^= bit;
+         if (i < j) {
+            var t = re[i]; re[i] = re[j]; re[j] = t;
+            t = im[i]; im[i] = im[j]; im[j] = t;
+         }
+      }
+      // Butterfly
+      for (var len = 2; len <= n; len <<= 1) {
+         var ang = -2 * Math.PI / len;
+         var wRe = Math.cos(ang), wIm = Math.sin(ang);
+         for (var i = 0; i < n; i += len) {
+            var curRe = 1, curIm = 0;
+            for (var j = 0; j < len / 2; j++) {
+               var uRe = re[i+j],      uIm = im[i+j];
+               var vRe = re[i+j+len/2]*curRe - im[i+j+len/2]*curIm;
+               var vIm = re[i+j+len/2]*curIm + im[i+j+len/2]*curRe;
+               re[i+j]         =  uRe + vRe;  im[i+j]         = uIm + vIm;
+               re[i+j+len/2]   =  uRe - vRe;  im[i+j+len/2]  = uIm - vIm;
+               var newRe = curRe*wRe - curIm*wIm;
+               curIm = curRe*wIm + curIm*wRe;
+               curRe = newRe;
+            }
+         }
+      }
+   }
+
+   function computeSpectrum(samples, timeUS) {
+      // Infer sample rate from median TimeUS delta
+      var dts = [];
+      for (var i = 1; i < Math.min(samples.length, 200); i++) {
+         var d = (timeUS[i] - timeUS[i-1]) / 1e6;
+         if (d > 0 && d < 1) dts.push(d);
+      }
+      dts.sort(function(a,b){return a-b;});
+      var medianDt = dts[Math.floor(dts.length/2)] || 0.0025; // default 400 Hz
+      var sampleRate = 1 / medianDt;
+
+      // Next power of 2, max 4096
+      var n = 1;
+      while (n < samples.length && n < 4096) n <<= 1;
+
+      var re = new Float64Array(n);
+      var im = new Float64Array(n);
+
+      // Apply Hann window
+      for (var i = 0; i < n; i++) {
+         var s = i < samples.length ? (samples[i] || 0) : 0;
+         var w = 0.5 * (1 - Math.cos(2 * Math.PI * i / (n - 1)));
+         re[i] = s * w;
+      }
+
+      fft(re, im);
+
+      // Magnitude in dB (one-sided spectrum up to Nyquist)
+      var half = n / 2;
+      var freqs = [], dbs = [];
+      for (var i = 1; i < half; i++) {
+         var mag = Math.sqrt(re[i]*re[i] + im[i]*im[i]) / n * 2;
+         var db  = 20 * Math.log10(mag + 1e-12);
+         freqs.push(sampleRate * i / n);
+         dbs.push(db);
+      }
+      return { freqs: freqs, dbs: dbs, sampleRate: Math.round(sampleRate) };
+   }
+
+   function findPeaks(freqs, dbs, topN) {
+      // Simple local-max peak finder: must be higher than both neighbours by 3 dB
+      var peaks = [];
+      for (var i = 1; i < dbs.length - 1; i++) {
+         if (dbs[i] > dbs[i-1] && dbs[i] > dbs[i+1] && freqs[i] > 5) {
+            peaks.push({ freq: Math.round(freqs[i]), db: Math.round(dbs[i]) });
+         }
+      }
+      peaks.sort(function(a,b){ return b.db - a.db; });
+      return peaks.slice(0, topN || 5);
+   }
+
+   // Field names by axis and source
+   var FIELD_MAP = {
+      imu:  { roll: 'GyrX', pitch: 'GyrY', yaw: 'GyrZ' },
+      rate: { roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw'  },
+   };
+   var MSG_TYPE = { imu: 'IMU', rate: 'RATE' };
+
+   function renderSpectrum() {
+      if (!window._app.logLoaded) return;
+
+      var cacheKey = spectrumSrc + ':' + spectrumAxis;
+      if (spectrumCachedData[cacheKey]) {
+         drawSpectrumChart(spectrumCachedData[cacheKey]);
+         return;
+      }
+
+      var msgType = MSG_TYPE[spectrumSrc];
+      var field   = FIELD_MAP[spectrumSrc][spectrumAxis];
+
+      if (spectrumCanvas) spectrumCanvas.style.opacity = '0.3';
+
+      fetch('/api/log_message/' + encodeURIComponent(msgType) + '?max_points=4096')
+         .then(function(r) { return r.json(); })
+         .then(function(result) {
+            if (result.status !== 'success' || !result.data || result.data.length < 32) {
+               if (spectrumPeaks) spectrumPeaks.textContent = 'No ' + msgType + ' data in this log.';
+               if (spectrumCanvas) spectrumCanvas.style.opacity = '1';
+               return;
+            }
+            var samples  = result.data.map(function(d) { return d[field] || 0; });
+            var timeUS   = result.data.map(function(d) { return d['TimeUS'] || 0; });
+            var spectrum = computeSpectrum(samples, timeUS);
+            var peaks    = findPeaks(spectrum.freqs, spectrum.dbs, 5);
+            spectrumCachedData[cacheKey] = { spectrum: spectrum, peaks: peaks, field: field, msgType: msgType };
+            drawSpectrumChart(spectrumCachedData[cacheKey]);
+         })
+         .catch(function(e) {
+            if (spectrumPeaks) spectrumPeaks.textContent = 'Error loading data: ' + e.message;
+            if (spectrumCanvas) spectrumCanvas.style.opacity = '1';
+         });
+   }
+
+   function drawSpectrumChart(cached) {
+      var spectrum = cached.spectrum;
+      var peaks    = cached.peaks;
+
+      // Limit to 0–500 Hz display range
+      var maxHz = Math.min(500, spectrum.sampleRate / 2);
+      var freqs  = [], dbs = [];
+      for (var i = 0; i < spectrum.freqs.length; i++) {
+         if (spectrum.freqs[i] <= maxHz) {
+            freqs.push(spectrum.freqs[i]);
+            dbs.push(spectrum.dbs[i]);
+         }
+      }
+
+      // Render peaks summary
+      if (spectrumPeaks) {
+         var label = (spectrumSrc === 'imu' ? 'Raw Gyro' : 'PID Rate') +
+                     ' — ' + cached.field + ' @ ' + spectrum.sampleRate + ' Hz sample rate  |  ' +
+                     'Peaks: ' + (peaks.length ? peaks.map(function(p){ return p.freq + ' Hz (' + p.db + ' dB)'; }).join('  ') : 'none detected');
+         spectrumPeaks.textContent = label;
+      }
+
+      // Build filter overlay lines from flatParams (set by parameters.js after fetch)
+      var overlayLines = [];
+      var fp = window._app.flatParams || {};
+      var gyroLpf   = parseFloat(fp['INS_GYRO_FILTER']) || 0;
+      var hntchEn   = parseFloat(fp['INS_HNTCH_ENABLE']) || 0;
+      var hntchFreq = parseFloat(fp['INS_HNTCH_FREQ'])  || 0;
+      if (gyroLpf  > 0) overlayLines.push({ hz: gyroLpf,   color: '#3498db', label: 'LPF '   + gyroLpf   + ' Hz' });
+      if (hntchEn && hntchFreq > 0) overlayLines.push({ hz: hntchFreq, color: '#f39c12', label: 'HNTCH ' + hntchFreq + ' Hz' });
+
+      // Per-chart inline plugin for filter overlay lines
+      var overlayPlugin = {
+         id: 'spectrumOverlay',
+         afterDraw: function(chart) {
+            if (!overlayLines.length) return;
+            var ctx = chart.ctx;
+            var xScale = chart.scales.x;
+            var top    = chart.chartArea.top;
+            var bottom = chart.chartArea.bottom;
+            overlayLines.forEach(function(line) {
+               var x = xScale.getPixelForValue(line.hz);
+               if (x < chart.chartArea.left || x > chart.chartArea.right) return;
+               ctx.save();
+               ctx.beginPath();
+               ctx.moveTo(x, top);
+               ctx.lineTo(x, bottom);
+               ctx.strokeStyle = line.color;
+               ctx.lineWidth = 1.5;
+               ctx.setLineDash([5, 4]);
+               ctx.stroke();
+               ctx.setLineDash([]);
+               ctx.font = '10px sans-serif';
+               ctx.fillStyle = line.color;
+               ctx.fillText(line.label, x + 3, top + 12);
+               ctx.restore();
+            });
+         }
+      };
+
+      // Destroy old chart
+      if (spectrumChart) { spectrumChart.destroy(); spectrumChart = null; }
+      if (!spectrumCanvas) return;
+      spectrumCanvas.style.opacity = '1';
+
+      var ctx = spectrumCanvas.getContext('2d');
+      spectrumChart = new Chart(ctx, {
+         type: 'line',
+         data: {
+            labels: freqs.map(function(f) { return f.toFixed(1); }),
+            datasets: [{
+               label: cached.field + ' Spectrum',
+               data: dbs,
+               borderColor: '#3498db',
+               backgroundColor: 'rgba(52,152,219,0.08)',
+               borderWidth: 1.5,
+               pointRadius: 0,
+               fill: true,
+               tension: 0.2,
+            }],
+         },
+         options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+               legend: { display: false },
+               tooltip: {
+                  callbacks: {
+                     title: function(items) { return items[0].label + ' Hz'; },
+                     label: function(item)  { return item.raw.toFixed(1) + ' dB'; },
+                  }
+               },
+            },
+            scales: {
+               x: {
+                  type: 'linear',
+                  ticks: { color: '#888', maxTicksLimit: 12, font: { size: 10 },
+                           callback: function(v) { return v + ' Hz'; } },
+                  grid: { color: 'rgba(255,255,255,0.05)' },
+                  title: { display: true, text: 'Frequency (Hz)', color: '#888' },
+               },
+               y: {
+                  ticks: { color: '#888', font: { size: 10 },
+                           callback: function(v) { return v + ' dB'; } },
+                  grid: { color: 'rgba(255,255,255,0.08)' },
+                  title: { display: true, text: 'Magnitude (dB)', color: '#888' },
+               },
+            },
+         },
+         // Per-chart plugin: draws filter overlay lines on this chart only
+         plugins: [overlayPlugin],
+      });
+   }
+
+   // Show/hide spectrum panel when log loads
+   function initSpectrumPanel() {
+      if (spectrumNoLog) spectrumNoLog.style.display = 'none';
+      if (spectrumPanel) spectrumPanel.style.display  = 'block';
+      spectrumCachedData = {}; // invalidate cache on new log
+      // Pre-render if spectrum tab is currently visible
+      var specTab = document.getElementById('logs-spectrum');
+      if (specTab && specTab.style.display !== 'none') renderSpectrum();
+   }
+
+   // Re-render when user switches to spectrum tab
+   document.querySelectorAll('#logs-tab .subtab-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+         if (btn.dataset.subtab === 'logs-spectrum' && window._app.logLoaded) {
+            renderSpectrum();
+         }
+      });
+   });
+
+   // Ask JARVIS button
+   if (spectrumAskJarvis) {
+      spectrumAskJarvis.addEventListener('click', function() {
+         var cacheKey = spectrumSrc + ':' + spectrumAxis;
+         var cached   = spectrumCachedData[cacheKey];
+         if (!cached || !cached.peaks.length) {
+            alert('Run the FFT first — switch to the Spectrum tab with a log loaded.');
+            return;
+         }
+         var peakStr  = cached.peaks.slice(0, 3).map(function(p) { return p.freq + ' Hz'; }).join(', ');
+         var axis     = spectrumAxis.charAt(0).toUpperCase() + spectrumAxis.slice(1);
+         var src      = spectrumSrc === 'imu' ? 'raw gyro' : 'PID rate';
+         var query    = axis + ' axis ' + src + ' noise peaks at ' + peakStr +
+                        '. Sample rate ' + cached.spectrum.sampleRate + ' Hz. ' +
+                        'Do these peaks indicate a problem? Should I adjust the notch filter?';
+
+         // Switch to AI Analyst tab and pre-fill query
+         var analystBtn = document.querySelector('#logs-tab .subtab-btn[data-subtab="logs-ai-analyst"]');
+         if (analystBtn) analystBtn.click();
+         var input = document.getElementById('logAnalystInput');
+         if (input) { input.value = query; input.focus(); }
+      });
    }
 
    // ---- FC Log Fetch (existing functionality) ----

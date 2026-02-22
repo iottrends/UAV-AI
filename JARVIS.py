@@ -267,6 +267,11 @@ def get_available_providers():
 
 def _call_gemini(prompt, system_instruction, history=None):
     """Call Gemini API. Returns (response_text, input_tokens, output_tokens)."""
+    # Re-configure with current key each call so hot-updates from Settings take effect
+    current_key = os.getenv("GEMINI_API_KEY")
+    if not current_key:
+        raise ValueError("GEMINI_API_KEY is not set. Add it in Settings or .env file.")
+    genai.configure(api_key=current_key)
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
     if history:
         gemini_history = [
