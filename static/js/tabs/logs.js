@@ -1,4 +1,4 @@
-// ===== logs.js — Log Upload, Chart Rendering + FC Log Fetch =====
+// ===== logs.js — Log Upload, Chart Rendering, Sub-tabs + AI Analyst =====
 
 document.addEventListener('DOMContentLoaded', function() {
    // ---- Elements ----
@@ -11,6 +11,129 @@ document.addEventListener('DOMContentLoaded', function() {
    var vizArea = document.getElementById('logVizArea');
 
    var chartInstances = [];
+
+   // ---- Sub-tab switching ----
+   document.querySelectorAll('#logs-tab .subtab-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+         document.querySelectorAll('#logs-tab .subtab-btn').forEach(function(b) { b.classList.remove('active'); });
+         document.querySelectorAll('#logs-tab .subtab-panel').forEach(function(p) { p.style.display = 'none'; });
+         btn.classList.add('active');
+         var target = document.getElementById(btn.dataset.subtab);
+         if (target) target.style.display = 'block';
+      });
+   });
+
+   // ---- AI Analyst panel elements ----
+   var summaryChips   = document.getElementById('logSummaryChips');
+   var analystNoLog   = document.getElementById('logAnalystNoLog');
+   var analystPanel   = document.getElementById('logAnalystPanel');
+   var analystMessages= document.getElementById('logAnalystMessages');
+   var analystInput   = document.getElementById('logAnalystInput');
+   var analystSend    = document.getElementById('logAnalystSend');
+
+   function showAnalystPanel() {
+      if (analystNoLog)  analystNoLog.style.display = 'none';
+      if (analystPanel)  analystPanel.style.display  = 'flex';
+      if (summaryChips)  summaryChips.style.display  = 'flex';
+      // Add a welcome message if panel is empty
+      if (analystMessages && analystMessages.children.length === 0) {
+         addAnalystMessage(
+            '<i class="fas fa-robot"></i> Log loaded. Ask me anything about this flight — ' +
+            'vibration, battery, GPS quality, flight modes, failsafes, or tuning.',
+            'jarvis'
+         );
+      }
+   }
+
+   function addAnalystMessage(text, role) {
+      if (!analystMessages) return;
+      var div = document.createElement('div');
+      div.className = 'analyst-msg analyst-msg-' + (role === 'user' ? 'user' : 'jarvis');
+      div.innerHTML = text;
+      analystMessages.appendChild(div);
+      analystMessages.scrollTop = analystMessages.scrollHeight;
+   }
+
+   function sendAnalystQuery() {
+      if (!analystInput || !analystInput.value.trim()) return;
+      var query = analystInput.value.trim();
+      analystInput.value = '';
+      addAnalystMessage(query, 'user');
+      addAnalystMessage('<i class="fas fa-circle-notch fa-spin"></i> Analysing...', 'jarvis');
+
+      var socket = window._app && window._app.socket;
+      if (socket) {
+         var provider = (document.getElementById('chatProviderSelect') || {}).value || 'gemini';
+         socket.emit('chat_message', { message: query, provider: provider });
+      }
+   }
+
+   if (analystSend) {
+      analystSend.addEventListener('click', sendAnalystQuery);
+   }
+   if (analystInput) {
+      analystInput.addEventListener('keydown', function(e) {
+         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnalystQuery(); }
+      });
+   }
+
+   // Listen for chat_response and route to analyst panel when log is active
+   function setupAnalystSocketHandler() {
+      var socket = window._app && window._app.socket;
+      if (!socket) { setTimeout(setupAnalystSocketHandler, 100); return; }
+      socket.on('chat_response', function(data) {
+         if (!window._app.logLoaded) return;
+         // Remove the last "Analysing..." spinner
+         var spinning = analystMessages && analystMessages.querySelector('.analyst-msg-jarvis:last-child .fa-spin');
+         if (spinning) spinning.closest('.analyst-msg').remove();
+         var text = data.analysis || data.response || data.message || data.error || 'No response.';
+         if (data.analysis && typeof window._app.renderSimpleMarkdown === 'function') {
+            text = window._app.renderSimpleMarkdown(data.analysis);
+         }
+         addAnalystMessage(text, 'jarvis');
+      });
+   }
+   setupAnalystSocketHandler();
+
+   // ---- Auto-summary chips ----
+   function renderSummaryChips(stats) {
+      if (!summaryChips) return;
+      summaryChips.innerHTML = '';
+
+      function chip(icon, label, warn) {
+         var el = document.createElement('span');
+         el.className = 'log-summary-chip' + (warn ? ' log-summary-chip-warn' : ' log-summary-chip-ok');
+         el.innerHTML = '<i class="fas fa-' + icon + '"></i> ' + label;
+         summaryChips.appendChild(el);
+      }
+
+      if (stats.duration_s !== undefined) {
+         var m = Math.floor(stats.duration_s / 60), s = stats.duration_s % 60;
+         chip('clock', m + 'm ' + s + 's', false);
+      }
+      if (stats.max_alt_m !== undefined) {
+         chip('mountain', stats.max_alt_m + ' m max alt', false);
+      }
+      if (stats.gps_fix) {
+         chip('satellite', stats.gps_fix + (stats.gps_dropout ? ' (dropout)' : ''), !!stats.gps_dropout);
+      }
+      if (stats.vibe_alerts && stats.vibe_alerts.length) {
+         var peak = stats.vibe_alerts[0];
+         chip('exclamation-triangle', 'Vibe ' + peak.axis + ' ' + peak.value + ' m/s² @ ' + peak.time_s + 's', true);
+      } else if (stats.duration_s) {
+         chip('check-circle', 'Vibration OK', false);
+      }
+      if (stats.min_volt !== undefined) {
+         var lowBatt = stats.min_volt < 3.5;
+         chip('battery-half', stats.min_volt + 'V min', lowBatt);
+      }
+      if (stats.modes && stats.modes.length) {
+         chip('gamepad', stats.modes.join(' → '), false);
+      }
+      if (stats.errors && stats.errors.length) {
+         chip('times-circle', stats.errors.length + ' failsafe event(s)', true);
+      }
+   }
 
    // Expose logLoaded flag on _app so chat.js can check it
    window._app.logLoaded = false;
@@ -70,13 +193,16 @@ document.addEventListener('DOMContentLoaded', function() {
             clearCharts();
             renderDefaultCharts(data.summary.message_types);
 
-            // Notify user via main chat
-            window._app.addMessage({
-               text: '<strong>System:</strong> Log loaded: ' + data.summary.filename +
-                     ' (' + data.summary.total_messages + ' messages, ' +
-                     Object.keys(data.summary.message_types).length + ' types). You can now ask questions about this flight in the chat.',
-               time: window._app.getCurrentTime()
-            });
+            // Fetch flight summary stats and populate AI Analyst panel
+            fetch('/api/log_summary')
+               .then(function(r) { return r.json(); })
+               .then(function(s) {
+                  if (s.status === 'success') {
+                     renderSummaryChips(s.stats);
+                     showAnalystPanel();
+                  }
+               })
+               .catch(function() {});  // non-critical
          } else {
             showStatus(data.message, true);
          }

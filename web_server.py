@@ -1984,6 +1984,87 @@ def get_log_status():
     return jsonify({"loaded": False})
 
 
+@app.route('/api/log_summary', methods=['GET'])
+def get_log_flight_summary():
+    """Return computed flight stats from parsed log — no LLM call."""
+    if not log_parser_instance or not log_parser_instance._is_parsed:
+        return jsonify({'status': 'error', 'message': 'No log loaded'}), 400
+
+    pd = log_parser_instance.parsed_data
+    stats = {}
+
+    # Flight duration — first and last TimeUS from any high-rate message
+    for mtype in ('ATT', 'GPS', 'BARO', 'RCOU'):
+        msgs = pd.get(mtype, [])
+        if len(msgs) >= 2:
+            t0 = msgs[0].get('TimeUS') or 0
+            t1 = msgs[-1].get('TimeUS') or 0
+            if t1 > t0:
+                stats['duration_s'] = round((t1 - t0) / 1e6)
+                break
+
+    # Max altitude from BARO
+    baro_msgs = pd.get('BARO', [])
+    if baro_msgs:
+        alts = [m.get('Alt') for m in baro_msgs if m.get('Alt') is not None]
+        if alts:
+            stats['max_alt_m'] = round(max(alts), 1)
+
+    # GPS fix quality — GPS.Status: 0=no GPS, 1=no fix, 2=2D, 3=3D, 4=DGPS, 5=RTK float, 6=RTK fixed
+    gps_msgs = pd.get('GPS', [])
+    if gps_msgs:
+        statuses = [m.get('Status', 0) for m in gps_msgs if m.get('Status') is not None]
+        if statuses:
+            stats['gps_fix'] = '3D Fix' if max(statuses) >= 3 else ('2D Fix' if max(statuses) == 2 else 'No Fix')
+            if min(statuses) < 3 and max(statuses) >= 3:
+                stats['gps_dropout'] = True
+
+    # Vibration peaks — flag if any axis exceeds 30 m/s²
+    vibe_alerts = []
+    for m in pd.get('VIBE', []):
+        for ax in ('VibeX', 'VibeY', 'VibeZ'):
+            v = m.get(ax)
+            if v is not None and v > 30:
+                t_s = round((m.get('TimeUS') or 0) / 1e6)
+                vibe_alerts.append({'axis': ax, 'value': round(v, 1), 'time_s': t_s})
+                break  # one alert per message
+    if vibe_alerts:
+        # Return up to 3 worst (highest value)
+        vibe_alerts.sort(key=lambda x: x['value'], reverse=True)
+        stats['vibe_alerts'] = vibe_alerts[:3]
+
+    # Battery — min and start voltage
+    bat_msgs = pd.get('BAT', pd.get('CURR', []))
+    if bat_msgs:
+        volts = [m.get('Volt') for m in bat_msgs if m.get('Volt') is not None]
+        if volts:
+            stats['min_volt'] = round(min(volts), 2)
+            stats['start_volt'] = round(volts[0], 2)
+
+    # Flight modes used
+    mode_msgs = pd.get('MODE', [])
+    if mode_msgs:
+        modes = []
+        for m in mode_msgs:
+            mode = m.get('Mode') or m.get('ModeNum')
+            if mode is not None and mode not in modes:
+                modes.append(mode)
+        if modes:
+            stats['modes'] = modes
+
+    # Errors / failsafes
+    errors = []
+    for m in pd.get('ERR', []):
+        ecode = m.get('ECode', 0)
+        if ecode:
+            t_s = round((m.get('TimeUS') or 0) / 1e6)
+            errors.append({'subsys': m.get('Subsys', '?'), 'ecode': ecode, 'time_s': t_s})
+    if errors:
+        stats['errors'] = errors[:5]
+
+    return jsonify({'status': 'success', 'stats': stats})
+
+
 @app.route('/api/log_message/<msg_type>', methods=['GET'])
 def get_log_message_data(msg_type):
     """Return parsed data for a specific message type."""

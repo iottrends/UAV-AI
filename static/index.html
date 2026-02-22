@@ -536,29 +536,63 @@
             <!-- Logs Tab -->
             <div class="tab-content tab-panel tab-panel-dark" id="logs-tab" style="display: none;">
 
-               <!-- Top: Upload + FC Fetch -->
-               <div class="flex-row flex-wrap flex-gap-2 u-mb-2 u-items-start">
-                  <div class="log-upload-area" id="logUploadArea">
-                     <i class="fas fa-cloud-upload-alt u-text-lg u-text-accent"></i>
-                     <p class="u-semibold u-mt-1">Upload Log File</p>
-                     <p class="u-text-xs u-text-secondary">Drag &amp; drop .bin or .tlog, or click to browse</p>
-                     <input type="file" id="logFileInput" accept=".bin,.tlog" style="display:none;">
-                  </div>
-                  <div class="flex-col">
-                     <button id="fetchLogsButton" class="btn btn-primary">
-                        <i class="fas fa-download"></i> Fetch FC Logs
-                     </button>
-                     <div id="logContent" class="hint-text u-mb-0"></div>
-                  </div>
+               <!-- Sub-tab bar -->
+               <div class="subtab-bar">
+                  <button class="subtab-btn active" data-subtab="logs-timeline">
+                     <i class="fas fa-chart-line"></i> Timeline
+                  </button>
+                  <button class="subtab-btn" data-subtab="logs-ai-analyst">
+                     <i class="fas fa-robot"></i> AI Analyst
+                  </button>
                </div>
 
-               <!-- Status bar -->
-               <div class="log-status-bar" id="logStatusBar" style="display:none;">
-                  <span id="logStatusText"></span>
+               <!-- Sub-tab: Timeline (existing content unchanged) -->
+               <div class="subtab-panel" id="logs-timeline">
+                  <div class="flex-row flex-wrap flex-gap-2 u-mb-2 u-items-start">
+                     <div class="log-upload-area" id="logUploadArea">
+                        <i class="fas fa-cloud-upload-alt u-text-lg u-text-accent"></i>
+                        <p class="u-semibold u-mt-1">Upload Log File</p>
+                        <p class="u-text-xs u-text-secondary">Drag &amp; drop .bin or .tlog, or click to browse</p>
+                        <input type="file" id="logFileInput" accept=".bin,.tlog" style="display:none;">
+                     </div>
+                     <div class="flex-col">
+                        <button id="fetchLogsButton" class="btn btn-primary">
+                           <i class="fas fa-download"></i> Fetch FC Logs
+                        </button>
+                        <div id="logContent" class="hint-text u-mb-0"></div>
+                     </div>
+                  </div>
+                  <div class="log-status-bar" id="logStatusBar" style="display:none;">
+                     <span id="logStatusText"></span>
+                  </div>
+                  <div class="log-viz-area" id="logVizArea"></div>
                </div>
 
-               <!-- Visualization area -->
-               <div class="log-viz-area" id="logVizArea"></div>
+               <!-- Sub-tab: AI Analyst -->
+               <div class="subtab-panel" id="logs-ai-analyst" style="display:none;">
+
+                  <!-- Flight summary chips (shown after log upload) -->
+                  <div id="logSummaryChips" class="log-summary-chips" style="display:none;"></div>
+
+                  <!-- Placeholder when no log is loaded -->
+                  <div id="logAnalystNoLog" class="log-analyst-placeholder">
+                     <i class="fas fa-file-alt"></i>
+                     <p>Upload a flight log in the <strong>Timeline</strong> tab to analyse it here.</p>
+                  </div>
+
+                  <!-- Chat panel (shown when log is loaded) -->
+                  <div id="logAnalystPanel" class="log-analyst-panel" style="display:none;">
+                     <div id="logAnalystMessages" class="log-analyst-messages"></div>
+                     <div class="log-analyst-input-row">
+                        <input type="text" id="logAnalystInput" class="log-analyst-input"
+                               placeholder="Ask about this flight — vibration, battery, GPS, modes...">
+                        <button id="logAnalystSend" class="btn btn-primary">
+                           <i class="fas fa-paper-plane"></i>
+                        </button>
+                     </div>
+                  </div>
+
+               </div>
 
             </div>
             <!-- Latency & Parameters Tab -->

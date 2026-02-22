@@ -1513,6 +1513,105 @@ padding: 0.5rem;
    margin-bottom: 0.5rem;
 }
 
+/* ===== Sub-tab bar (shared: Logs, Tuning) ===== */
+.subtab-bar {
+   display: flex;
+   gap: 0.25rem;
+   border-bottom: 1px solid #333;
+   margin-bottom: 1rem;
+   padding-bottom: 0;
+}
+.subtab-btn {
+   padding: 0.45rem 1rem;
+   border: none;
+   background: transparent;
+   color: #888;
+   font-size: 0.82rem;
+   font-weight: 600;
+   letter-spacing: 0.03em;
+   cursor: pointer;
+   border-bottom: 2px solid transparent;
+   border-radius: 4px 4px 0 0;
+   transition: color 0.2s, border-color 0.2s;
+}
+.subtab-btn:hover  { color: #ccc; }
+.subtab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+.subtab-panel { width: 100%; }
+
+/* ===== Log flight summary chips ===== */
+.log-summary-chips {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 0.4rem;
+   margin-bottom: 0.75rem;
+}
+.log-summary-chip {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.3rem;
+   padding: 0.25rem 0.65rem;
+   border-radius: 12px;
+   font-size: 0.78rem;
+   font-weight: 600;
+}
+.log-summary-chip-ok   { background: rgba(46,204,113,0.15); color: #2ecc71; }
+.log-summary-chip-warn { background: rgba(231,76,60,0.15);  color: #e74c3c; }
+
+/* ===== AI Analyst panel ===== */
+.log-analyst-placeholder {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   justify-content: center;
+   gap: 0.75rem;
+   min-height: 200px;
+   color: #666;
+   text-align: center;
+}
+.log-analyst-placeholder i { font-size: 2.5rem; }
+.log-analyst-placeholder p { font-size: 0.9rem; }
+.log-analyst-panel {
+   display: flex;
+   flex-direction: column;
+   gap: 0.75rem;
+   height: calc(100vh - 280px);
+   min-height: 320px;
+}
+.log-analyst-messages {
+   flex: 1;
+   overflow-y: auto;
+   display: flex;
+   flex-direction: column;
+   gap: 0.6rem;
+   padding-right: 0.25rem;
+}
+.analyst-msg {
+   max-width: 88%;
+   padding: 0.55rem 0.85rem;
+   border-radius: 10px;
+   font-size: 0.85rem;
+   line-height: 1.5;
+   word-wrap: break-word;
+}
+.analyst-msg-user  { align-self: flex-end; background: rgba(52,152,219,0.2); color: #e0e0e0; border-radius: 10px 10px 2px 10px; }
+.analyst-msg-jarvis{ align-self: flex-start; background: #1e1e2e; color: #ccc; border: 1px solid #333; border-radius: 10px 10px 10px 2px; }
+.log-analyst-input-row {
+   display: flex;
+   gap: 0.5rem;
+   align-items: center;
+}
+.log-analyst-input {
+   flex: 1;
+   padding: 0.55rem 0.85rem;
+   border-radius: 8px;
+   border: 1px solid #444;
+   background: #1a1a2e;
+   color: #e0e0e0;
+   font-size: 0.85rem;
+   outline: none;
+}
+.log-analyst-input:focus { border-color: var(--primary-color); }
+
 /* ===== Co-Pilot Badge ===== */
 .copilot-badge {
    padding: 0.25rem 0.75rem;
