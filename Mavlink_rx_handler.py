@@ -650,6 +650,27 @@ class MavlinkHandler:
             mavlink_logger.error(f"RC override send error: {e}")
             return False
 #####################################################################################
+    def reboot_fc(self):
+        """Send MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN with param1=1 to reboot the autopilot."""
+        if not self.is_connected or not self.mav_conn:
+            mavlink_logger.error("Cannot reboot FC: not connected")
+            return False
+        try:
+            self.mav_conn.mav.command_long_send(
+                self.target_system,
+                self.target_component,
+                mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+                0,    # confirmation
+                1.0,  # param1 = 1 → reboot autopilot
+                0, 0, 0, 0, 0, 0
+            )
+            mavlink_logger.info("Sent FC reboot command (param1=1)")
+            return True
+        except Exception as e:
+            mavlink_logger.error(f"Failed to send FC reboot: {e}")
+            return False
+
+#####################################################################################
     def reboot_to_bootloader(self):
         """Send MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN with param1=3 to stay in bootloader."""
         if not self.is_connected or not self.mav_conn:

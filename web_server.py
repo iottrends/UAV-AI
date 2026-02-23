@@ -388,6 +388,22 @@ def disconnect_drone():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route('/api/reboot', methods=['POST'])
+def reboot_fc():
+    """Send MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN (param1=1) to reboot the autopilot."""
+    if not validator or not validator.is_connected:
+        return jsonify({"status": "error", "message": "Not connected to FC"}), 400
+    try:
+        ok = validator.reboot_fc()
+        if ok:
+            return jsonify({"status": "success", "message": "Reboot command sent"})
+        else:
+            return jsonify({"status": "error", "message": "Failed to send reboot command"}), 500
+    except Exception as e:
+        logger.error(f"Reboot error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/test')
 def test():
     return "Web server is working!"

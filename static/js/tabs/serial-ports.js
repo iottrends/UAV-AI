@@ -281,9 +281,23 @@ document.addEventListener('DOMContentLoaded', function() {
          });
          var result = await response.json();
          if (response.status === 200 && result.status === 'success') {
-            statusEl.textContent = 'Saved and verified (' + result.verified + ' param). Reboot FC if required.';
+            statusEl.textContent = 'Saved and verified (' + result.verified + ' param). Rebooting FC...';
             statusEl.style.color = 'var(--success-color)';
             originalData = JSON.parse(JSON.stringify(serialData));
+            // Send the actual reboot command
+            try {
+               var rebootResp = await fetch('/api/reboot', { method: 'POST' });
+               var rebootResult = await rebootResp.json();
+               if (rebootResp.ok) {
+                  statusEl.textContent = 'Saved and verified (' + result.verified + ' param). FC reboot command sent.';
+               } else {
+                  statusEl.textContent = 'Saved (' + result.verified + ' param). Reboot failed: ' + (rebootResult.message || 'unknown error');
+                  statusEl.style.color = 'var(--warning-color)';
+               }
+            } catch (rebootErr) {
+               statusEl.textContent = 'Saved (' + result.verified + ' param). Could not send reboot: ' + rebootErr.message;
+               statusEl.style.color = 'var(--warning-color)';
+            }
          } else if (response.status === 207 || result.status === 'partial') {
             var failedCount = (result.failed || []).length;
             var mismatchCount = (result.mismatched || []).length;
