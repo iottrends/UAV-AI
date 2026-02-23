@@ -11,6 +11,7 @@ KEY_MSG_TYPES = {
     'ATT', 'GPS', 'CTUN', 'VIBE', 'MOT', 'BAT', 'BARO', 'GYR', 'ACC',
     'MAG', 'MODE', 'MSG', 'ERR', 'RCIN', 'RCOU', 'PARM', 'IMU', 'NKF1',
     'NKF2', 'POWR', 'CMD', 'EV', 'PM', 'CURR', 'RAD', 'TERRAIN',
+    'RATE',  # PID actual vs desired rates — needed for FFT/PID tracking analysis
 }
 
 MAX_POINTS = 500

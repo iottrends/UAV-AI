@@ -7,62 +7,6 @@ import pytest
 import web_server
 
 
-@pytest.fixture(autouse=True)
-def reset_globals(tmp_path, monkeypatch):
-    """Reset web_server globals between tests and point CONFIGS_DIR to tmp."""
-    # Fresh validator mock per test
-    web_server.validator = SimpleNamespace(
-        categorized_params={"Battery": {"BATT_LOW_VOLT": 10.5}},
-        params_dict={
-            "BATT_LOW_VOLT": 10.5,
-            "SERIAL1_PROTOCOL": 2,
-            "SERIAL1_BAUD": 57,
-            "RCMAP_ROLL": 1,
-            "RCMAP_PITCH": 2,
-            "RCMAP_THROTTLE": 3,
-            "RCMAP_YAW": 4,
-            "FLTMODE_CH": 5,
-            "FLTMODE1": 0,
-            "FLTMODE2": 2,
-            "FLTMODE3": 5,
-            "FLTMODE4": 6,
-            "FLTMODE5": 9,
-            "FLTMODE6": 16,
-            "FS_THR_ENABLE": 1,
-            "FS_THR_VALUE": 975,
-            "FS_GCS_ENABLE": 0,
-            "FS_OPTIONS": 0,
-            "BATT_FS_LOW_ACT": 2,
-            "BATT_FS_CRT_ACT": 1,
-        },
-        firmware_data={},
-        is_connected=True,
-        log_directory=str(tmp_path / "logs"),
-        log_list=[],
-    )
-    web_server.validator.update_parameter = lambda name, value: web_server.validator.params_dict.__setitem__(name, value) is None or True
-    web_server.validator.load_from_json = lambda filename: json.load(open(filename, "r", encoding="utf-8")).get("params", {})
-    (tmp_path / "logs").mkdir(exist_ok=True)
-
-    # Patch CONFIGS_DIR
-    # CONFIGS_DIR may or may not exist as an attribute depending on import timing
-    try:
-        monkeypatch.setattr(web_server, "CONFIGS_DIR", str(tmp_path / "configs"))
-    except AttributeError:
-        web_server.CONFIGS_DIR = str(tmp_path / "configs")
-    (tmp_path / "configs").mkdir(exist_ok=True)
-
-    yield
-
-    web_server.validator = None
-
-
-@pytest.fixture
-def client():
-    web_server.app.config.update({"TESTING": True})
-    return web_server.app.test_client()
-
-
 def test_parameters_get_returns_categorized_params(client):
     resp = client.get("/api/parameters")
     assert resp.status_code == 200
@@ -170,7 +114,7 @@ def test_delete_config(client):
 
 def test_calibrate_endpoint_success_and_error(client):
     # Inject a simple send_mavlink_command_from_json behaviour
-    def fake_send(cmd):
+    def fake_send(cmd, timeout_seconds=5):
         # Accept only gyro
         return cmd.get("param1") == 1
 
@@ -195,7 +139,7 @@ def test_calibrate_endpoint_success_and_error(client):
     assert resp2.status_code == 400
 
     # Error: FC/NACK
-    web_server.validator.send_mavlink_command_from_json = lambda _cmd: False
+    web_server.validator.send_mavlink_command_from_json = lambda _cmd, **kwargs: False
     resp3 = client.post(
         "/api/calibrate",
         data=json.dumps({"type": "gyro"}),
@@ -350,3 +294,105 @@ def test_apply_config_domain_aux_functions_success(client):
     assert data["verified"] == 2
     assert web_server.validator.params_dict["RC7_OPTION"] == 41
     assert web_server.validator.params_dict["RC8_OPTION"] == 30
+
+
+def test_motor_test_success(client):
+    # Mock armed state to False
+    web_server.mavlink_buffer["HEARTBEAT"] = {"base_mode": 0}
+    web_server.validator.send_mavlink_command_from_json = lambda cmd: True
+
+    payload = {"motor": 1, "throttle": 15, "duration": 2}
+    resp = client.post(
+        "/api/motor_test",
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    assert "test started" in resp.get_json()["message"]
+
+
+def test_motor_test_blocked_when_armed(client):
+    # Mock armed state to True (bit 128)
+    web_server.mavlink_buffer["HEARTBEAT"] = {"base_mode": 128}
+
+    payload = {"motor": 1, "throttle": 15, "duration": 2}
+    resp = client.post(
+        "/api/motor_test",
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+    assert resp.status_code == 400
+    assert "is ARMED" in resp.get_json()["message"]
+
+
+from unittest.mock import patch
+
+def test_get_firmware_manifest_cached(client, tmp_path, monkeypatch):
+    # Setup cache file
+    cache_dir = tmp_path / "firmware_cache"
+    cache_dir.mkdir()
+    manifest_path = cache_dir / "manifest.json"
+    manifest_data = {"firmware": [{"format": "apj", "board_id": 123, "vehicletype": "Copter", "url": "http://foo.apj"}]}
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest_data, f)
+    
+    # In web_server.py, get_firmware_manifest uses _get_firmware_cache_dir() 
+    # which uses _writable_path('firmware_cache')
+    # We'll monkeypatch FIRMWARE_CACHE_DIR directly if it exists, or the function
+    monkeypatch.setattr(web_server, "FIRMWARE_CACHE_DIR", str(cache_dir))
+    
+    # We also need to avoid real URL fetch
+    with patch("urllib.request.urlopen") as mock_url:
+        resp = client.get("/api/firmware/manifest")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "Copter" in data["firmware"]
+        assert mock_url.called is False # Should use file cache
+
+
+def test_download_firmware_invalid_url(client):
+    resp = client.post(
+        "/api/firmware/download",
+        data=json.dumps({"url": "http://malicious.com/virus.apj"}),
+        content_type="application/json"
+    )
+    assert resp.status_code == 400
+    assert "must be from firmware.ardupilot.org" in resp.get_json()["message"]
+
+
+def test_update_system_health_logic():
+    # Setup fake validator and mavlink_buffer
+    web_server.validator.hardware_validated = True
+    web_server.validator.categorized_params = {
+        "Battery": {"BATT_LOW_VOLT": 10.5, "BATT_CRT_VOLT": 10.0},
+        "GPS": {"GPS_TYPE": 1},
+        "Compass": {"COMPASS_ENABLE": 1, "COMPASS_USE": 1},
+        "IMU": {},
+        "RC": {"RC_PROTOCOLS": 1},
+        "Motors": {"MOT_PWM_TYPE": 6}, # DShot600
+        "Serial": {"SERIAL1_PROTOCOL": 23}, # ELRS
+        "Flight Modes": {"FLTMODE_CH": 5, "FLTMODE1": 0},
+        "Barometer": {}
+    }
+    
+    web_server.mavlink_buffer = {
+        "SYS_STATUS": {"voltage_battery": 12000, "current_battery": 500, "battery_remaining": 80},
+        "GPS_RAW_INT": {"fix_type": 3, "satellites_visible": 10, "lat": 12345678, "lon": 87654321},
+        "HEARTBEAT": {"base_mode": 0, "custom_mode": 0},
+        "VFR_HUD": {"alt": 10, "heading": 180, "climb": 0},
+        "SERVO_OUTPUT_RAW": {"servo1_raw": 1100, "servo2_raw": 1100, "servo3_raw": 1100, "servo4_raw": 1100},
+        "RC_CHANNELS": {"chan1_raw": 1500, "chan2_raw": 1500, "chan3_raw": 1500, "chan4_raw": 1500, "rssi": 100, "chancount": 16}
+    }
+    
+    # Run update
+    web_server.update_system_health()
+    
+    # Check global result
+    health = web_server.last_system_health
+    assert health["score"] == 100
+    assert health["readiness"] == "READY"
+    assert health["battery"]["voltage"] == 12.0
+    assert health["gps"]["fix_type"] == 3
+    assert health["esc_protocol"] == "DShot600"
+    assert health["rc_uart"] == "SERIAL1"
+    assert health["overall_readiness"] == "READY"

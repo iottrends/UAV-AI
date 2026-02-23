@@ -61,7 +61,7 @@
             <div class="nav-group-label">Configure</div>
             <div class="menu-item" data-tab="parameters">
                <i class="fas fa-sliders-h"></i>
-               Parameters
+               Tuning
             </div>
             <div class="menu-item" data-tab="receiver">
                <i class="fas fa-broadcast-tower"></i>
@@ -265,33 +265,67 @@
                      </tbody>
                   </table>
                </div>
-               <!-- Firmware Information Card -->
+               <!-- Hardware Inventory Card -->
                <div class="card">
-                  <div class="card-title">FIRMWARE INFORMATION</div>
-                  <table class="subsystem-table">
-                     <tbody>
-                        <tr>
-                           <td>Firmware Version</td>
-                           <td id="firmwareVersion">--</td>
-                        </tr>
-                        <tr>
-                           <td>Custom Version</td>
-                           <td id="customVersion">--</td>
-                        </tr>
-                        <tr>
-                           <td>Board Version</td>
-                           <td id="boardVersion">--</td>
-                        </tr>
-                        <tr>
-                           <td>Vendor/Product ID</td>
-                           <td id="vendorProductId">--</td>
-                        </tr>
-                        <tr>
-                           <td>Capabilities</td>
-                           <td id="capabilities">--</td>
-                        </tr>
-                     </tbody>
-                  </table>
+                  <div class="card-title">HARDWARE INVENTORY</div>
+
+                  <!-- Firmware row -->
+                  <div class="hw-firmware-row">
+                     <span class="hw-fw-label">Firmware</span>
+                     <span id="firmwareVersion" class="hw-fw-value">--</span>
+                     <span id="hwFwBadge" class="badge badge-info" style="display:none;"></span>
+                  </div>
+
+                  <!-- Sensor grid: IMU / Baro / Compass / GPS -->
+                  <div class="hw-sensor-grid">
+                     <div class="hw-sensor-cell">
+                        <div class="hw-sensor-icon"><i class="fas fa-microchip"></i></div>
+                        <div class="hw-sensor-label">IMU</div>
+                        <div class="hw-sensor-value" id="hwImu">--</div>
+                     </div>
+                     <div class="hw-sensor-cell">
+                        <div class="hw-sensor-icon"><i class="fas fa-tachometer-alt"></i></div>
+                        <div class="hw-sensor-label">Barometer</div>
+                        <div class="hw-sensor-value" id="hwBaro">--</div>
+                     </div>
+                     <div class="hw-sensor-cell">
+                        <div class="hw-sensor-icon"><i class="fas fa-compass"></i></div>
+                        <div class="hw-sensor-label">Compass</div>
+                        <div class="hw-sensor-value" id="hwCompass">--</div>
+                     </div>
+                     <div class="hw-sensor-cell">
+                        <div class="hw-sensor-icon"><i class="fas fa-satellite"></i></div>
+                        <div class="hw-sensor-label">GPS</div>
+                        <div class="hw-sensor-value" id="hwGps">--</div>
+                     </div>
+                  </div>
+
+                  <!-- ESC + system stats row -->
+                  <div class="hw-stats-row">
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">ESC Protocol</span>
+                        <span class="hw-stat-value" id="hwEsc">--</span>
+                     </div>
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">CPU Load</span>
+                        <div class="hw-stat-bar-wrap">
+                           <div class="hw-stat-bar" id="hwCpuBar"></div>
+                        </div>
+                        <span class="hw-stat-value" id="hwCpuLoad">--%</span>
+                     </div>
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">Free RAM</span>
+                        <span class="hw-stat-value" id="hwFreeRam">-- KB</span>
+                     </div>
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">Msg Drop Rate</span>
+                        <span class="hw-stat-value" id="hwDropRate">--%</span>
+                     </div>
+                     <div class="hw-stat-item">
+                        <span class="hw-stat-label">Flash Storage</span>
+                        <span class="hw-stat-value" id="hwFlash">-- MB</span>
+                     </div>
+                  </div>
                </div>
             </div>
             <!-- Serial Ports Tab -->
@@ -435,96 +469,315 @@
                </div>
             </div>
 
-            <!-- Parameters Tab -->
+            <!-- Tuning Tab (was Parameters) -->
             <div class="tab-content tab-panel" id="parameters-tab" style="display: none;">
-               <h2 class="dashboard-title">Parameters</h2>
-               <div class="flex-between u-mb-2">
-                  <div class="flex-row">
-                     <input type="text" id="paramSearch" placeholder="Search parameters..." class="form-control" style="width:220px;">
-                     <button id="searchBtn" class="btn btn-primary btn-icon">
-                        <i class="fas fa-search"></i>
-                     </button>
+
+               <!-- Sub-tab bar -->
+               <div class="subtab-bar">
+                  <button class="subtab-btn active" data-subtab="tuning-parameters">
+                     <i class="fas fa-list"></i> Parameters
+                  </button>
+                  <button class="subtab-btn" data-subtab="tuning-filter-viz">
+                     <i class="fas fa-bezier-curve"></i> Filter Visualizer
+                  </button>
+                  <button class="subtab-btn" data-subtab="tuning-step-predictor">
+                     <i class="fas fa-chart-area"></i> Step Predictor
+                  </button>
+               </div>
+
+               <!-- Sub-tab: Parameters (existing table, unchanged) -->
+               <div class="subtab-panel" id="tuning-parameters">
+                  <div class="flex-between u-mb-2">
+                     <div class="flex-row">
+                        <input type="text" id="paramSearch" placeholder="Search parameters..." class="form-control" style="width:220px;">
+                        <button id="searchBtn" class="btn btn-primary btn-icon">
+                           <i class="fas fa-search"></i>
+                        </button>
+                     </div>
+                     <div class="flex-row">
+                        <select id="categoryFilter" class="form-control" style="width:auto;">
+                           <option value="All Categories">All Categories</option>
+                           <option value="System">System</option>
+                           <option value="GPS">GPS</option>
+                           <option value="Battery">Battery</option>
+                           <option value="Serial">Serial</option>
+                           <option value="Compass">Compass</option>
+                           <option value="IMU">IMU</option>
+                           <option value="Navigation">Navigation</option>
+                           <option value="Motors">Motors</option>
+                           <option value="Servos">Servos</option>
+                           <option value="RC">RC</option>
+                           <option value="Flight Modes">Flight Modes</option>
+                           <option value="Safety">Safety</option>
+                           <option value="EKF">EKF</option>
+                           <option value="AHRS">AHRS</option>
+                           <option value="Control">Control</option>
+                           <option value="Pilot">Pilot</option>
+                           <option value="Landing">Landing</option>
+                           <option value="Barometer">Barometer</option>
+                           <option value="RangeFinder">RangeFinder</option>
+                           <option value="RPM">RPM</option>
+                           <option value="Notifications">Notifications</option>
+                           <option value="OSD">OSD</option>
+                           <option value="Logging">Logging</option>
+                           <option value="Scheduler">Scheduler</option>
+                           <option value="Streaming">Streaming</option>
+                           <option value="Miscellaneous">Miscellaneous</option>
+                        </select>
+                        <button id="refreshParams" class="btn btn-ghost btn-sm">
+                           <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button id="saveParams" class="btn btn-success btn-sm">
+                           <i class="fas fa-save"></i> Save Changes
+                        </button>
+                     </div>
                   </div>
-                  <div class="flex-row">
-                     <select id="categoryFilter" class="form-control" style="width:auto;">
-                        <option value="All Categories">All Categories</option>
-                        <option value="System">System</option>
-                        <option value="GPS">GPS</option>
-                        <option value="Battery">Battery</option>
-                        <option value="Serial">Serial</option>
-                        <option value="Compass">Compass</option>
-                        <option value="IMU">IMU</option>
-                        <option value="Navigation">Navigation</option>
-                        <option value="Motors">Motors</option>
-                        <option value="Servos">Servos</option>
-                        <option value="RC">RC</option>
-                        <option value="Flight Modes">Flight Modes</option>
-                        <option value="Safety">Safety</option>
-                        <option value="EKF">EKF</option>
-                        <option value="AHRS">AHRS</option>
-                        <option value="Control">Control</option>
-                        <option value="Pilot">Pilot</option>
-                        <option value="Landing">Landing</option>
-                        <option value="Barometer">Barometer</option>
-                        <option value="RangeFinder">RangeFinder</option>
-                        <option value="RPM">RPM</option>
-                        <option value="Notifications">Notifications</option>
-                        <option value="OSD">OSD</option>
-                        <option value="Logging">Logging</option>
-                        <option value="Scheduler">Scheduler</option>
-                        <option value="Streaming">Streaming</option>
-                        <option value="Miscellaneous">Miscellaneous</option>
-                     </select>
-                     <button id="refreshParams" class="btn btn-ghost btn-sm">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                     </button>
-                     <button id="saveParams" class="btn btn-success btn-sm">
-                        <i class="fas fa-save"></i> Save Changes
-                     </button>
+                  <div class="scroll-x">
+                     <table id="parametersTable" class="data-table">
+                        <thead>
+                           <tr>
+                              <th>Name</th>
+                              <th>Value</th>
+                              <th>Description</th>
+                              <th>Range</th>
+                              <th>Actions</th>
+                           </tr>
+                        </thead>
+                        <tbody id="parametersTableBody"></tbody>
+                     </table>
                   </div>
                </div>
-               <div class="scroll-x">
-                  <table id="parametersTable" class="data-table">
-                     <thead>
-                        <tr>
-                           <th>Name</th>
-                           <th>Value</th>
-                           <th>Description</th>
-                           <th>Range</th>
-                           <th>Actions</th>
-                        </tr>
-                     </thead>
-                     <tbody id="parametersTableBody">
-                     </tbody>
-                  </table>
+
+               <!-- Sub-tab: Filter Visualizer -->
+               <div class="subtab-panel" id="tuning-filter-viz" style="display:none;">
+
+                  <!-- No connection placeholder -->
+                  <div id="filterVizNoConn" class="log-analyst-placeholder">
+                     <i class="fas fa-plug"></i>
+                     <p>Connect to a flight controller to visualize the filter stack.</p>
+                  </div>
+
+                  <!-- Chart panel (shown when params available) -->
+                  <div id="filterVizPanel" style="display:none;">
+                     <!-- Series toggles + Ask JARVIS -->
+                     <div class="filter-viz-controls">
+                        <span class="filter-ctrl-label">Series:</span>
+                        <label class="filter-series-toggle"><input type="checkbox" data-series="0" checked> <span style="color:#3498db;">Gyro LPF</span></label>
+                        <label class="filter-series-toggle"><input type="checkbox" data-series="1" checked> <span style="color:#e74c3c;">Static Notch</span></label>
+                        <label class="filter-series-toggle"><input type="checkbox" data-series="2" checked> <span style="color:#f39c12;">Harm. Notch</span></label>
+                        <label class="filter-series-toggle"><input type="checkbox" data-series="3" checked> <span style="color:#9b59b6;">D-term LPF</span></label>
+                        <label class="filter-series-toggle"><input type="checkbox" data-series="4" checked> <span style="color:#2ecc71;">Total</span></label>
+                        <button id="filterVizAskJarvis" class="btn btn-secondary" style="margin-left:auto;">
+                           <i class="fas fa-robot"></i> Ask JARVIS
+                        </button>
+                     </div>
+                     <!-- Active filter params summary -->
+                     <div id="filterParamsSummary" class="filter-params-summary"></div>
+                     <!-- Bode plot canvas -->
+                     <div class="spectrum-chart-wrap">
+                        <canvas id="filterVizCanvas"></canvas>
+                     </div>
+                  </div>
+
                </div>
+
+               <!-- Sub-tab: Step Predictor -->
+               <div class="subtab-panel" id="tuning-step-predictor" style="display:none;">
+
+                  <!-- No connection placeholder -->
+                  <div id="stepPredNoConn" class="log-analyst-placeholder">
+                     <i class="fas fa-plug"></i>
+                     <p>Connect to a flight controller to use the Step Predictor.</p>
+                  </div>
+
+                  <div id="stepPredPanel" style="display:none;">
+
+                     <!-- Mode toggle -->
+                     <div class="step-mode-bar">
+                        <button class="step-mode-btn active" id="stepModeFeelBtn">
+                           <i class="fas fa-hand-paper"></i> Flight Feel
+                        </button>
+                        <button class="step-mode-btn" id="stepModeExpertBtn">
+                           <i class="fas fa-sliders-h"></i> Expert (P/I/D)
+                        </button>
+                        <div style="margin-left:auto; display:flex; gap:0.5rem;">
+                           <button id="stepApplyBtn" class="btn btn-success btn-sm">
+                              <i class="fas fa-upload"></i> Apply to FC
+                           </button>
+                           <button id="stepResetBtn" class="btn btn-ghost btn-sm">
+                              <i class="fas fa-undo"></i> Reset
+                           </button>
+                           <button id="stepAskJarvisBtn" class="btn btn-secondary btn-sm">
+                              <i class="fas fa-robot"></i> Ask JARVIS
+                           </button>
+                        </div>
+                     </div>
+
+                     <!-- Flight Feel mode -->
+                     <div id="stepFeelMode" class="step-feel-grid">
+                        <div class="step-feel-row">
+                           <span class="step-feel-label">Aggressiveness</span>
+                           <input type="range" class="step-feel-slider" id="feelAggressive" min="20" max="150" value="100">
+                           <span class="step-feel-val" id="feelAggressiveVal">1.0×</span>
+                           <span class="step-feel-hint">Roll/Pitch P gain</span>
+                        </div>
+                        <div class="step-feel-row">
+                           <span class="step-feel-label">Smoothness</span>
+                           <input type="range" class="step-feel-slider" id="feelSmooth" min="20" max="150" value="100">
+                           <span class="step-feel-val" id="feelSmoothVal">1.0×</span>
+                           <span class="step-feel-hint">D-term gain</span>
+                        </div>
+                        <div class="step-feel-row">
+                           <span class="step-feel-label">Position Hold</span>
+                           <input type="range" class="step-feel-slider" id="feelPosHold" min="30" max="200" value="100">
+                           <span class="step-feel-val" id="feelPosHoldVal">1.0×</span>
+                           <span class="step-feel-hint">PSC_POSXY_P</span>
+                        </div>
+                        <div class="step-feel-row">
+                           <span class="step-feel-label">Stick Feel</span>
+                           <input type="range" class="step-feel-slider" id="feelStick" min="0" max="100" value="50">
+                           <span class="step-feel-val" id="feelStickVal">50</span>
+                           <span class="step-feel-hint">RC_FEEL_RP</span>
+                        </div>
+                     </div>
+
+                     <!-- Expert P/I/D mode -->
+                     <div id="stepExpertMode" class="step-expert-grid" style="display:none;">
+                        <div class="step-expert-header"><span>Gain</span><span>Roll</span><span>Pitch</span><span>Yaw</span></div>
+                        <div class="step-expert-row">
+                           <span>P</span>
+                           <input type="number" class="step-expert-input" id="expRollP" step="0.01" min="0">
+                           <input type="number" class="step-expert-input" id="expPitchP" step="0.01" min="0">
+                           <input type="number" class="step-expert-input" id="expYawP" step="0.01" min="0">
+                        </div>
+                        <div class="step-expert-row">
+                           <span>I</span>
+                           <input type="number" class="step-expert-input" id="expRollI" step="0.01" min="0">
+                           <input type="number" class="step-expert-input" id="expPitchI" step="0.01" min="0">
+                           <input type="number" class="step-expert-input" id="expYawI" step="0.01" min="0">
+                        </div>
+                        <div class="step-expert-row">
+                           <span>D</span>
+                           <input type="number" class="step-expert-input" id="expRollD" step="0.001" min="0">
+                           <input type="number" class="step-expert-input" id="expPitchD" step="0.001" min="0">
+                           <input type="number" class="step-expert-input" id="expYawD" step="0.001" min="0">
+                        </div>
+                     </div>
+
+                     <!-- Axis selector + predicted response chart -->
+                     <div class="step-chart-header">
+                        <span class="filter-ctrl-label">Predicted Step Response — Axis:</span>
+                        <button class="spectrum-axis-btn active" data-stepaxis="roll">Roll</button>
+                        <button class="spectrum-axis-btn" data-stepaxis="pitch">Pitch</button>
+                        <button class="spectrum-axis-btn" data-stepaxis="yaw">Yaw</button>
+                     </div>
+                     <div class="step-param-summary" id="stepParamSummary"></div>
+                     <div class="spectrum-chart-wrap">
+                        <canvas id="stepPredCanvas"></canvas>
+                     </div>
+
+                  </div>
+               </div>
+
             </div>
             <!-- Logs Tab -->
             <div class="tab-content tab-panel tab-panel-dark" id="logs-tab" style="display: none;">
 
-               <!-- Top: Upload + FC Fetch -->
-               <div class="flex-row flex-wrap flex-gap-2 u-mb-2 u-items-start">
-                  <div class="log-upload-area" id="logUploadArea">
-                     <i class="fas fa-cloud-upload-alt u-text-lg u-text-accent"></i>
-                     <p class="u-semibold u-mt-1">Upload Log File</p>
-                     <p class="u-text-xs u-text-secondary">Drag &amp; drop .bin or .tlog, or click to browse</p>
-                     <input type="file" id="logFileInput" accept=".bin,.tlog" style="display:none;">
-                  </div>
-                  <div class="flex-col">
-                     <button id="fetchLogsButton" class="btn btn-primary">
-                        <i class="fas fa-download"></i> Fetch FC Logs
-                     </button>
-                     <div id="logContent" class="hint-text u-mb-0"></div>
-                  </div>
+               <!-- Sub-tab bar -->
+               <div class="subtab-bar">
+                  <button class="subtab-btn active" data-subtab="logs-timeline">
+                     <i class="fas fa-chart-line"></i> Timeline
+                  </button>
+                  <button class="subtab-btn" data-subtab="logs-spectrum">
+                     <i class="fas fa-wave-square"></i> Spectrum (FFT)
+                  </button>
+                  <button class="subtab-btn" data-subtab="logs-ai-analyst">
+                     <i class="fas fa-robot"></i> AI Analyst
+                  </button>
                </div>
 
-               <!-- Status bar -->
-               <div class="log-status-bar" id="logStatusBar" style="display:none;">
-                  <span id="logStatusText"></span>
+               <!-- Sub-tab: Timeline (existing content unchanged) -->
+               <div class="subtab-panel" id="logs-timeline">
+                  <div class="flex-row flex-wrap flex-gap-2 u-mb-2 u-items-start">
+                     <div class="log-upload-area" id="logUploadArea">
+                        <i class="fas fa-cloud-upload-alt u-text-lg u-text-accent"></i>
+                        <p class="u-semibold u-mt-1">Upload Log File</p>
+                        <p class="u-text-xs u-text-secondary">Drag &amp; drop .bin or .tlog, or click to browse</p>
+                        <input type="file" id="logFileInput" accept=".bin,.tlog" style="display:none;">
+                     </div>
+                     <div class="flex-col">
+                        <button id="fetchLogsButton" class="btn btn-primary">
+                           <i class="fas fa-download"></i> Fetch FC Logs
+                        </button>
+                        <div id="logContent" class="hint-text u-mb-0"></div>
+                     </div>
+                  </div>
+                  <div class="log-status-bar" id="logStatusBar" style="display:none;">
+                     <span id="logStatusText"></span>
+                  </div>
+                  <div class="log-viz-area" id="logVizArea"></div>
                </div>
 
-               <!-- Visualization area -->
-               <div class="log-viz-area" id="logVizArea"></div>
+               <!-- Sub-tab: Spectrum (FFT) -->
+               <div class="subtab-panel" id="logs-spectrum" style="display:none;">
+
+                  <!-- No log placeholder -->
+                  <div id="spectrumNoLog" class="log-analyst-placeholder">
+                     <i class="fas fa-wave-square"></i>
+                     <p>Upload a flight log in the <strong>Timeline</strong> tab to view the noise spectrum.</p>
+                  </div>
+
+                  <!-- Controls + chart (shown when log loaded) -->
+                  <div id="spectrumPanel" style="display:none;">
+                     <div class="spectrum-controls">
+                        <div class="spectrum-ctrl-group">
+                           <span class="spectrum-ctrl-label">Axis</span>
+                           <button class="spectrum-axis-btn active" data-axis="roll">Roll</button>
+                           <button class="spectrum-axis-btn" data-axis="pitch">Pitch</button>
+                           <button class="spectrum-axis-btn" data-axis="yaw">Yaw</button>
+                        </div>
+                        <div class="spectrum-ctrl-group">
+                           <span class="spectrum-ctrl-label">Source</span>
+                           <button class="spectrum-src-btn active" data-src="imu">Raw Gyro (IMU)</button>
+                           <button class="spectrum-src-btn" data-src="rate">PID Rate (RATE)</button>
+                        </div>
+                        <button id="spectrumAskJarvis" class="btn btn-secondary" style="margin-left:auto;">
+                           <i class="fas fa-robot"></i> Ask JARVIS
+                        </button>
+                     </div>
+                     <div class="spectrum-peaks" id="spectrumPeaks"></div>
+                     <div class="spectrum-chart-wrap">
+                        <canvas id="spectrumCanvas"></canvas>
+                     </div>
+                  </div>
+
+               </div>
+
+               <!-- Sub-tab: AI Analyst -->
+               <div class="subtab-panel" id="logs-ai-analyst" style="display:none;">
+
+                  <!-- Flight summary chips (shown after log upload) -->
+                  <div id="logSummaryChips" class="log-summary-chips" style="display:none;"></div>
+
+                  <!-- Placeholder when no log is loaded -->
+                  <div id="logAnalystNoLog" class="log-analyst-placeholder">
+                     <i class="fas fa-file-alt"></i>
+                     <p>Upload a flight log in the <strong>Timeline</strong> tab to analyse it here.</p>
+                  </div>
+
+                  <!-- Chat panel (shown when log is loaded) -->
+                  <div id="logAnalystPanel" class="log-analyst-panel" style="display:none;">
+                     <div id="logAnalystMessages" class="log-analyst-messages"></div>
+                     <div class="log-analyst-input-row">
+                        <input type="text" id="logAnalystInput" class="log-analyst-input"
+                               placeholder="Ask about this flight — vibration, battery, GPS, modes...">
+                        <button id="logAnalystSend" class="btn btn-primary">
+                           <i class="fas fa-paper-plane"></i>
+                        </button>
+                     </div>
+                  </div>
+
+               </div>
 
             </div>
             <!-- Latency & Parameters Tab -->
@@ -687,6 +940,74 @@
                      <div class="cal-status" data-cal="baro">Idle</div>
                   </div>
                </div>
+
+               <!-- MAGFit Motor Interference Wizard -->
+               <div class="card magfit-card u-mt-3" id="magfitCard">
+                  <div class="card-title">
+                     <i class="fas fa-magnet"></i> Motor Interference (MAGFit)
+                     <span class="magfit-src-badge" id="magfitSrcBadge" style="display:none;"></span>
+                  </div>
+                  <p class="hint-text">
+                     Fit <code>COMPASS_MOT_X/Y/Z</code> compensation coefficients from a flight log.
+                     Load a log in the <strong>Logs</strong> tab first, then click Analyse.
+                  </p>
+
+                  <!-- Current COMPASS_MOT values -->
+                  <div class="magfit-current-row" id="magfitCurrentRow">
+                     <span class="magfit-cur-label">Current params:</span>
+                     <span class="magfit-cur-val">COMPASS_MOT_X&nbsp;=&nbsp;<span id="mfCurX">--</span></span>
+                     <span class="magfit-cur-val">COMPASS_MOT_Y&nbsp;=&nbsp;<span id="mfCurY">--</span></span>
+                     <span class="magfit-cur-val">COMPASS_MOT_Z&nbsp;=&nbsp;<span id="mfCurZ">--</span></span>
+                  </div>
+
+                  <!-- Analyse button -->
+                  <div class="magfit-actions-top">
+                     <button id="magfitRunBtn" class="btn btn-primary btn-sm">
+                        <i class="fas fa-chart-scatter"></i> Analyse Log
+                     </button>
+                     <span id="magfitRunStatus" class="hint-text" style="margin-left:0.75rem;"></span>
+                  </div>
+
+                  <!-- Results panel — hidden until analysis done -->
+                  <div id="magfitResults" style="display:none;">
+
+                     <!-- Axis selector + chart -->
+                     <div class="magfit-chart-header">
+                        <span class="filter-ctrl-label">ΔMag (Earth frame) vs <span id="magfitIndLabel">Throttle</span>:</span>
+                        <button class="magfit-axis-btn active" data-mfaxis="x">X</button>
+                        <button class="magfit-axis-btn" data-mfaxis="y">Y</button>
+                        <button class="magfit-axis-btn" data-mfaxis="z">Z</button>
+                        <span class="magfit-legend">
+                           <span class="magfit-legend-dot raw"></span> Raw &nbsp;
+                           <span class="magfit-legend-dot corr"></span> Corrected
+                        </span>
+                     </div>
+                     <div class="spectrum-chart-wrap" style="height:260px;">
+                        <canvas id="magfitCanvas"></canvas>
+                     </div>
+
+                     <!-- Numeric results -->
+                     <div class="magfit-result-grid" id="magfitResultGrid">
+                        <!-- filled by JS -->
+                     </div>
+
+                     <!-- Armed warning + Apply -->
+                     <div class="magfit-apply-row">
+                        <div id="magfitArmedWarn" class="magfit-armed-warn" style="display:none;">
+                           <i class="fas fa-exclamation-triangle"></i>
+                           Disarm the vehicle before writing compass parameters.
+                        </div>
+                        <button id="magfitApplyBtn" class="btn btn-success btn-sm" style="display:none;" disabled>
+                           <i class="fas fa-upload"></i> Apply to FC
+                        </button>
+                        <button id="magfitClearBtn" class="btn btn-ghost btn-sm" style="display:none;">
+                           <i class="fas fa-times"></i> Clear
+                        </button>
+                     </div>
+
+                  </div>
+               </div>
+
             </div>
             <!-- Motors Tab -->
             <div class="tab-content tab-panel" id="motors-tab" style="display: none;">

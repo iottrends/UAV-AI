@@ -1513,6 +1513,184 @@ padding: 0.5rem;
    margin-bottom: 0.5rem;
 }
 
+/* ===== Sub-tab bar (shared: Logs, Tuning) ===== */
+.subtab-bar {
+   display: flex;
+   gap: 0.25rem;
+   border-bottom: 1px solid #333;
+   margin-bottom: 1rem;
+   padding-bottom: 0;
+}
+.subtab-btn {
+   padding: 0.45rem 1rem;
+   border: none;
+   background: transparent;
+   color: #888;
+   font-size: 0.82rem;
+   font-weight: 600;
+   letter-spacing: 0.03em;
+   cursor: pointer;
+   border-bottom: 2px solid transparent;
+   border-radius: 4px 4px 0 0;
+   transition: color 0.2s, border-color 0.2s;
+}
+.subtab-btn:hover  { color: #ccc; }
+.subtab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+.subtab-panel { width: 100%; }
+
+/* ===== Log flight summary chips ===== */
+.log-summary-chips {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 0.4rem;
+   margin-bottom: 0.75rem;
+}
+.log-summary-chip {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.3rem;
+   padding: 0.25rem 0.65rem;
+   border-radius: 12px;
+   font-size: 0.78rem;
+   font-weight: 600;
+}
+.log-summary-chip-ok   { background: rgba(46,204,113,0.15); color: #2ecc71; }
+.log-summary-chip-warn { background: rgba(231,76,60,0.15);  color: #e74c3c; }
+
+/* ===== AI Analyst panel ===== */
+.log-analyst-placeholder {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   justify-content: center;
+   gap: 0.75rem;
+   min-height: 200px;
+   color: #666;
+   text-align: center;
+}
+.log-analyst-placeholder i { font-size: 2.5rem; }
+.log-analyst-placeholder p { font-size: 0.9rem; }
+.log-analyst-panel {
+   display: flex;
+   flex-direction: column;
+   gap: 0.75rem;
+   height: calc(100vh - 280px);
+   min-height: 320px;
+}
+.log-analyst-messages {
+   flex: 1;
+   overflow-y: auto;
+   display: flex;
+   flex-direction: column;
+   gap: 0.6rem;
+   padding-right: 0.25rem;
+}
+.analyst-msg {
+   max-width: 88%;
+   padding: 0.55rem 0.85rem;
+   border-radius: 10px;
+   font-size: 0.85rem;
+   line-height: 1.5;
+   word-wrap: break-word;
+}
+.analyst-msg-user  { align-self: flex-end; background: rgba(52,152,219,0.2); color: #e0e0e0; border-radius: 10px 10px 2px 10px; }
+.analyst-msg-jarvis{ align-self: flex-start; background: #1e1e2e; color: #ccc; border: 1px solid #333; border-radius: 10px 10px 10px 2px; }
+.log-analyst-input-row {
+   display: flex;
+   gap: 0.5rem;
+   align-items: center;
+}
+.log-analyst-input {
+   flex: 1;
+   padding: 0.55rem 0.85rem;
+   border-radius: 8px;
+   border: 1px solid #444;
+   background: #1a1a2e;
+   color: #e0e0e0;
+   font-size: 0.85rem;
+   outline: none;
+}
+.log-analyst-input:focus { border-color: var(--primary-color); }
+
+/* ===== Filter Visualizer ===== */
+.filter-viz-controls {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   gap: 0.75rem;
+   margin-bottom: 0.5rem;
+}
+.filter-ctrl-label {
+   font-size: 0.78rem;
+   color: #888;
+   font-weight: 600;
+}
+.filter-series-toggle {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.3rem;
+   font-size: 0.8rem;
+   cursor: pointer;
+   user-select: none;
+}
+.filter-params-summary {
+   font-size: 0.75rem;
+   color: #666;
+   margin-bottom: 0.5rem;
+   min-height: 1.1em;
+}
+
+/* ===== Spectrum (FFT) sub-tab ===== */
+.spectrum-controls {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   gap: 0.75rem;
+   margin-bottom: 0.6rem;
+}
+.spectrum-ctrl-group {
+   display: flex;
+   align-items: center;
+   gap: 0.25rem;
+}
+.spectrum-ctrl-label {
+   font-size: 0.78rem;
+   color: #888;
+   margin-right: 0.25rem;
+   font-weight: 600;
+}
+.spectrum-axis-btn,
+.spectrum-src-btn {
+   padding: 0.3rem 0.7rem;
+   border: 1px solid #444;
+   background: transparent;
+   color: #888;
+   border-radius: 5px;
+   font-size: 0.78rem;
+   cursor: pointer;
+   transition: all 0.2s;
+}
+.spectrum-axis-btn:hover,
+.spectrum-src-btn:hover  { border-color: #666; color: #ccc; }
+.spectrum-axis-btn.active,
+.spectrum-src-btn.active { border-color: var(--primary-color); color: var(--primary-color); background: rgba(52,152,219,0.1); }
+.spectrum-peaks {
+   font-size: 0.78rem;
+   color: #888;
+   margin-bottom: 0.5rem;
+   min-height: 1.2em;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.spectrum-chart-wrap {
+   position: relative;
+   height: 320px;
+   background: #12121f;
+   border-radius: 8px;
+   padding: 0.75rem;
+}
+
 /* ===== Co-Pilot Badge ===== */
 .copilot-badge {
    padding: 0.25rem 0.75rem;
@@ -2120,6 +2298,365 @@ padding: 0.5rem;
 .u-justify-between { justify-content: space-between; }
 .u-justify-end { justify-content: flex-end; }
 .u-text-accent { color: var(--accent); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Hardware Inventory Card
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Firmware row */
+.hw-firmware-row {
+   display: flex;
+   align-items: center;
+   gap: 0.75rem;
+   margin-bottom: 1rem;
+   padding-bottom: 0.75rem;
+   border-bottom: 1px solid var(--border-subtle);
+}
+.hw-fw-label {
+   font-size: 0.7rem;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+   color: var(--text-dim);
+   white-space: nowrap;
+}
+.hw-fw-value {
+   font-size: 0.9rem;
+   font-weight: 600;
+   color: var(--text-primary);
+   flex: 1;
+}
+
+/* Sensor grid — 4 equal columns */
+.hw-sensor-grid {
+   display: grid;
+   grid-template-columns: repeat(4, 1fr);
+   gap: 0.5rem;
+   margin-bottom: 1rem;
+}
+.hw-sensor-cell {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 0.25rem;
+   background: var(--surface-3);
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   padding: 0.6rem 0.4rem;
+   text-align: center;
+}
+.hw-sensor-icon {
+   font-size: 1.1rem;
+   color: var(--accent);
+}
+.hw-sensor-label {
+   font-size: 0.6rem;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+   color: var(--text-dim);
+}
+.hw-sensor-value {
+   font-size: 0.78rem;
+   font-weight: 600;
+   color: var(--text-primary);
+   line-height: 1.2;
+}
+
+/* Stats row — ESC + CPU + RAM + Drop Rate */
+.hw-stats-row {
+   display: grid;
+   grid-template-columns: 2fr 2fr 1fr 1fr;
+   gap: 0.75rem;
+   align-items: center;
+}
+.hw-stat-item {
+   display: flex;
+   flex-direction: column;
+   gap: 0.2rem;
+}
+.hw-stat-label {
+   font-size: 0.6rem;
+   text-transform: uppercase;
+   letter-spacing: 0.05em;
+   color: var(--text-dim);
+}
+.hw-stat-value {
+   font-size: 0.82rem;
+   font-weight: 600;
+   color: var(--text-primary);
+}
+.hw-stat-bar-wrap {
+   height: 5px;
+   background: var(--surface-3);
+   border-radius: 3px;
+   overflow: hidden;
+   margin: 2px 0;
+}
+.hw-stat-bar {
+   height: 100%;
+   width: 0%;
+   background: var(--success-color);
+   border-radius: 3px;
+   transition: width 0.6s ease, background-color 0.3s ease;
+}
+
+/* ── Step Predictor ─────────────────────────────────────────────────── */
+.step-mode-bar {
+   display: flex;
+   gap: 0.4rem;
+   margin-bottom: 1rem;
+}
+.step-mode-btn {
+   padding: 0.3rem 0.9rem;
+   font-size: 0.78rem;
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   background: var(--surface-3);
+   color: var(--text-secondary);
+   cursor: pointer;
+   transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.step-mode-btn.active,
+.step-mode-btn:hover {
+   background: var(--accent);
+   color: #fff;
+   border-color: var(--accent);
+}
+
+/* Flight Feel sliders */
+.step-feel-grid {
+   display: flex;
+   flex-direction: column;
+   gap: 0.55rem;
+   margin-bottom: 1rem;
+}
+.step-feel-row {
+   display: grid;
+   grid-template-columns: 120px 1fr 44px 140px;
+   align-items: center;
+   gap: 0.5rem;
+}
+.step-feel-label {
+   font-size: 0.78rem;
+   color: var(--text-secondary);
+   font-weight: 500;
+}
+.step-feel-slider {
+   width: 100%;
+   accent-color: var(--accent);
+   cursor: pointer;
+}
+.step-feel-val {
+   font-size: 0.78rem;
+   font-weight: 600;
+   color: var(--accent);
+   text-align: right;
+   min-width: 38px;
+}
+.step-feel-hint {
+   font-size: 0.68rem;
+   color: var(--text-dim);
+   font-family: monospace;
+}
+
+/* Expert P/I/D grid */
+.step-expert-grid {
+   display: flex;
+   flex-direction: column;
+   gap: 0.35rem;
+   margin-bottom: 1rem;
+}
+.step-expert-header {
+   display: grid;
+   grid-template-columns: 60px repeat(3, 1fr);
+   gap: 0.4rem;
+   padding: 0 0.2rem;
+}
+.step-expert-header span {
+   font-size: 0.7rem;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+   color: var(--text-dim);
+   text-align: center;
+}
+.step-expert-header span:first-child {
+   text-align: left;
+}
+.step-expert-row {
+   display: grid;
+   grid-template-columns: 60px repeat(3, 1fr);
+   align-items: center;
+   gap: 0.4rem;
+}
+.step-expert-row span {
+   font-size: 0.78rem;
+   font-weight: 600;
+   color: var(--text-secondary);
+}
+.step-expert-input {
+   width: 100%;
+   padding: 0.25rem 0.4rem;
+   font-size: 0.78rem;
+   background: var(--surface-3);
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   color: var(--text-primary);
+   text-align: center;
+}
+.step-expert-input:focus {
+   outline: none;
+   border-color: var(--accent);
+}
+
+/* Step chart header & param summary */
+.step-chart-header {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   margin-bottom: 0.4rem;
+}
+.step-chart-header span {
+   font-size: 0.75rem;
+   color: var(--text-secondary);
+}
+.step-param-summary {
+   font-size: 0.7rem;
+   color: var(--text-dim);
+   font-family: monospace;
+   margin-bottom: 0.6rem;
+   line-height: 1.6;
+   min-height: 1rem;
+}
+
+/* ── MAGFit Motor Interference Wizard ───────────────────────────────── */
+.magfit-card {
+   margin-top: 1rem;
+}
+.magfit-src-badge {
+   margin-left: 0.6rem;
+   font-size: 0.68rem;
+   padding: 0.15rem 0.5rem;
+   border-radius: 999px;
+   background: var(--accent);
+   color: #fff;
+   font-weight: 600;
+   vertical-align: middle;
+   text-transform: uppercase;
+   letter-spacing: 0.05em;
+}
+.magfit-current-row {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   gap: 1rem;
+   margin-bottom: 0.75rem;
+   font-size: 0.78rem;
+}
+.magfit-cur-label {
+   color: var(--text-dim);
+   font-size: 0.72rem;
+   text-transform: uppercase;
+   letter-spacing: 0.05em;
+}
+.magfit-cur-val {
+   color: var(--text-secondary);
+   font-family: monospace;
+   font-size: 0.8rem;
+}
+.magfit-actions-top {
+   display: flex;
+   align-items: center;
+   margin-bottom: 1rem;
+}
+.magfit-chart-header {
+   display: flex;
+   align-items: center;
+   gap: 0.5rem;
+   margin-bottom: 0.5rem;
+   flex-wrap: wrap;
+}
+.magfit-axis-btn {
+   padding: 0.2rem 0.65rem;
+   font-size: 0.75rem;
+   font-weight: 600;
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   background: var(--surface-3);
+   color: var(--text-secondary);
+   cursor: pointer;
+   transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.magfit-axis-btn.active,
+.magfit-axis-btn:hover {
+   background: var(--accent);
+   color: #fff;
+   border-color: var(--accent);
+}
+.magfit-legend {
+   margin-left: auto;
+   display: flex;
+   align-items: center;
+   font-size: 0.72rem;
+   color: var(--text-dim);
+   gap: 0.25rem;
+}
+.magfit-legend-dot {
+   display: inline-block;
+   width: 10px;
+   height: 10px;
+   border-radius: 50%;
+}
+.magfit-legend-dot.raw  { background: rgba(231,76,60,0.8); }
+.magfit-legend-dot.corr { background: rgba(46,204,113,0.8); }
+
+.magfit-result-grid {
+   display: grid;
+   grid-template-columns: repeat(4, 1fr);
+   gap: 0.6rem;
+   margin: 0.75rem 0;
+}
+.magfit-result-cell {
+   background: var(--surface-3);
+   border: 1px solid var(--border-subtle);
+   border-radius: var(--radius-control);
+   padding: 0.5rem 0.6rem;
+   display: flex;
+   flex-direction: column;
+   gap: 0.15rem;
+}
+.magfit-result-cell.quality-good   { border-color: var(--success-color); }
+.magfit-result-cell.quality-fair   { border-color: var(--warning-color); }
+.magfit-result-cell.quality-poor   { border-color: var(--danger-color); }
+.magfit-result-label {
+   font-size: 0.65rem;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+   color: var(--text-dim);
+}
+.magfit-result-value {
+   font-size: 0.95rem;
+   font-weight: 700;
+   color: var(--text-primary);
+   font-family: monospace;
+}
+.magfit-result-sub {
+   font-size: 0.65rem;
+   color: var(--text-dim);
+}
+.magfit-apply-row {
+   display: flex;
+   align-items: center;
+   gap: 0.75rem;
+   flex-wrap: wrap;
+   margin-top: 0.25rem;
+}
+.magfit-armed-warn {
+   display: flex;
+   align-items: center;
+   gap: 0.4rem;
+   font-size: 0.78rem;
+   color: var(--danger-color);
+   font-weight: 600;
+}
 
 /* ══════════════════════════════════════════════════════════════════════ */
 

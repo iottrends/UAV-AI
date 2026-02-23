@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import math
+import numpy as np
 import signal
 import threading
 import time
@@ -1984,6 +1985,264 @@ def get_log_status():
     return jsonify({"loaded": False})
 
 
+@app.route('/api/log_summary', methods=['GET'])
+def get_log_flight_summary():
+    """Return computed flight stats from parsed log — no LLM call."""
+    if not log_parser_instance or not log_parser_instance._is_parsed:
+        return jsonify({'status': 'error', 'message': 'No log loaded'}), 400
+
+    pd = log_parser_instance.parsed_data
+    stats = {}
+
+    # Flight duration — first and last TimeUS from any high-rate message
+    for mtype in ('ATT', 'GPS', 'BARO', 'RCOU'):
+        msgs = pd.get(mtype, [])
+        if len(msgs) >= 2:
+            t0 = msgs[0].get('TimeUS') or 0
+            t1 = msgs[-1].get('TimeUS') or 0
+            if t1 > t0:
+                stats['duration_s'] = round((t1 - t0) / 1e6)
+                break
+
+    # Max altitude from BARO
+    baro_msgs = pd.get('BARO', [])
+    if baro_msgs:
+        alts = [m.get('Alt') for m in baro_msgs if m.get('Alt') is not None]
+        if alts:
+            stats['max_alt_m'] = round(max(alts), 1)
+
+    # GPS fix quality — GPS.Status: 0=no GPS, 1=no fix, 2=2D, 3=3D, 4=DGPS, 5=RTK float, 6=RTK fixed
+    gps_msgs = pd.get('GPS', [])
+    if gps_msgs:
+        statuses = [m.get('Status', 0) for m in gps_msgs if m.get('Status') is not None]
+        if statuses:
+            stats['gps_fix'] = '3D Fix' if max(statuses) >= 3 else ('2D Fix' if max(statuses) == 2 else 'No Fix')
+            if min(statuses) < 3 and max(statuses) >= 3:
+                stats['gps_dropout'] = True
+
+    # Vibration peaks — flag if any axis exceeds 30 m/s²
+    vibe_alerts = []
+    for m in pd.get('VIBE', []):
+        for ax in ('VibeX', 'VibeY', 'VibeZ'):
+            v = m.get(ax)
+            if v is not None and v > 30:
+                t_s = round((m.get('TimeUS') or 0) / 1e6)
+                vibe_alerts.append({'axis': ax, 'value': round(v, 1), 'time_s': t_s})
+                break  # one alert per message
+    if vibe_alerts:
+        # Return up to 3 worst (highest value)
+        vibe_alerts.sort(key=lambda x: x['value'], reverse=True)
+        stats['vibe_alerts'] = vibe_alerts[:3]
+
+    # Battery — min and start voltage
+    bat_msgs = pd.get('BAT', pd.get('CURR', []))
+    if bat_msgs:
+        volts = [m.get('Volt') for m in bat_msgs if m.get('Volt') is not None]
+        if volts:
+            stats['min_volt'] = round(min(volts), 2)
+            stats['start_volt'] = round(volts[0], 2)
+
+    # Flight modes used
+    mode_msgs = pd.get('MODE', [])
+    if mode_msgs:
+        modes = []
+        for m in mode_msgs:
+            mode = m.get('Mode') or m.get('ModeNum')
+            if mode is not None and mode not in modes:
+                modes.append(mode)
+        if modes:
+            stats['modes'] = modes
+
+    # Errors / failsafes
+    errors = []
+    for m in pd.get('ERR', []):
+        ecode = m.get('ECode', 0)
+        if ecode:
+            t_s = round((m.get('TimeUS') or 0) / 1e6)
+            errors.append({'subsys': m.get('Subsys', '?'), 'ecode': ecode, 'time_s': t_s})
+    if errors:
+        stats['errors'] = errors[:5]
+
+    return jsonify({'status': 'success', 'stats': stats})
+
+
+@app.route('/api/magfit', methods=['GET'])
+def get_magfit():
+    """
+    Compute COMPASS_MOT_X/Y/Z coefficients from the loaded flight log.
+
+    Method:
+      1. Rotate each MAG sample into Earth frame using ATT roll+pitch (removes
+         tilt-induced variation so only motor interference remains).
+      2. Independent variable: Battery current (A) when available; falls back
+         to mean normalised RCOU throttle (0-1). Current is the physically
+         correct variable because the magnetic field scales with Amps.
+      3. Fit  earth_mag = k * ind + c  per axis via numpy.linalg.lstsq.
+         The slope  k  is the COMPASS_MOT coefficient.
+      4. Return raw and corrected scatter points so the UI can preview the
+         "before / after" improvement before the pilot applies the fix.
+    """
+    if not log_parser_instance or not log_parser_instance._is_parsed:
+        return jsonify({'status': 'error', 'message': 'No log loaded'}), 400
+
+    pd = log_parser_instance.parsed_data
+
+    mag_msgs  = pd.get('MAG', [])
+    att_msgs  = pd.get('ATT', [])
+    rcou_msgs = pd.get('RCOU', [])
+    bat_msgs  = pd.get('BAT', pd.get('CURR', []))
+
+    if not mag_msgs:
+        return jsonify({'status': 'error', 'message': 'No MAG messages in log'}), 400
+    if not att_msgs:
+        return jsonify({'status': 'error', 'message': 'No ATT messages in log'}), 400
+    if not rcou_msgs and not bat_msgs:
+        return jsonify({'status': 'error', 'message': 'No RCOU or BAT/CURR messages in log'}), 400
+
+    # ── Build fast time-sorted lookup arrays ──────────────────────────────
+    def _sort(msgs):
+        return sorted(msgs, key=lambda m: m.get('TimeUS', 0))
+
+    att_sorted  = _sort(att_msgs)
+    att_times   = [m.get('TimeUS', 0) for m in att_sorted]
+
+    use_current = False
+    ind_sorted  = []
+    ind_times   = []
+    if bat_msgs:
+        # Check that current field exists and has useful range
+        sample_curr = [m.get('Curr', m.get('I')) for m in bat_msgs[:50] if m.get('Curr', m.get('I')) is not None]
+        if sample_curr and max(sample_curr) > 0.5:
+            use_current = True
+            ind_sorted = _sort(bat_msgs)
+            ind_times  = [m.get('TimeUS', 0) for m in ind_sorted]
+
+    if not use_current and rcou_msgs:
+        ind_sorted = _sort(rcou_msgs)
+        ind_times  = [m.get('TimeUS', 0) for m in ind_sorted]
+
+    if not ind_sorted:
+        return jsonify({'status': 'error', 'message': 'No usable current or throttle data in log'}), 400
+
+    ind_label = 'Current (A)' if use_current else 'Throttle (0-1)'
+
+    # ── Nearest-neighbour lookup via binary search ────────────────────────
+    import bisect
+
+    def _nearest(sorted_times, sorted_msgs, t, *fields):
+        idx = bisect.bisect_left(sorted_times, t)
+        idx = min(idx, len(sorted_msgs) - 1)
+        if idx > 0 and abs(sorted_times[idx-1] - t) < abs(sorted_times[idx] - t):
+            idx -= 1
+        m = sorted_msgs[idx]
+        return tuple(m.get(f) for f in fields)
+
+    # ── Process each MAG sample ───────────────────────────────────────────
+    samples = []
+    for mag in mag_msgs:
+        t  = mag.get('TimeUS', 0)
+        mx = mag.get('MagX')
+        my = mag.get('MagY')
+        mz = mag.get('MagZ')
+        if mx is None or my is None or mz is None:
+            continue
+
+        roll_deg, pitch_deg = _nearest(att_times, att_sorted, t, 'Roll', 'Pitch')
+        if roll_deg is None or pitch_deg is None:
+            continue
+
+        roll  = math.radians(float(roll_deg))
+        pitch = math.radians(float(pitch_deg))
+
+        # Rotate body → Earth (remove roll + pitch tilt, ignore yaw since
+        # Earth-field horizontal direction is constant during the flight)
+        cp, sp = math.cos(pitch), math.sin(pitch)
+        cr, sr = math.cos(roll),  math.sin(roll)
+        ex =  cp*mx + sp*sr*my + sp*cr*mz
+        ey =          cr*my    -    sr*mz
+        ez = -sp*mx + cp*sr*my + cp*cr*mz
+
+        # Independent variable
+        if use_current:
+            (raw_curr,) = _nearest(ind_times, ind_sorted, t, 'Curr')
+            if raw_curr is None:
+                (raw_curr,) = _nearest(ind_times, ind_sorted, t, 'I')
+            ind_val = float(raw_curr) if raw_curr is not None else None
+        else:
+            c1, c2, c3, c4 = _nearest(ind_times, ind_sorted, t, 'C1', 'C2', 'C3', 'C4')
+            vals = [v for v in (c1, c2, c3, c4) if v is not None]
+            if not vals:
+                continue
+            ind_val = (sum(vals) / len(vals) - 1000.0) / 1000.0  # 0-1
+
+        if ind_val is None or ind_val < 0:
+            continue
+
+        samples.append((float(ind_val), float(ex), float(ey), float(ez)))
+
+    if len(samples) < 50:
+        return jsonify({
+            'status': 'error',
+            'message': f'Insufficient aligned samples ({len(samples)}). '
+                       'Log needs both MAG and throttle/current data across a range of throttle levels.'
+        }), 400
+
+    # ── Least-squares fit: earth_mag = k * ind + c ───────────────────────
+    ind_arr = np.array([s[0] for s in samples])
+    ex_arr  = np.array([s[1] for s in samples])
+    ey_arr  = np.array([s[2] for s in samples])
+    ez_arr  = np.array([s[3] for s in samples])
+
+    A = np.column_stack([ind_arr, np.ones(len(samples))])  # [ind, 1]
+
+    def _lstsq(Y):
+        coefs, _, _, _ = np.linalg.lstsq(A, Y, rcond=None)
+        pred   = A @ coefs
+        ss_res = float(np.sum((Y - pred) ** 2))
+        ss_tot = float(np.sum((Y - float(np.mean(Y))) ** 2))
+        r2     = 1.0 - ss_res / ss_tot if ss_tot > 1e-9 else 0.0
+        return float(coefs[0]), float(coefs[1]), round(r2, 3)
+
+    k_x, c_x, r2_x = _lstsq(ex_arr)
+    k_y, c_y, r2_y = _lstsq(ey_arr)
+    k_z, c_z, r2_z = _lstsq(ez_arr)
+
+    avg_r2  = (r2_x + r2_y + r2_z) / 3.0
+    quality = 'good' if avg_r2 > 0.6 else ('fair' if avg_r2 > 0.3 else 'poor')
+
+    # ── Downsample scatter to ≤ 600 points for the chart ─────────────────
+    max_pts = 600
+    step    = max(1, len(samples) // max_pts)
+    scatter = []
+    for i in range(0, len(samples), step):
+        ind, ex, ey, ez = samples[i]
+        scatter.append({
+            'ind':    round(ind, 3),
+            'raw_x':  round(ex, 2),
+            'raw_y':  round(ey, 2),
+            'raw_z':  round(ez, 2),
+            'corr_x': round(ex - k_x * ind, 2),
+            'corr_y': round(ey - k_y * ind, 2),
+            'corr_z': round(ez - k_z * ind, 2),
+        })
+
+    return jsonify({
+        'status':       'success',
+        'k_x':          round(k_x, 4),
+        'k_y':          round(k_y, 4),
+        'k_z':          round(k_z, 4),
+        'r2_x':         r2_x,
+        'r2_y':         r2_y,
+        'r2_z':         r2_z,
+        'quality':      quality,
+        'sample_count': len(samples),
+        'use_current':  use_current,
+        'ind_label':    ind_label,
+        'ind_max':      round(float(np.max(ind_arr)), 2),
+        'scatter':      scatter,
+    })
+
+
 @app.route('/api/log_message/<msg_type>', methods=['GET'])
 def get_log_message_data(msg_type):
     """Return parsed data for a specific message type."""
@@ -2367,6 +2626,74 @@ def update_system_health():
                 rc_uart = f"SERIAL{i}"
                 break
 
+        # Hardware inventory — detect sensor models from device IDs + system stats
+        _GYRO_TYPES = {
+            0x01: "ICM-42688", 0x02: "ICM-42605", 0x09: "BMI160",
+            0x10: "L3GD20",    0x11: "ICM-20608", 0x16: "ICM-20689",
+            0x17: "ICM-20602", 0x21: "MPU-6000",  0x24: "MPU-9250",
+            0x28: "BMI270",    0x2B: "ICM-42670",  0x32: "ICM-45686",
+        }
+        _BARO_TYPES = {
+            0x01: "BMP280",  0x02: "BMP388",   0x03: "DPS310",
+            0x04: "MS5611",  0x05: "MS5607",   0x06: "TSYS01",
+            0x07: "ICP-10111", 0x09: "SPL06",  0x0A: "BMP390",
+        }
+        _COMPASS_TYPES = {
+            0x01: "HMC5843", 0x02: "HMC5883",  0x03: "LSM303D",
+            0x04: "IST8310", 0x05: "LSM9DS1",  0x06: "AK8963",
+            0x07: "RM3100",  0x08: "QMC5883",  0x09: "AK09916",
+            0x0A: "MMC3416", 0x0C: "IST8308",  0x0D: "MMC5883",
+        }
+        _GPS_TYPES = {
+            0: "None", 1: "Auto", 2: "uBlox", 3: "MTK", 4: "MTK19",
+            5: "NMEA", 6: "SiRF", 7: "HIL", 8: "SwiftNav", 9: "DroneCAN",
+            11: "NTRIP", 14: "HERE", 15: "BLH", 16: "uBlox-MB",
+            17: "NOVA", 19: "Unicore", 21: "HERE3", 24: "Trimble",
+        }
+
+        def _devid_name(devid, lookup):
+            try:
+                devid = int(float(devid or 0))
+            except (TypeError, ValueError):
+                devid = 0
+            if devid == 0:
+                return "—"
+            bus_type = devid & 0x3F          # bits 0-5: 1=I2C 2=SPI 3=UAVCAN 4=SITL
+            dev_type = (devid >> 18) & 0x3F  # bits 18-23: chip model
+            if bus_type == 4:
+                return "Simulated"
+            return lookup.get(dev_type, f"ID:{devid:#010x}")
+
+        flat_params = getattr(validator, 'params_dict', {})
+        try:
+            gps_type_val = int(float(flat_params.get("GPS_TYPE", 0) or 0))
+        except (TypeError, ValueError):
+            gps_type_val = 0
+        hardware_inventory = {
+            "imu":           _devid_name(flat_params.get("INS_GYRO_ID", 0), _GYRO_TYPES),
+            "baro":          _devid_name(flat_params.get("BARO1_DEVID", 0), _BARO_TYPES),
+            "compass":       _devid_name(flat_params.get("COMPASS_DEV_ID", 0), _COMPASS_TYPES),
+            "gps":           _GPS_TYPES.get(gps_type_val, f"Type {gps_type_val}"),
+            "esc_protocol":  esc_protocol,
+            "cpu_load":      None,
+            "free_ram_kb":   None,
+            "drop_rate":     None,
+            "flash_total_mb": None,
+            "flash_used_mb":  None,
+        }
+        sys_msg = mavlink_buffer.get("SYS_STATUS")
+        if sys_msg:
+            raw_load = sys_msg.get("load", 0)
+            hardware_inventory["cpu_load"]  = round(raw_load / 10.0, 1)
+            hardware_inventory["drop_rate"] = round(sys_msg.get("drop_rate_comm", 0) / 100.0, 1)
+        mem_msg = mavlink_buffer.get("MEMINFO")
+        if mem_msg:
+            hardware_inventory["free_ram_kb"] = round(mem_msg.get("freemem", 0) / 1024)
+        storage_msg = mavlink_buffer.get("STORAGE_INFORMATION")
+        if storage_msg:
+            hardware_inventory["flash_total_mb"] = round(storage_msg.get("total_capacity", 0))
+            hardware_inventory["flash_used_mb"]  = round(storage_msg.get("used_capacity", 0))
+
         # Extract ATTITUDE data (roll/pitch/yaw in degrees)
         attitude_msg = mavlink_buffer.get("ATTITUDE")
         if attitude_msg:
@@ -2516,6 +2843,7 @@ def update_system_health():
             "servo_outputs": servo_outputs,
             "preflight": preflight_checks,
             "overall_readiness": overall_readiness,
+            "hardware": hardware_inventory,
         }
 
         # Add MAVLink link latency from TIMESYNC
@@ -2534,10 +2862,20 @@ def update_system_health():
         
         # Update parameter progress from validator
         if hasattr(validator, 'param_progress'):
+            downloaded = len(validator.params_dict)
+            total = validator.param_count
+            progress = validator.param_progress
+            if total > 0 and downloaded >= total:
+                param_status = "Complete"
+            elif progress > 0:
+                param_status = "Downloading..."
+            else:
+                param_status = "Not Started"
             last_system_health["params"] = {
-                "percentage": validator.param_progress,
-                "downloaded": len(validator.params_dict),
-                "total": validator.param_count
+                "percentage": progress,
+                "downloaded": downloaded,
+                "total": total,
+                "status": param_status
             }
 
         # Broadcast system health to all connected clients
@@ -2685,7 +3023,7 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
     # Start the Flask server in a new thread
     def run_server():
         logger.info(f"Starting web server on {host}:{port}")
-        socketio.run(app, host=host, port=port, debug=debug, use_reloader=False)
+        socketio.run(app, host=host, port=port, debug=debug, use_reloader=False, allow_unsafe_werkzeug=True)
 
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
@@ -2697,4 +3035,4 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
 if __name__ == "__main__":
     # This allows running the web server standalone for testing
     print("Starting web server in standalone mode (no backend)")
-    socketio.run(app, host='127.0.0.1', port=5000, debug=True, use_reloader=False)
+    socketio.run(app, host='127.0.0.1', port=5000, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
