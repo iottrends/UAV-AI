@@ -44,6 +44,8 @@ UAV-AI is built for pilots who don't want to carry a laptop to the field, ArduPi
 - Executes MAVLink commands directly from AI response (arm, disarm, RTL, motor test)
 - **AI Analyst** — query flight logs in natural language after a flight
 - **Proactive context** — JARVIS knows your firmware version, sensor suite, and recent flight data
+- **Proactive alerts** — toast notifications for critical events (vibration spike, battery low, GPS degraded)
+- **Voice input** — dual-path: browser microphone (any device) or RPi local mic hat; transcribed via Gemini audio API
 
 ### Dashboard & Hardware Inventory
 - Real-time battery, GPS, compass, IMU, barometer telemetry at 2Hz
@@ -106,6 +108,20 @@ Three sub-tabs inside the Tuning tab:
 ### Serial Ports
 - View and configure all serial ports on the flight controller
 - Protocol assignment per port (MAVLink, GPS, RCIN, ESC telemetry, etc.)
+- Read → Preview diff → Apply → Verify → Reboot workflow (MAVLink reboot command sent automatically)
+
+### Drone View & Video
+- Real-time 3D attitude model (Three.js) with live roll/pitch/yaw
+- MJPEG video proxy — USB camera, RTSP, or wfb-ng H.264/UDP stream
+- Switchable 3D View / Video Feed with source preset buttons
+- Gamepad / Joystick RC override via Gamepad API (axes → RC_CHANNELS_OVERRIDE at 50Hz)
+
+### Flight Report
+- One-click HTML report from any loaded `.bin` log
+- Altitude and battery voltage charts (Chart.js)
+- Mode timeline with colour-coded segments
+- Vibration pass/warn/fail table, error log, GPS stats
+- Fully self-contained — share the HTML file with no dependencies
 
 ### Configuration Snapshots
 - Save named parameter snapshots ("good tune 2026-02-20")
@@ -333,13 +349,18 @@ UAV-AI/
 | B.2 | Tuning: Filter Visualizer (Bode plots) | ✅ Done |
 | B.3 | Tuning: Step Predictor + Flight Feel | ✅ Done |
 | C.1 | Calibration: MAGFit Motor Interference Wizard | ✅ Done |
-| D.1 | Proactive JARVIS alerts (vibration, battery, GPS) | 🔜 Next |
-| D.2 | JARVIS voice input (Web Speech API) | 🔜 |
-| D.3 | Preflight AI checklist | 🔜 |
-| E.1 | Live telemetry plotter (user-configurable channels) | 🔜 |
-| E.2 | Flight report export (HTML/PDF) | 🔜 |
-| F.1 | Video stream + HUD (MJPEG / wfb-ng / RTSP) | 🔜 |
-| F.2 | Joystick / Gamepad support | 🔜 |
+| D.1 | Proactive JARVIS alerts (vibration, battery, GPS) | ✅ Done |
+| D.2 | JARVIS voice input — dual-path (browser mic + RPi local mic via Gemini audio API) | ✅ Done |
+| D.3 | Preflight AI checklist (GPS fix, battery, RC, EKF, pre-arm errors) | ✅ Done |
+| E.1 | Live OSD telemetry overlay on Drone View | ✅ Done |
+| E.2 | Flight report export (self-contained HTML with charts) | ✅ Done |
+| F.1 | Video stream + HUD (MJPEG proxy — USB cam, RTSP, wfb-ng H.264/UDP) | ✅ Done |
+| F.2 | Joystick / Gamepad RC override (Gamepad API → RC_CHANNELS_OVERRIDE) | ✅ Done |
+| — | Parameter category filter chips (semantic grouping of 700+ params) | ✅ Done |
+| — | Multi-client connection state sync (ribbon correct on all browsers) | ✅ Done |
+| — | Light / dark theme toggle with localStorage persistence | ✅ Done |
+| — | Serial Ports: Save & Reboot (MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN) | ✅ Done |
+| — | Firmware flashing (APJ online + local, DFU/STM32, auto-bootloader entry) | ✅ Done |
 | G.1 | Basic mission planner (Leaflet map + waypoints) | 🔜 |
 
 ---
