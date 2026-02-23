@@ -1298,6 +1298,12 @@
                      <div class="drone-heading-display">HDG <span id="dvHeading">0</span>&deg;</div>
                      <div class="drone-hud-badge drone-armed-badge disarmed" id="dvArmedBadge">DISARMED</div>
                   </div>
+                  <!-- View toggle: 3D Model ↔ Video Feed -->
+                  <div class="dv-view-toggle">
+                     <button class="dv-view-btn active" id="dvBtn3d">3D View</button>
+                     <button class="dv-view-btn" id="dvBtnVideo">Video Feed</button>
+                  </div>
+
                   <!-- Main area: altitude | canvas | climb -->
                   <div class="drone-main-area">
                      <div class="drone-altitude-panel">
@@ -1307,6 +1313,8 @@
                      </div>
                      <div class="drone-canvas-wrapper" id="dvCanvasWrapper">
                         <div id="dv3dContainer"></div>
+                        <!-- Video feed img — src set by JS when video mode is active -->
+                        <img id="dvVideoFeed" class="dv-video-feed" alt="Video feed" style="display:none;">
                      </div>
                      <div class="drone-altitude-panel">
                         <div class="drone-altitude-label">V/S</div>
@@ -1348,6 +1356,21 @@
                   <button class="drone-osd-config-btn" id="dvOsdConfigBtn" title="Configure OSD fields">
                      <i class="fas fa-cog"></i> OSD
                   </button>
+
+                  <!-- Video source config bar (visible in both modes) -->
+                  <div class="dv-src-bar" id="dvSrcBar">
+                     <span class="dv-src-label">Source</span>
+                     <input class="dv-src-input" id="dvSrcInput"
+                            type="text"
+                            placeholder="0  ·  usb:1  ·  rtsp://…  ·  udp://0.0.0.0:5600"
+                            title="Device index, RTSP URL, or UDP address">
+                     <button class="dv-preset-btn" data-src="0"                  title="First USB camera">USB 0</button>
+                     <button class="dv-preset-btn" data-src="1"                  title="Second USB camera">USB 1</button>
+                     <button class="dv-preset-btn" data-src="udp://0.0.0.0:5600" title="wfb-ng H.264 on UDP 5600">UDP 5600</button>
+                     <button class="dv-src-start btn-accent" id="dvSrcStart" title="Start stream">&#9654;</button>
+                     <button class="dv-src-stop"              id="dvSrcStop"  title="Stop stream">&#9632;</button>
+                     <span class="dv-src-status" id="dvSrcStatus"></span>
+                  </div>
                </div>
             </div>
 

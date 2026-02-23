@@ -15,6 +15,8 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from log_parser import LogParser
 import copilot
+from video_streamer import video_streamer
+from flask import Response
 
 
 def _resource_path(relative_path):
@@ -388,6 +390,36 @@ def disconnect_drone():
 @app.route('/test')
 def test():
     return "Web server is working!"
+
+
+@app.route('/api/video_stream')
+def api_video_stream():
+    """MJPEG stream — browser points an <img> src here."""
+    return Response(
+        video_streamer.generate_mjpeg(),
+        mimetype='multipart/x-mixed-replace; boundary=frame',
+    )
+
+
+@app.route('/api/video_source', methods=['GET'])
+def api_video_source_get():
+    """Return current video source info and status."""
+    return jsonify(video_streamer.info())
+
+
+@app.route('/api/video_source', methods=['POST'])
+def api_video_source_set():
+    """Open a video source or stop streaming.
+    Body: { "source": "0" | "rtsp://..." | "udp://0.0.0.0:5600" | "" }
+    Empty source string → stop.
+    """
+    data   = request.get_json(force=True) or {}
+    source = data.get('source', '').strip()
+    if not source:
+        video_streamer.stop()
+        return jsonify({'status': 'stopped'})
+    video_streamer.open(source)
+    return jsonify({'status': 'opening', 'source': source})
 
 
 @app.route('/api/voice_capability', methods=['GET'])

@@ -1360,6 +1360,116 @@ padding: 0.5rem;
     display: block;
     background: transparent;
 }
+
+/* ── View toggle ──────────────────────────────────────── */
+.dv-view-toggle {
+    display: flex;
+    gap: 0.3rem;
+    background: var(--surface-3);
+    border-radius: var(--radius-control);
+    padding: 3px;
+}
+.dv-view-btn {
+    padding: 0.25rem 0.9rem;
+    border: none;
+    border-radius: calc(var(--radius-control) - 2px);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.dv-view-btn.active {
+    background: var(--accent);
+    color: #fff;
+}
+.dv-view-btn:not(.active):hover {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+}
+
+/* ── MJPEG video feed img ────────────────────────────── */
+.dv-video-feed {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+    background: #000;
+}
+
+/* ── Video source config bar ─────────────────────────── */
+.dv-src-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 620px;
+    padding: 0.45rem 0.6rem;
+    background: var(--surface-2);
+    border-radius: var(--radius-control);
+    border: 1px solid var(--border);
+}
+.dv-src-label {
+    font-size: var(--text-xs);
+    color: var(--text-dim);
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.dv-src-input {
+    flex: 1;
+    min-width: 160px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    padding: 0.2rem 0.5rem;
+}
+.dv-preset-btn {
+    padding: 0.2rem 0.5rem;
+    font-size: var(--text-xs);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+.dv-preset-btn:hover { background: var(--surface-3); color: var(--text-primary); }
+.dv-src-start {
+    padding: 0.2rem 0.65rem;
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius-control);
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: opacity 0.15s;
+}
+.dv-src-start:hover { opacity: 0.85; }
+.dv-src-stop {
+    padding: 0.2rem 0.6rem;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    color: var(--danger-color);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.dv-src-stop:hover { background: var(--surface-3); }
+.dv-src-status {
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+.dv-src-status.streaming { color: #4ade80; }
+.dv-src-status.connecting { color: var(--warning-color); }
+.dv-src-status.error      { color: var(--danger-color); }
 .drone-attitude-readout {
     display: flex;
     gap: 2rem;

@@ -525,12 +525,152 @@
         }
     }
 
+    // ===== Video feed / source config =====
+    var _videoMode     = false;
+    var _statusPollId  = null;
+
+    function initVideo() {
+        var btn3d      = document.getElementById('dvBtn3d');
+        var btnVideo   = document.getElementById('dvBtnVideo');
+        var container3d = document.getElementById('dv3dContainer');
+        var videoImg   = document.getElementById('dvVideoFeed');
+        var srcInput   = document.getElementById('dvSrcInput');
+        var srcStart   = document.getElementById('dvSrcStart');
+        var srcStop    = document.getElementById('dvSrcStop');
+        var srcStatus  = document.getElementById('dvSrcStatus');
+
+        if (!btn3d || !btnVideo) return;
+
+        // Preset buttons fill the input
+        var presets = document.querySelectorAll('.dv-preset-btn');
+        presets.forEach(function(b) {
+            b.addEventListener('click', function() {
+                if (srcInput) srcInput.value = b.getAttribute('data-src');
+            });
+        });
+
+        // Start button
+        if (srcStart) {
+            srcStart.addEventListener('click', function() {
+                var src = srcInput ? srcInput.value.trim() : '';
+                if (!src) return;
+                fetch('/api/video_source', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source: src }),
+                }).then(function() {
+                    // Auto-switch to video view
+                    setView('video');
+                    startStatusPoll();
+                });
+            });
+        }
+
+        // Stop button
+        if (srcStop) {
+            srcStop.addEventListener('click', function() {
+                fetch('/api/video_source', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source: '' }),
+                }).then(function() {
+                    stopStatusPoll();
+                    if (srcStatus) { srcStatus.textContent = 'Stopped'; srcStatus.className = 'dv-src-status'; }
+                    if (videoImg)  { videoImg.src = ''; }
+                });
+            });
+        }
+
+        // Toggle buttons
+        btn3d.addEventListener('click', function() { setView('3d'); });
+        btnVideo.addEventListener('click', function() {
+            setView('video');
+            // Re-attach src in case it was cleared
+            if (videoImg && !videoImg.src.includes('/api/video_stream')) {
+                videoImg.src = '/api/video_stream';
+            }
+            startStatusPoll();
+        });
+
+        // Restore previously running source on page load
+        fetch('/api/video_source')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.source) {
+                    if (srcInput) srcInput.value = d.source;
+                }
+                if (d.status === 'streaming' || d.status === 'connecting') {
+                    startStatusPoll();
+                }
+                updateStatusBadge(d, srcStatus);
+            })
+            .catch(function() {});
+    }
+
+    function setView(mode) {
+        _videoMode = (mode === 'video');
+        var btn3d     = document.getElementById('dvBtn3d');
+        var btnVideo  = document.getElementById('dvBtnVideo');
+        var cont3d    = document.getElementById('dv3dContainer');
+        var videoImg  = document.getElementById('dvVideoFeed');
+
+        if (btn3d)    btn3d.classList.toggle('active', !_videoMode);
+        if (btnVideo) btnVideo.classList.toggle('active', _videoMode);
+
+        if (_videoMode) {
+            if (cont3d)   cont3d.style.display = 'none';
+            if (videoImg) { videoImg.style.display = 'block'; videoImg.src = '/api/video_stream'; }
+        } else {
+            if (cont3d)   cont3d.style.display = '';
+            if (videoImg) { videoImg.style.display = 'none'; videoImg.src = ''; }
+        }
+    }
+
+    function startStatusPoll() {
+        if (_statusPollId) return;
+        _statusPollId = setInterval(function() {
+            fetch('/api/video_source')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var el = document.getElementById('dvSrcStatus');
+                    updateStatusBadge(d, el);
+                })
+                .catch(function() {});
+        }, 2000);
+    }
+
+    function stopStatusPoll() {
+        if (_statusPollId) { clearInterval(_statusPollId); _statusPollId = null; }
+    }
+
+    function updateStatusBadge(info, el) {
+        if (!el) return;
+        var s = info.status;
+        if (s === 'streaming') {
+            var res = info.resolution ? info.resolution[0] + 'x' + info.resolution[1] : '';
+            el.textContent = '● ' + (info.fps || 0) + ' fps' + (res ? '  ' + res : '');
+            el.className = 'dv-src-status streaming';
+        } else if (s === 'connecting') {
+            el.textContent = '⟳ connecting…';
+            el.className = 'dv-src-status connecting';
+        } else if (s === 'error') {
+            el.textContent = '✕ error';
+            el.className = 'dv-src-status error';
+        } else {
+            el.textContent = 'idle';
+            el.className = 'dv-src-status';
+        }
+    }
+
     // ===== Init =====
     function init() {
         // Register system status hook
         if (window._app && window._app.systemStatusHooks) {
             window._app.systemStatusHooks.push(onSystemStatus);
         }
+
+        // Video source config
+        initVideo();
 
         // OSD config button
         var configBtn = document.getElementById('dvOsdConfigBtn');
