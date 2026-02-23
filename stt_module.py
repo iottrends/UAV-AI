@@ -1,156 +1,177 @@
+"""
+stt_module.py — Dual-path Speech-to-Text using Gemini as the transcription engine.
+
+Path A  (server mic)  : PyAudio records from the RPi's local mic (mic HAT / USB mic).
+                        Raw PCM is wrapped in WAV and sent to Gemini for transcription.
+Path B  (browser mic) : The browser captures audio via MediaRecorder and sends the
+                        WebM/Opus blob to the server via the 'voice_audio_blob' socket
+                        event.  transcribe_audio_bytes() handles it the same way.
+
+Both paths use the same GEMINI_API_KEY already in .env — no extra credentials needed.
+"""
+
 import os
 import io
-import pyaudio
+import wave
+import base64
 import threading
-import collections
-import time
 import logging
-from google.cloud import speech_v1p1beta1 as speech
-from google.oauth2 import service_account
 
-# Configure logging for this module
+import google.generativeai as genai
+
+try:
+    import pyaudio
+    _PYAUDIO_AVAILABLE = True
+except ImportError:
+    _PYAUDIO_AVAILABLE = False
+
 stt_logger = logging.getLogger('stt_module')
 
-# Audio recording parameters
-RATE = 16000  # Sample rate (Hz)
-CHUNK = int(RATE / 10)  # 100ms chunks
-FORMAT = pyaudio.paInt16
-CHANNELS = 1
+# Audio recording constants (Path A)
+_RATE     = 16000
+_CHUNK    = int(_RATE / 10)   # 100 ms chunks
+_CHANNELS = 1
+
 
 class SpeechToTextRecorder:
-    """Manages audio recording and sends to Google Cloud Speech-to-Text API."""
+    """
+    Dual-path STT recorder.
+
+    Public API
+    ----------
+    has_local_mic()                       → bool
+    transcribe_audio_bytes(bytes, mime)   → (transcript, error)   used by both paths
+    start_recording(callback)             → bool                   Path A
+    stop_recording_and_transcribe()                                Path A
+    close()
+    """
 
     def __init__(self):
-        self._buff = collections.deque()
-        self._closing = False
-        self._audio_interface = pyaudio.PyAudio()
-        self._audio_stream = None
-        self._closed = True # Indicates if the stream is truly closed
-        self._listening_thread = None
-        self._transcription_callback = None
-        self._current_audio_data = [] # Buffer for current recording session
+        self._callback  = None
+        self._frames    = []
+        self._recording = False
+        self._stream    = None
+        self._audio     = None
 
-        # Google Cloud Speech-to-Text client setup
-        self.speech_client = self._get_speech_client()
-        if self.speech_client:
-            stt_logger.info("Google Cloud Speech-to-Text client initialized.")
-        else:
-            stt_logger.error("Failed to initialize Google Cloud Speech-to-Text client. Check GOOGLE_APPLICATION_CREDENTIALS.")
-
-    def _get_speech_client(self):
-        """Initializes Google Cloud Speech-to-Text client using service account credentials."""
-        credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if credentials_path and os.path.exists(credentials_path):
+        # Try to open the default input device (fails gracefully if no mic)
+        if _PYAUDIO_AVAILABLE:
             try:
-                credentials = service_account.Credentials.from_service_account_file(credentials_path)
-                return speech.SpeechClient(credentials=credentials)
-            except Exception as e:
-                stt_logger.error(f"Error loading Google Cloud credentials from {credentials_path}: {e}")
-                return None
-        else:
-            stt_logger.warning("GOOGLE_APPLICATION_CREDENTIALS environment variable not set or file not found. "
-                               "Google Cloud Speech-to-Text will not function.")
-            return None
+                pa = pyaudio.PyAudio()
+                pa.get_default_input_device_info()   # raises if no device
+                self._audio = pa
+                stt_logger.info("Local mic detected — Path A available")
+            except Exception:
+                stt_logger.warning("No local mic detected — Path A unavailable")
 
-    def _listen_continuously(self):
-        """Continuously listens to audio and puts chunks in a buffer."""
-        stt_logger.debug("Starting continuous audio capture.")
-        while not self._closing:
-            try:
-                chunk_data = self._audio_stream.read(CHUNK, exception_on_overflow=False)
-                self._buff.append(chunk_data)
-            except Exception as e:
-                stt_logger.error(f"Error reading audio stream: {e}")
-                self._closing = True # Force close on error
-        stt_logger.debug("Continuous audio capture stopped.")
+    # ── Public ────────────────────────────────────────────────────────────
 
-    def start_recording(self, transcription_callback=None):
-        """Starts recording audio from the microphone."""
-        if not self.speech_client:
-            stt_logger.error("Speech-to-Text client not initialized. Cannot start recording.")
-            return False
+    def has_local_mic(self) -> bool:
+        return self._audio is not None
 
-        if self._audio_stream and not self._closed:
-            stt_logger.warning("Recording already in progress.")
-            return True
-
-        self._transcription_callback = transcription_callback
-        self._buff.clear()
-        self._current_audio_data = [] # Clear buffer for new recording
-        self._closing = False
-
-        self._audio_stream = self._audio_interface.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=RATE,
-            input=True,
-            frames_per_buffer=CHUNK,
-            stream_callback=self._audio_callback
-        )
-        self._closed = False
-        self._audio_stream.start_stream()
-        stt_logger.info("Audio recording started.")
-        return True
-
-    def _audio_callback(self, in_data, frame_count, time_info, status):
-        """Callback function for PyAudio stream."""
-        self._current_audio_data.append(in_data)
-        return in_data, pyaudio.paContinue
-
-    def stop_recording_and_transcribe(self):
-        """Stops recording, collects audio, and sends it for transcription."""
-        if self._closed:
-            stt_logger.warning("No recording in progress to stop.")
-            return None
-
-        self._audio_stream.stop_stream()
-        self._audio_stream.close()
-        self._closed = True
-        stt_logger.info("Audio recording stopped.")
-
-        audio_content = b''.join(self._current_audio_data)
-        self._current_audio_data = [] # Clear for next recording
-
-        if not audio_content:
-            stt_logger.warning("No audio data recorded for transcription.")
-            return None
-
-        stt_logger.info(f"Transcribing {len(audio_content)} bytes of audio.")
-        
-        audio = {"content": audio_content}
-        config = {
-            "encoding": speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            "sample_rate_hertz": RATE,
-            "language_code": "en-US",
-            "model": "command_and_search", # Optimized for short commands
-            "speech_contexts": [
-                {"phrases": ["arm the drone", "disarm the drone", "spin motor one", "change motor direction of motor two", "take off", "land", "go home"]}
-            ]
-        }
+    def transcribe_audio_bytes(self, audio_bytes: bytes, mime_type: str = 'audio/wav'):
+        """
+        Send audio bytes to Gemini for transcription.
+        Returns (transcript_str, None) on success or (None, error_str) on failure.
+        Called by both Path A (after local recording) and Path B (browser blob).
+        """
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return None, "GEMINI_API_KEY not configured"
 
         try:
-            response = self.speech_client.recognize(config=config, audio=audio)
-            transcript = ""
-            for result in response.results:
-                transcript += result.alternatives[0].transcript
-            
-            stt_logger.info(f"Transcription received: '{transcript}'")
-            if self._transcription_callback:
-                self._transcription_callback(transcript)
-            return transcript
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
+            response = model.generate_content([
+                "Transcribe this audio accurately. "
+                "Return only the spoken words — no punctuation changes, no explanation.",
+                {"mime_type": mime_type, "data": audio_b64},
+            ])
+            transcript = response.text.strip()
+            stt_logger.info(f"Gemini transcript: '{transcript}'")
+            return transcript, None
         except Exception as e:
-            stt_logger.error(f"Error during Google Cloud Speech-to-Text transcription: {e}")
-            if self._transcription_callback:
-                self._transcription_callback(None, error=str(e))
-            return None
+            stt_logger.error(f"Gemini transcription error: {e}")
+            return None, str(e)
+
+    # ── Path A: local mic ─────────────────────────────────────────────────
+
+    def start_recording(self, transcription_callback=None):
+        """Start recording from the server's local mic (Path A)."""
+        if not self._audio:
+            stt_logger.error("No local mic — Path A unavailable")
+            if transcription_callback:
+                transcription_callback(None, error="No local microphone on server")
+            return False
+
+        if self._recording:
+            return True
+
+        self._callback  = transcription_callback
+        self._frames    = []
+        self._recording = True
+
+        self._stream = self._audio.open(
+            format=pyaudio.paInt16,
+            channels=_CHANNELS,
+            rate=_RATE,
+            input=True,
+            frames_per_buffer=_CHUNK,
+            stream_callback=self._audio_cb,
+        )
+        self._stream.start_stream()
+        stt_logger.info("Path A recording started")
+        return True
+
+    def stop_recording_and_transcribe(self):
+        """Stop local recording and transcribe via Gemini in a background thread."""
+        if not self._recording:
+            return
+
+        self._recording = False
+        if self._stream:
+            self._stream.stop_stream()
+            self._stream.close()
+            self._stream = None
+
+        pcm = b''.join(self._frames)
+        self._frames = []
+
+        if not pcm:
+            if self._callback:
+                self._callback(None, error="No audio captured")
+            return
+
+        wav_bytes = self._pcm_to_wav(pcm)
+        cb = self._callback
+
+        def _run():
+            transcript, err = self.transcribe_audio_bytes(wav_bytes, 'audio/wav')
+            if cb:
+                cb(transcript, error=err)
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    # ── Helpers ───────────────────────────────────────────────────────────
+
+    def _audio_cb(self, in_data, frame_count, time_info, status):
+        self._frames.append(in_data)
+        return in_data, pyaudio.paContinue
+
+    def _pcm_to_wav(self, pcm_bytes: bytes) -> bytes:
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as wf:
+            wf.setnchannels(_CHANNELS)
+            wf.setsampwidth(2)        # 16-bit PCM
+            wf.setframerate(_RATE)
+            wf.writeframes(pcm_bytes)
+        return buf.getvalue()
 
     def close(self):
-        """Closes the PyAudio interface."""
-        if self._audio_interface:
-            self._audio_interface.terminate()
-            self._audio_interface = None
-            stt_logger.info("PyAudio interface terminated.")
+        if self._audio:
+            self._audio.terminate()
+            self._audio = None
 
-# Global instance for easy access, or instantiate as needed
+
+# Module-level singleton — imported by web_server.py
 stt_recorder = SpeechToTextRecorder()
-

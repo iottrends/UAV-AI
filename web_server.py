@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import math
+import base64
 import numpy as np
 import signal
 import threading
@@ -387,6 +388,15 @@ def disconnect_drone():
 @app.route('/test')
 def test():
     return "Web server is working!"
+
+
+@app.route('/api/voice_capability', methods=['GET'])
+def get_voice_capability():
+    """Tell the browser which voice paths are available."""
+    return jsonify({
+        "has_local_mic": bool(stt_module and stt_module.has_local_mic()),
+        "gemini_key_set": bool(os.getenv("GEMINI_API_KEY")),
+    })
 
 ############################################################################
 @app.route('/api/fc_logs', methods=['GET'])
@@ -2027,6 +2037,51 @@ def handle_stop_voice_input():
 
     emit('voice_status', {'status': 'processing'}, room=client_id)
     stt_module.stop_recording_and_transcribe() # Transcription happens via callback
+
+
+@socketio.on('voice_audio_blob')
+def handle_voice_audio_blob(data):
+    """
+    Path B: receive audio recorded in the browser (MediaRecorder blob).
+    data = { 'audio': '<base64>', 'mime_type': 'audio/webm' }
+    """
+    client_id = request.sid
+    stt_logger.info(f"Received browser audio blob from {client_id}")
+
+    if not stt_module:
+        emit('voice_response', {'error': 'STT module not initialized'}, room=client_id)
+        return
+
+    audio_b64 = data.get('audio', '')
+    mime_type  = data.get('mime_type', 'audio/webm')
+
+    if not audio_b64:
+        emit('voice_response', {'error': 'Empty audio blob'}, room=client_id)
+        return
+
+    emit('voice_status', {'status': 'processing'}, room=client_id)
+
+    def _transcribe_and_respond():
+        try:
+            audio_bytes = base64.b64decode(audio_b64)
+        except Exception as e:
+            socketio.emit('voice_response', {'error': f'Invalid audio data: {e}'}, room=client_id)
+            return
+
+        transcript, err = stt_module.transcribe_audio_bytes(audio_bytes, mime_type)
+
+        if err:
+            socketio.emit('voice_response', {'error': err}, room=client_id)
+            return
+        if not transcript:
+            socketio.emit('voice_response', {'message': 'No speech detected'}, room=client_id)
+            return
+
+        # Echo the transcript back so the UI can show what was heard
+        socketio.emit('voice_status', {'status': 'idle', 'transcript': transcript}, room=client_id)
+        process_voice_command(client_id, transcript)
+
+    threading.Thread(target=_transcribe_and_respond, daemon=True).start()
 
 def process_voice_command(client_id, query):
     """Processes a transcribed voice command through JARVIS or co-pilot fast-path."""

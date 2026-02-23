@@ -210,6 +210,7 @@ document.addEventListener('DOMContentLoaded', function() {
       console.log('Connecting to WebSocket at ' + socketUrl);
       const socket = io(socketUrl);
       window._app.socket = socket;
+      _dispatchSocketReady();
 
       socket.on('connect', function() {
          console.log('WebSocket connected');
@@ -665,6 +666,171 @@ document.addEventListener('DOMContentLoaded', function() {
       time: window._app.getCurrentTime()
    });
 });
+
+// ── Voice Input (D.2) ───────────────────────────────────────────────────
+// Dual-path: Path B (browser mic → MediaRecorder → Gemini via server) is tried
+// first.  If the browser has no mic or permission is denied, Path A (server/RPi
+// local mic via pyaudio) is used as fallback.
+(function initVoice() {
+   var btn           = document.getElementById('voiceButton');
+   var indicator     = document.getElementById('voiceStatusIndicator');
+   if (!btn) return;
+
+   var _mediaRecorder  = null;
+   var _chunks         = [];
+   var _pathAActive    = false;   // true when Path A recording is in progress
+   var _hasBrowserMic  = !!navigator.mediaDevices;
+   var _hasServerMic   = false;
+   var _mimeType       = 'audio/webm';
+
+   // Probe server capabilities once on load
+   fetch('/api/voice_capability')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+         _hasServerMic = d.has_local_mic;
+         if (!_hasBrowserMic && !_hasServerMic) {
+            btn.title = 'No microphone available';
+            btn.disabled = true;
+         }
+      })
+      .catch(function() {});
+
+   // ── Socket events ────────────────────────────────────────────────────
+   document.addEventListener('_socketReady', function() {
+      var socket = window._app.socket;
+      if (!socket) return;
+
+      socket.on('voice_status', function(data) {
+         if (data.status === 'listening') {
+            _setIndicator('listening', 'Listening…');
+         } else if (data.status === 'processing') {
+            _setIndicator('processing', 'Transcribing…');
+         } else if (data.status === 'idle') {
+            _setIndicator('', '');
+            // Show transcript in chat input so user can see what was heard
+            if (data.transcript) {
+               var inp = document.getElementById('chatInput');
+               if (inp) inp.value = data.transcript;
+            }
+         }
+      });
+
+      socket.on('voice_response', function(data) {
+         _setIndicator('', '');
+         btn.classList.remove('recording');
+         _pathAActive = false;
+
+         if (data.error) {
+            window._app.addMessage({
+               text: '<strong>Voice:</strong> Error — ' + _escHtml(data.error),
+               time: window._app.getCurrentTime()
+            }, false);
+            return;
+         }
+         if (data.message) {
+            window._app.addMessage({
+               text: '<strong>Voice:</strong> ' + _escHtml(data.message),
+               time: window._app.getCurrentTime()
+            }, false);
+            return;
+         }
+         // Render the JARVIS response through the normal renderer
+         if (data.response) {
+            var rendered = (typeof renderJarvisResponse === 'function')
+               ? renderJarvisResponse(data.response)
+               : '<pre>' + _escHtml(JSON.stringify(data.response, null, 2)) + '</pre>';
+            window._app.addMessage({ text: rendered, time: window._app.getCurrentTime() }, false);
+         }
+      });
+   });
+
+   // ── Button click ─────────────────────────────────────────────────────
+   btn.addEventListener('click', function() {
+      if (_mediaRecorder && _mediaRecorder.state === 'recording') {
+         // Path B: stop
+         _mediaRecorder.stop();
+         return;
+      }
+      if (_pathAActive) {
+         // Path A: stop
+         _stopPathA();
+         return;
+      }
+
+      // Start — try Path B first
+      if (_hasBrowserMic) {
+         navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function(stream) { _startPathB(stream); })
+            .catch(function() {
+               // Permission denied or no mic — fall back to Path A
+               if (_hasServerMic) { _startPathA(); }
+               else { _setIndicator('error', 'No mic available'); }
+            });
+      } else if (_hasServerMic) {
+         _startPathA();
+      }
+   });
+
+   // ── Path B helpers ───────────────────────────────────────────────────
+   function _startPathB(stream) {
+      _chunks = [];
+      // Pick best supported MIME type
+      var candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg'];
+      for (var i = 0; i < candidates.length; i++) {
+         if (MediaRecorder.isTypeSupported(candidates[i])) {
+            _mimeType = candidates[i].split(';')[0]; // strip codec param for Gemini
+            break;
+         }
+      }
+
+      _mediaRecorder = new MediaRecorder(stream, { mimeType: candidates[0] || '' });
+      _mediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) _chunks.push(e.data); };
+      _mediaRecorder.onstop = function() {
+         stream.getTracks().forEach(function(t) { t.stop(); });
+         btn.classList.remove('recording');
+         _setIndicator('processing', 'Transcribing…');
+         var blob = new Blob(_chunks, { type: _mimeType });
+         var reader = new FileReader();
+         reader.onloadend = function() {
+            // reader.result is "data:<mime>;base64,<data>" — extract just the data
+            var b64 = reader.result.split(',')[1];
+            if (window._app.socket) {
+               window._app.socket.emit('voice_audio_blob', { audio: b64, mime_type: _mimeType });
+            }
+         };
+         reader.readAsDataURL(blob);
+      };
+      _mediaRecorder.start();
+      btn.classList.add('recording');
+      _setIndicator('listening', 'Listening… (tap again to stop)');
+   }
+
+   // ── Path A helpers ───────────────────────────────────────────────────
+   function _startPathA() {
+      if (!window._app.socket) return;
+      _pathAActive = true;
+      btn.classList.add('recording');
+      window._app.socket.emit('start_voice_input');
+      _setIndicator('listening', 'Server mic — tap again to stop');
+   }
+   function _stopPathA() {
+      _pathAActive = false;
+      btn.classList.remove('recording');
+      if (window._app.socket) window._app.socket.emit('stop_voice_input');
+   }
+
+   // ── Indicator helper ─────────────────────────────────────────────────
+   function _setIndicator(state, text) {
+      if (!indicator) return;
+      indicator.textContent = text;
+      indicator.className = 'voice-status-indicator' + (state ? ' voice-' + state : '');
+   }
+})();
+
+// Dispatch _socketReady when socket is wired up (called from initWebSocket)
+function _dispatchSocketReady() {
+   document.dispatchEvent(new Event('_socketReady'));
+}
 
 // Co-pilot badge update
 function updateCopilotBadge(active) {

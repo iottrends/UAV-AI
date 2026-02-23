@@ -601,8 +601,14 @@ transition: background-color 0.2s;
 .voice-button:hover {
 background-color: #27ae60;
 }
-.voice-button.active {
+.voice-button.active,
+.voice-button.recording {
 background-color: var(--danger-color);
+animation: voice-pulse 1s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+   0%, 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.5); }
+   50%       { box-shadow: 0 0 0 8px rgba(231, 76, 60, 0); }
 }
 .voice-status-indicator {
 display: none;
@@ -616,6 +622,14 @@ color: var(--white-color);
 font-size: 0.8rem;
 z-index: 1001;
 }
+.voice-status-indicator.voice-listening,
+.voice-status-indicator.voice-processing,
+.voice-status-indicator.voice-error {
+display: block;
+}
+.voice-status-indicator.voice-listening   { background-color: rgba(231, 76, 60, 0.85); }
+.voice-status-indicator.voice-processing  { background-color: rgba(52, 152, 219, 0.85); }
+.voice-status-indicator.voice-error       { background-color: rgba(192, 57, 43, 0.9); }
 /* Connection modal */
 .modal {
 display: none;
