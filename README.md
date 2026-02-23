@@ -1,448 +1,381 @@
-# UAV-AI — AI-Powered Ground Station for ArduPilot
+# UAV-AI — AI-Powered Ground Control Station for ArduPilot
 
-> Lightweight, web-based ground station with AI diagnostics and voice commands. Runs on a Raspberry Pi Zero 2W, accessible from any phone browser.
+> A web-based GCS that runs on a Raspberry Pi Zero 2W, accessible from any browser on any device. JARVIS — the built-in AI co-pilot — diagnoses flight issues, analyses logs, and guides tuning in plain English.
 
-AI-powered, web-based ground station for ArduPilot. Voice commands, real-time diagnostics, MAVLink over serial/UDP. Runs on RPi Zero 2W, fits in your pocket.
-
-## Demo Videos
-
-#### AI Diagnostics & Voice Commands
-[![UAV-AI Demo 1](https://img.youtube.com/vi/UgpRxgj8m-M/maxresdefault.jpg)](https://www.youtube.com/watch?v=UgpRxgj8m-M)
-
-#### Drone Connection & Telemetry
-[![UAV-AI Demo 2](https://img.youtube.com/vi/JldcjQK7234/maxresdefault.jpg)](https://www.youtube.com/watch?v=JldcjQK7234)
-
-## What's Inside (~3,700 lines of code)
-**MAVLink Layer**
-- Serial, WebSocket, and UDP connections
-- Full parameter list download + progress tracking
-- Heartbeat monitoring with timeout detection
-- TIMESYNC latency measurement
-- COMMAND_LONG send with ACK/NACK/timeout handling
-- Blackbox log download
-- Firmware version + capability parsing
-- Sensor bitmask decoding
-
-**AI Layer**
-- JARVIS powered by Gemini API
-- Sends full categorized param list as context
-- Sends recent MAVLink messages as context
-- Receives structured JSON back with diagnosis + fix commands
-- Executes MAVLink commands directly from AI response (arm/disarm, motor test, takeoff, land)
-
-**Web UI (single HTML file)**
-- Real-time dashboard with battery, GPS, compass, IMU, barometer, motors
-- Parameter viewer with categories
-- Latency monitor with live chart
-- Chat interface for AI
-- Voice command support
-- Serial/UDP connection modal
-- WebSocket for live telemetry push
-
-**Infrastructure**
-- Multi-threaded (MAVLink loop, heartbeat monitor, TIMESYNC, telemetry broadcast)
-- Structured logging (mavlink, web server, AI agent — separate files)
-- SocketIO for real-time frontend updates
-
-## Features
-
-- **Drone Connection**: MAVLink over serial (USB), WebSocket, or UDP/IP (ELRS WiFi backpack)
-- **AI Diagnostics**: Ask JARVIS "What's wrong with my drone?" — it analyzes your full param list + live telemetry and responds with a diagnosis and executable fix commands
-- **Voice Commands**: Tap the mic button, speak, and JARVIS executes MAVLink commands
-- **Real-time Monitoring**: Battery, GPS, compass, IMU, barometer, motors — live on your phone
-- **Parameter Management**: Full parameter download, categorized viewer, direct editing
-- **Latency Monitoring**: MAVLink TIMESYNC-based drone-to-GCS latency with live chart
-- **Hardware Validation**: Automatic pre-flight health checks
-- **Logging**: Separate log files for MAVLink, web server, and AI agent
-
-## System Requirements
-
-- Python 3.8 or higher
-- Windows/Linux/macOS
-- Internet connection (for AI features)
-- Serial port access for drone connection
-
-## Installation
-
-1. Clone this repository:
-   ```
-   git clone https://github.com/yourusername/UAV-AI.git
-   cd UAV-AI
-   ```
-
-2. Create and activate a virtual environment:
-   ```
-   # Windows
-   python -m venv winenv
-   winenv\Scripts\activate
-
-   # Linux/macOS
-   python -m venv myenv
-   source myenv/bin/activate
-   ```
-
-3. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-4. Set up environment variables:
-   Create a `.env` file in the project root with the following:
-   ```
-   GEMINI_API_KEY=your_gemini_api_key_here
-   ```
-
-## Usage (Dev)
-
-1. Start the UAV-AI Assistant:
-   ```
-   python main.py
-   ```
-
-2. The web interface will be available at http://localhost:5000
-
-3. Connect to your drone by selecting the appropriate COM port and baud rate in the web interface
-
-4. Use the terminal interface for direct commands:
-   - `query:your question here` - Ask the AI assistant a question
-   - `exit` - Exit the application
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
+[![ArduPilot](https://img.shields.io/badge/firmware-ArduPilot-orange.svg)](https://ardupilot.org/)
+[![Flask](https://img.shields.io/badge/backend-Flask-black.svg)](https://flask.palletsprojects.com/)
 
 ---
 
-## Field Quickstart (for pilots)
+## Demo Videos
 
-This is the shortest path from "hardware on the bench" to "AI co-pilot in the field".
+| AI Diagnostics & Voice Commands | Drone Connection & Live Telemetry |
+|---|---|
+| [![Demo 1](https://img.youtube.com/vi/UgpRxgj8m-M/maxresdefault.jpg)](https://www.youtube.com/watch?v=UgpRxgj8m-M) | [![Demo 2](https://img.youtube.com/vi/JldcjQK7234/maxresdefault.jpg)](https://www.youtube.com/watch?v=JldcjQK7234) |
 
-### 1. Power up UAV-AI
+---
 
-- Power your Raspberry Pi (or other small computer) running UAV-AI.
-- Make sure **the Pi and your phone/tablet are on the same WiFi**:
-  - Either the Pi auto-joins your **phone hotspot**, or
-  - The Pi is running as a WiFi AP (e.g. `UAV-GS`) and your phone joins that.
-- On your phone/tablet, open a browser and go to:
-  - `http://<pi-ip>:5000`  
-  - Or a hostname you configured, e.g. `http://uav-ai.local`.
+## Why UAV-AI
 
-You should see the **UAV-AI Assistant** UI with a sidebar and dashboard.
+Every ArduPilot pilot knows the pain: something feels off mid-flight, or you just had a crash, and now you're staring at 800 parameters in Mission Planner on a laptop trying to figure out what went wrong.
 
-### 2. Connect to the drone
+**Today's workflow:**
+1. Pull out laptop → connect USB → open Mission Planner
+2. Stare at parameters → Google the error → read ArduPilot wiki for 20 minutes
+3. Maybe fix it. Maybe pack up and go home.
 
-1. Click **"Connect Drone"** in the left sidebar.
-2. Choose how you're connected:
-   - **Serial (USB)**:
-     - Port: the USB device connected to your FC (e.g. `/dev/ttyACM0` or `COM3`).
-     - Baud: usually `115200`.
-   - **IP (UDP)**:
-     - IP: leave as `0.0.0.0` to listen on all interfaces.
-     - Port: typically `14550` (match your ELRS WiFi/telemetry source).
-3. Click **Connect**.
+**With UAV-AI:**
+1. Open phone browser → *"JARVIS, why did it flip on takeoff?"*
+2. *"MOT_SPIN_ARM is too low for your motor/prop combo and SERVO3 output is reversed. Apply fix?"*
+3. *"Yes"* → Fixed → Fly again.
 
-You should see:
+UAV-AI is built for pilots who don't want to carry a laptop to the field, ArduPilot beginners who want plain-English diagnostics, and system integrators doing rapid assembly and validation.
 
-- Header status turn **green** with `Connected`.
-- `Params:` in the header count up from `0%` to `100%` as parameters download.
-- Dashboard widgets (battery, GPS, motors, subsystems) start populating.
+---
 
-### 3. Check health before you fly
+## Feature Overview
 
-On the **Dashboard** tab:
+### JARVIS AI Co-Pilot
+- Natural language diagnosis — ask anything about your drone's health
+- Reads your full parameter set + live MAVLink telemetry as context
+- Returns structured responses: diagnosis, fix commands, recommended params
+- Executes MAVLink commands directly from AI response (arm, disarm, RTL, motor test)
+- **AI Analyst** — query flight logs in natural language after a flight
+- **Proactive context** — JARVIS knows your firmware version, sensor suite, and recent flight data
 
-- **System Health** and **Flight Readiness** give you a quick "can I fly?" signal.
-- Battery, GPS, Compass, RC, Barometer, etc. all show up in the **Subsystem Status** table.
-- The **Firmware Information** card tells you exactly what firmware and capabilities the FC reports.
+### Dashboard & Hardware Inventory
+- Real-time battery, GPS, compass, IMU, barometer telemetry at 2Hz
+- Hardware Inventory card: firmware version, board type, sensor suite, flash/SD storage
+- System health score + preflight readiness (READY / CAUTION / NOT READY)
+- MAVLink latency monitor with live chart (TIMESYNC-based)
+- Preflight checks: GPS fix, battery threshold, RC input, EKF status, pre-arm errors
 
-Use this like a pre-flight checklist:
-- Health high, readiness = READY, no scary red entries → good to arm.
-- Any **CRITICAL** entries → investigate before takeoff.
+### Log Analysis (`.bin` / `.tlog`)
+Three sub-tabs inside the Logs tab:
 
-### 4. Use Co-Pilot for instant commands
+| Sub-tab | What it does |
+|---|---|
+| **Timeline** | Upload log → charts for attitude, altitude, battery, vibration, modes |
+| **Spectrum (FFT)** | Cooley-Tukey FFT on gyro/rate data with Hann window. LPF + HNTCH overlay lines from live params. Peak detection. |
+| **AI Analyst** | Chat with JARVIS about the loaded log. Auto-summary: duration, max altitude, GPS quality, vibration alerts, battery stats, mode sequence, errors. |
 
-Co-pilot is the **fast, local command path**. It does not depend on the cloud.
+### Tuning Tab (Parameters + Analysis)
+Three sub-tabs inside the Tuning tab:
 
-1. Enable co-pilot mode by clicking the **CO-PILOT** badge in the header.
-2. In the chat input (bottom right), try **safe status queries** first:
-   - `gps status`
-   - `what is my battery`
-   - `what mode am i in`
+| Sub-tab | What it does |
+|---|---|
+| **Parameters** | Full parameter table, categorised, searchable, inline edit and apply |
+| **Filter Visualizer** | Bode plot of the full ArduPilot filter stack — Gyro LPF, Static Notch, Harmonic Notch (with harmonics bitmask), D-term LPF, Total response. Series toggles. |
+| **Step Predictor** | Numerical 400Hz PID step response simulation. Flight Feel sliders (Aggressiveness, Smoothness, Position Hold, Stick Feel) map to actual ArduPilot params. Expert P/I/D mode. Apply changes directly to FC. |
 
-These respond instantly using the MAVLink buffer:
+### Motor Interference Wizard (MAGFit)
+- Fits `COMPASS_MOT_X/Y/Z` coefficients from a flight log
+- Rotates MAG data to Earth frame using ATT roll/pitch — removes tilt-induced variation
+- Auto-selects Battery Current (A) as independent variable when available; falls back to throttle
+- `numpy.linalg.lstsq` fit per axis — handles edge cases gracefully
+- **Correction preview chart**: red = raw ΔMag, green = corrected ΔMag — visual confidence before applying
+- R² quality score (Good / Fair / Poor) with sample count
+- Apply button disabled when vehicle is armed — safety guard
 
-- `gps status` → e.g. `GPS: 3D Fix, 10 satellites visible.`
-- `what is my battery` → e.g. `Battery: 16.00V, 10.0A, 80% remaining.`
+### Calibration
+- Gyro, Accelerometer (6-orientation), Level, Compass, Barometer calibration routines
+- Live 3D quad model showing real-time attitude during calibration
+- Calibration status feedback per routine
 
-Once you're comfortable (and in a safe environment, ideally props off):
+### Motor Testing
+- Per-motor and all-motors-at-once test
+- Safety interlock: arming detection disables test controls
+- Slide-to-confirm safety gesture before motor spin
 
-- `arm the drone`
-- `disarm`
-- `land now`
-- `rtl`
+### Firmware Flashing
+- Flash from local `.apj` file (ArduCopter, ArduPlane, ArduRover, etc.)
+- Online firmware server: browse and flash by vehicle type and version
+- DFU mode flashing for STM32 boards (`.bin` files)
+- Auto-enter DFU mode via MAVLink command
 
-Co-pilot turns these into the correct `MAV_CMD_*` commands under the hood.
+### RC Modes & Configuration
+- Dual gimbal RC input visualisation (175×175px) with deadband ring and PWM readouts
+- Per-channel bars with 1500µs centre tick
+- Flight mode range bands on dedicated channel
+- Aux functions (RC7–RC12) with live PWM bars
+- Failsafe auto-set from live throttle PWM
+- Read → Preview diff → Apply → Verify workflow
 
-### 5. Ask JARVIS (AI) for deeper help
+### Serial Ports
+- View and configure all serial ports on the flight controller
+- Protocol assignment per port (MAVLink, GPS, RCIN, ESC telemetry, etc.)
 
-When the Pi has internet and you've set `GEMINI_API_KEY`:
+### Configuration Snapshots
+- Save named parameter snapshots ("good tune 2026-02-20")
+- Restore snapshots to recover from bad tuning experiments
+- Clone configuration to another airframe
 
-- You can ask questions like:
-  - `why is my compass off?`
-  - `explain my gps situation`
-  - `are my failsafe and battery settings safe for 4s lipo?`
+---
 
-JARVIS will:
+## Comparison with Other GCS Tools
 
-- Read your **categorized parameters** and recent MAVLink telemetry.
-- Explain issues in plain English.
-- Suggest specific fixes (e.g., params to adjust, modes to change).
+| Feature | Mission Planner | Betaflight | Cockpit/BlueOS | **UAV-AI** |
+|---|---|---|---|---|
+| Firmware | ArduPilot | Betaflight | Any MAVLink | **ArduPilot** |
+| Platform | Desktop (Windows) | Desktop (Electron) | Browser (needs companion) | **Browser (any device)** |
+| AI diagnosis | ✗ | ✗ | ✗ | **✓ JARVIS** |
+| Log AI analysis | ✗ | ✗ | ✗ | **✓** |
+| Spectrum FFT | ✗ | External app | ✗ | **✓ Inline** |
+| Filter Bode plot | ✗ | ✗ | ✗ | **✓** |
+| PID step simulation | ✗ | ✗ | ✗ | **✓** |
+| MAGFit wizard | Manual/CLI | N/A | ✗ | **✓ Guided** |
+| Runs on RPi Zero 2W | ✗ | ✗ | ✗ | **✓** |
+| Works with ELRS backpack | ✓ | ✓ | ✗ | **✓** |
+| Requires companion SBC | ✗ | ✗ | ✓ (mandatory) | **✗** |
+| Map / mission planning | ✓ | ✗ | ✓ | ✗ (roadmap) |
 
-Treat JARVIS as your **field engineer**. Use co-pilot for fast commands; use JARVIS when you’d otherwise be digging through Mission Planner docs.
+UAV-AI is not a replacement for Mission Planner for complex mission planning. It is the tool you use **at the field, before and after a flight**, and the only GCS with an AI layer that understands ArduPilot.
 
-### 6. Save configs & work with logs
+---
 
-- **Configs tab**:
-  - Save a **named snapshot** once a build is tuned and flying well.
-  - Later you can apply that config to recover from bad experiments or clone a setup to another airframe.
-- **Logs tab**:
-  - Upload `.bin` / `.tlog` files or fetch logs from the FC.
-  - Use the log viewer and (future) AI log analysis to understand crashes, vibrations, GPS issues, etc.
-
-## Project Structure
-
-- `main.py` - Main entry point and application controller
-- `drone_validator.py` - Handles drone connection and hardware validation
-- `web_server.py` - Web interface and API endpoints
-- `JARVIS.py` - AI assistant powered by Google's Gemini API
-- `Mavlink_rx_handler.py` - MAVLink message handling
-- `logging_config.py` - Logging configuration
-- `logs/` - Directory containing all log files
-- `static/` - Web interface static files
-
-## Connection Architecture
-
-UAV-AI supports two ways to receive MAVLink telemetry from the flight controller:
-
-### Option 1: Serial (USB) — Direct Connection
-
-The RPi Zero 2W connects directly to the flight controller over a USB/serial link.
-
-```
-Flight Controller ──USB/Serial──> RPi Zero 2W (UAV-AI)
-```
-
-### Option 2: UDP/IP — ELRS WiFi Backpack (Wireless)
-
-For wireless operation, the ELRS WiFi backpack on the RadioMaster TX16S forwards MAVLink over WiFi. A mobile phone hotspot acts as the shared network so both the RPi and the radio can reach each other without any extra router.
-
-```
-                        Phone Hotspot (e.g. 192.168.x.x)
-                           /                    \
-                          /                      \
-   RadioMaster TX16S ────WiFi                WiFi──── RPi Zero 2W
-   (ELRS WiFi Backpack)                              (UAV-AI)
-         |
-    ELRS RF Link
-         |
-   Flight Controller
-```
-
-**How it works:**
-
-1. **Phone creates a WiFi hotspot** — this is the shared network for all devices.
-2. **RadioMaster TX16S** (with ELRS WiFi backpack enabled) connects to the phone hotspot. The backpack is configured to forward MAVLink telemetry over UDP.
-3. **RPi Zero 2W** also connects to the same phone hotspot.
-4. In the UAV-AI web UI, select **IP (UDP)** connection mode, enter `0.0.0.0` (listen on all interfaces) and port `14550`, then click Connect.
-5. The RPi listens on UDP port 14550 and receives MAVLink packets from the ELRS WiFi backpack.
-
-**Network summary:**
-
-| Device | Role | Connects To |
-|---|---|---|
-| Phone | WiFi hotspot (network hub) | — |
-| RadioMaster TX16S (ELRS WiFi backpack) | Sends MAVLink over UDP | Phone hotspot |
-| RPi Zero 2W | Receives MAVLink on UDP :14550 | Phone hotspot |
-
-> **Tip:** You can also use any WiFi router instead of a phone hotspot — the key requirement is that the RPi and the RadioMaster TX are on the same network.
-
-## Hardware Deployment Options
-
-### Option A: Phone-Based Setup (Minimal Hardware)
-
-Your phone does triple duty — hotspot, display, and microphone. The RPi Zero 2W is a headless box powered from the radio or a small battery.
+## Architecture
 
 ```
-┌──────────────┐      ┌──────────────────┐      ┌──────────────┐
-│   Your Phone │      │  RPi Zero 2W     │      │ RadioMaster  │
-│              │ WiFi │  (headless)      │ WiFi │ TX16S + ELRS │
-│  - Hotspot   │◄────►│  - UAV-AI server │◄────►│  WiFi        │
-│  - Browser   │      │  - MAVLink GW    │      │  Backpack    │
-│  - Mic input │      │  - Gemini API    │      │              │
-└──────────────┘      └──────────────────┘      └──────┬───────┘
-                                                   ELRS RF
-                                                       │
-                                                ┌──────┴───────┐
-                                                │   Flight     │
-                                                │  Controller  │
-                                                └──────────────┘
+┌──────────────────────────────────────────────────────┐
+│                  Browser (any device)                 │
+│  Dashboard · Logs · Tuning · Calibration · Motors    │
+│  Firmware · RC Modes · Serial · Configs · JARVIS     │
+└──────────────────────┬───────────────────────────────┘
+                       │ WebSocket + REST (Flask-SocketIO)
+┌──────────────────────▼───────────────────────────────┐
+│                   web_server.py                       │
+│  API endpoints · SocketIO telemetry broadcast (2Hz)  │
+│  Log parser · MAGFit · Firmware flasher · Configs    │
+└──────────────────────┬───────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────┐
+│              Mavlink_rx_handler.py                    │
+│  Serial / UDP MAVLink · Heartbeat · TIMESYNC         │
+│  Param download · Command ACK/NACK · Storage info    │
+└──────────────────────┬───────────────────────────────┘
+                       │ pymavlink
+┌──────────────────────▼───────────────────────────────┐
+│          Flight Controller (ArduPilot)                │
+│  USB Serial · UDP:14550 (ELRS backpack)              │
+└──────────────────────────────────────────────────────┘
 ```
 
-**Power:** USB cable from RadioMaster TX USB-C port, or a small USB power bank.
+**Single Python process. No Docker. No companion computer required.**
 
-**Boot sequence:**
-1. RPi powers on → auto-connects to phone hotspot (pre-configured `wpa_supplicant`)
-2. `main.py` starts automatically via systemd service
-3. Open browser on phone → `http://<rpi-ip>:5000`
-4. Select IP (UDP) → Connect → done
+---
 
-**Cost: ~$15** (RPi Zero 2W only, you already have the phone and radio)
+## Installation
 
-### Option B: Standalone Ground Station (Full Build)
+### Requirements
+- Python 3.8+
+- Linux / macOS / Windows
+- A Gemini API key for JARVIS ([get one free](https://aistudio.google.com/))
 
-A self-contained unit with its own screen, internet, and battery — no phone needed. Everything fits in a 3D-printed enclosure.
+### Quick Start
 
-```
-┌─────────────────────────────────────────┐
-│       7" HDMI Touchscreen               │
-│  ┌───────────────────────────────────┐  │
-│  │                                   │  │
-│  │     UAV-AI Web UI                 │  │
-│  │     (Chromium kiosk mode)         │  │
-│  │                                   │  │
-│  └───────────────────────────────────┘  │
-│                                         │
-│  ┌───────────┐ ┌────────┐ ┌──────────┐ │
-│  │RPi Zero 2W│ │4G USB  │ │ 3000mAh  │ │
-│  │           │ │Dongle  │ │ 5V LiPo  │ │
-│  └───────────┘ └────────┘ └──────────┘ │
-│  ┌───────────┐                          │
-│  │ USB Hub   │                          │
-│  └───────────┘                          │
-└─────────────────────────────────────────┘
+```bash
+git clone https://github.com/iottrends/UAV-AI.git
+cd UAV-AI
+
+python -m venv myenv
+source myenv/bin/activate        # Windows: myenv\Scripts\activate
+
+pip install -r requirements.txt
+
+# Create .env with your Gemini API key
+echo "GEMINI_API_KEY=your_key_here" > .env
+
+python main.py
 ```
 
-**In this setup the RPi acts as a WiFi Access Point** — it creates its own network (e.g. `UAV-GS`). The ELRS backpack connects directly to it. The 4G dongle provides internet for Gemini API calls.
+Open `http://localhost:5000` in your browser.
+
+---
+
+## Field Deployment
+
+### Option A — Phone Hotspot (Minimal, ~$15)
+
+The RPi Zero 2W is a headless box powered from the radio or a USB power bank. Your phone is the hotspot, display, and microphone.
+
+```
+Flight Controller ──ELRS RF──► ELRS Backpack (TX16S)
+                                      │
+                              Phone Hotspot (192.168.x.x)
+                                 /              \
+                   ELRS Backpack WiFi        RPi Zero 2W WiFi
+                   → MAVLink UDP:14550    → UAV-AI :5000
+                                                │
+                                        Browser on phone
+```
+
+**Setup:**
+1. Pre-configure RPi to join your phone's hotspot on boot
+2. Set UAV-AI to start as a systemd service on boot
+3. Power RPi from USB bank or radio USB port
+4. Open `http://<rpi-ip>:5000` on phone → Select UDP → port 14550 → Connect
+
+**Cost:** RPi Zero 2W ~$15. Everything else you already own.
+
+---
+
+### Option B — RPi4 Ground Unit with Video (Recommended for Pro Use)
+
+Run UAV-AI + wfb-ng (wifibroadcast) together on an RPi4/CM4 with two WiFi adapters. The RPi4 creates its own hotspot — connect a tablet and fly.
+
+```
+┌──────────────────────────────────────────────────────┐
+│              RPi4 / CM4  (Ground Unit)               │
+│                                                      │
+│  wlan0 (built-in)          wlan1 (USB RTL8812AU)    │
+│  ├ STA: ELRS hotspot        Monitor mode             │
+│  │  → MAVLink UDP:14550     wfb-ng RX                │
+│  └ AP: "UAV-AI-Ground"      → H.264 UDP:5600         │
+│         192.168.10.1                │                │
+│                │                   │                 │
+│                └────────┬──────────┘                 │
+│                         │                            │
+│                     UAV-AI                           │
+│                     ├ Telemetry: UDP:14550           │
+│                     ├ Video proxy: UDP:5600          │
+│                     └ Serves http://192.168.10.1:5000│
+└──────────────────────────────────────────────────────┘
+                          │
+                    WiFi (tablet/phone)
+                          │
+              Browser → Drone View tab
+              (live video + JARVIS HUD)
+```
 
 **Bill of Materials:**
 
-| Component | Purpose | Approx Cost |
-|---|---|---|
-| RPi Zero 2W | Runs UAV-AI, MAVLink gateway | $15 |
-| 7" HDMI touchscreen | Display (mini HDMI) + touch (USB) | $30-40 |
-| 4G USB dongle (SIM-based) | Internet for Gemini AI API | $10-15 |
-| 3000mAh 5V LiPo + TP4056 charger | Powers everything (~2-3 hrs) | $10 |
-| USB hub (micro USB) | Splits single USB port for touch + 4G | $3-5 |
-| 3D printed enclosure | Holds all components | ~$5 filament |
-| **Total** | | **~$75-90** |
-
-**Wiring:**
-
-```
-RPi Zero 2W
-├── Mini HDMI ──────────► 7" Touchscreen (display)
-├── Micro USB (data) ───► USB Hub
-│                          ├── USB ► Touchscreen (touch input)
-│                          └── USB ► 4G Dongle
-├── Micro USB (power) ──► Battery / TP4056 board
-└── WiFi (AP mode) ─────► ELRS Backpack connects here
-```
-
-**Boot sequence (fully automatic):**
-1. Power on → RPi boots, starts WiFi AP (`UAV-GS`)
-2. `main.py` starts via systemd
-3. Chromium opens in kiosk mode → `http://localhost:5000`
-4. 4G dongle connects for internet (Gemini API)
-5. ELRS WiFi backpack auto-joins `UAV-GS` network
-6. Select IP (UDP) → Connect → ready to fly
-
-**Note on RPi Zero 2W ports:** The Zero 2W has only one micro USB data port (the other is power only), hence the USB hub is required to connect both the touchscreen's touch input and the 4G dongle.
-
-### Option C: OpenHD Integration — AI-Powered HUD with Voice Commands
-
-UAV-AI can run alongside [OpenHD](https://openhdfpv.org/) on the same RPi, adding AI diagnostics and voice commands on top of the live video feed. This turns your FPV setup into an intelligent HUD.
-
-```
-┌──────────────────────────────────────────────┐
-│  OpenHD Video Feed (goggles or ground screen) │
-│                                               │
-│   ALT: 45m    SPD: 12m/s                     │
-│   BAT: 14.2V  GPS: 3D (12 sats)             │
-│                                               │
-│   ┌─────────────────────────────────────┐     │
-│   │ JARVIS: Motor 3 vibration is high.  │     │
-│   │ Prop damage likely. Recommend land. │     │
-│   └─────────────────────────────────────┘     │
-│                                               │
-│   Pilot: "Land now"                           │
-│   JARVIS: "Initiating RTL. ETA 30 seconds."  │
-└──────────────────────────────────────────────┘
-```
-
-**Why voice commands matter in-flight:**
-- Hands are on the sticks — you can't touch a screen
-- Eyes are on the video feed — you can't read a dashboard
-- Radio switches are limited (6-8) and pre-mapped
-- Voice gives unlimited commands without taking hands off sticks
-
-**Example in-flight voice interactions:**
-- "What's my battery?" → "14.2 volts, approximately 6 minutes of flight time remaining"
-- "Why is it drifting?" → "GPS fix is 2D with only 4 satellites. Recommend switching to LOITER only when 3D fix is achieved"
-- "Switch to RTL" → sends MAV_CMD to change flight mode
-- "Arm the drone" / "Kill motors" → direct MAVLink commands via voice
-
-**How it fits with OpenHD:**
-
-| Component | Role |
+| Component | Cost |
 |---|---|
-| OpenHD | Video streaming, OSD telemetry overlay |
-| UAV-AI | AI diagnostics, voice commands, parameter management |
-| RPi (shared) | Runs both — OpenHD handles video, UAV-AI handles intelligence |
+| RPi4 4GB or CM4 | ~$55 |
+| RTL8812AU USB WiFi adapter (monitor mode) | ~$15 |
+| 64GB SD card | ~$10 |
+| USB power bank | ~$20 |
+| **Total** | **~$100** |
 
-Both OpenHD and UAV-AI consume MAVLink from the flight controller. OpenHD renders it as an OSD overlay on the video feed, while UAV-AI feeds it to the AI for diagnostics and voice interaction. They complement each other — OpenHD shows you what's happening, UAV-AI tells you why and what to do about it.
+Compare to Herelink ground unit: $500+.
 
-## Why UAV-AI?
+---
 
-**The problem:** Troubleshooting and tuning a drone in the field is painful. You crash, something isn't right, and now you're staring at 800 parameters in Mission Planner on a laptop trying to figure out what went wrong. Or worse — you're mid-flight and something feels off but you can't diagnose it without landing.
+### Connection Modes
 
-**Today's workflow:**
-1. Pull out laptop
-2. Connect USB cable
-3. Open Mission Planner
-4. Stare at 800 parameters
-5. Google the error message
-6. Read ArduPilot wiki for 20 minutes
-7. Maybe fix it, maybe pack up and go home
+| Mode | When to use | Config |
+|---|---|---|
+| **Serial (USB)** | Bench work, direct USB to FC | Select port (e.g. `/dev/ttyACM0`), baud 115200 |
+| **UDP** | ELRS WiFi backpack, wireless telemetry | IP `0.0.0.0`, port `14550` |
 
-**With UAV-AI:**
-1. Open phone → "Hey JARVIS, why did it flip on takeoff?"
-2. "Your MOT_SPIN_ARM is too low for your motor/prop combo, and SERVO3 output is reversed. Want me to fix it?"
-3. "Yes"
-4. Fixed. Fly again.
+---
 
-**This tool is built for:**
-- FPV pilots who don't want to carry a laptop to the field
-- ArduPilot beginners who want plain-English diagnostics instead of reading param docs
-- System integrators doing rapid assembly and validation
-- Anyone who has ever rage-quit a tuning session
+## Configuration
 
-## Logging
+Create a `.env` file in the project root:
 
-The system maintains several log files in the `logs/` directory:
-- `mavlink_log.txt` - MAVLink communication logs
-- `Agent.log` - AI agent/assistant activities
-- `webserver.log` - Web server activities
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+```
 
-## Troubleshooting
+JARVIS works without an API key in a limited co-pilot mode (local MAVLink commands only). Full AI diagnosis and log analysis requires the Gemini API key.
 
-- **Connection Issues**: Ensure the correct COM port and baud rate are selected
-- **Missing Logs**: Check that the `logs` directory exists and has write permissions
-- **AI Not Responding**: Verify your Gemini API key is correctly set in the `.env` file
-- **Web Interface Not Loading**: Ensure port 5000 is not in use by another application
+---
+
+## Project Structure
+
+```
+UAV-AI/
+├── main.py                    # Entry point
+├── web_server.py              # Flask app, all API endpoints, SocketIO
+├── Mavlink_rx_handler.py      # MAVLink receive loop, command sending
+├── JARVIS.py                  # AI co-pilot (Gemini API integration)
+├── log_parser.py              # .bin / .tlog parser for Logs tab
+├── copilot.py                 # Fast local command path (no LLM)
+├── firmware_flasher.py        # OTA firmware flash
+├── dfu_flasher.py             # DFU / STM32 flash
+├── drone_validator.py         # Pre-flight hardware validation
+├── logging_config.py          # Structured logging setup
+├── requirements.txt
+├── static/
+│   ├── index.html             # Single-page app shell
+│   ├── css/style.css          # Full UI stylesheet
+│   └── js/
+│       ├── core.js            # Socket setup, shared state, JARVIS renderer
+│       └── tabs/
+│           ├── calibration.js # Calibration routines + 3D model + MAGFit
+│           ├── drone-view.js  # Attitude visualisation
+│           ├── logs.js        # Timeline + Spectrum FFT + AI Analyst
+│           ├── motors.js      # Motor test
+│           ├── parameters.js  # Param table + Filter Viz + Step Predictor
+│           ├── rc-modes.js    # RC input display + mode config
+│           └── serial-ports.js
+├── tests/
+│   ├── test_jarvis.py
+│   ├── test_mavlink_handler.py
+│   ├── test_web_server.py
+│   ├── integration/
+│   └── stress/
+└── logs/                      # Runtime logs (mavlink, webserver, AI agent)
+```
+
+---
+
+## Roadmap
+
+| Phase | Feature | Status |
+|---|---|---|
+| A.1 | Dashboard: Hardware Inventory card | ✅ Done |
+| A.2 | Logs: sub-tab bar + AI Analyst | ✅ Done |
+| B.1 | Logs: Spectrum (FFT) sub-tab | ✅ Done |
+| B.2 | Tuning: Filter Visualizer (Bode plots) | ✅ Done |
+| B.3 | Tuning: Step Predictor + Flight Feel | ✅ Done |
+| C.1 | Calibration: MAGFit Motor Interference Wizard | ✅ Done |
+| D.1 | Proactive JARVIS alerts (vibration, battery, GPS) | 🔜 Next |
+| D.2 | JARVIS voice input (Web Speech API) | 🔜 |
+| D.3 | Preflight AI checklist | 🔜 |
+| E.1 | Live telemetry plotter (user-configurable channels) | 🔜 |
+| E.2 | Flight report export (HTML/PDF) | 🔜 |
+| F.1 | Video stream + HUD (MJPEG / wfb-ng / RTSP) | 🔜 |
+| F.2 | Joystick / Gamepad support | 🔜 |
+| G.1 | Basic mission planner (Leaflet map + waypoints) | 🔜 |
+
+---
+
+## Contributing
+
+Pull requests are welcome. For major changes, open an issue first to discuss what you'd like to change.
+
+**Development setup:**
+
+```bash
+git clone https://github.com/iottrends/UAV-AI.git
+cd UAV-AI
+python -m venv myenv && source myenv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
+
+Run tests:
+```bash
+pytest tests/
+```
+
+---
+
+## Acknowledgements
+
+- [PyMAVLink](https://github.com/ArduPilot/pymavlink) — MAVLink protocol
+- [ArduPilot](https://ardupilot.org/) — the open source autopilot this is built for
+- [Flask](https://flask.palletsprojects.com/) + [Flask-SocketIO](https://flask-socketio.readthedocs.io/) — web backend
+- [Google Gemini](https://ai.google.dev/) — JARVIS AI engine
+- [Chart.js](https://www.chartjs.org/) — all charts and visualisations
+- [Three.js](https://threejs.org/) — 3D attitude model
+
+---
 
 ## License
 
-[Your License Here]
-
-## Acknowledgments
-
-- [PyMAVLink](https://github.com/ArduPilot/pymavlink) for MAVLink protocol support
-- [Flask](https://flask.palletsprojects.com/) for the web framework
-- [Google Generative AI](https://ai.google.dev/) for the Gemini API
-
+MIT License — see [LICENSE](LICENSE) for details.
