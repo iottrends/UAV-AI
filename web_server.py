@@ -16,6 +16,7 @@ from flask_socketio import SocketIO, emit
 from log_parser import LogParser
 import copilot
 from video_streamer import video_streamer
+from report_generator import generate_flight_report
 from flask import Response
 
 
@@ -1760,6 +1761,20 @@ def handle_latency_update(data):
         last_system_health['latency'] = data['latency']
 
 
+@socketio.on('rc_override')
+def handle_rc_override(data):
+    """
+    F.2 Gamepad — receive RC channel override from browser.
+    data = { 'channels': [ch1..ch8] }  PWM values in µs (1000-2000), 0 = release.
+    """
+    if not validator or not validator.is_connected:
+        return
+    channels = data.get('channels', [])
+    if not isinstance(channels, list) or len(channels) < 4:
+        return
+    validator.send_rc_override(channels)
+
+
 @socketio.on('copilot_toggle')
 def handle_copilot_toggle(data):
     """Handle co-pilot mode toggle from the frontend."""
@@ -2335,6 +2350,20 @@ def get_log_flight_summary():
         stats['errors'] = errors[:5]
 
     return jsonify({'status': 'success', 'stats': stats})
+
+
+@app.route('/api/log_report', methods=['GET'])
+def get_log_report():
+    """Generate and return a self-contained HTML flight report."""
+    if not log_parser_instance or not log_parser_instance._is_parsed:
+        return jsonify({'status': 'error', 'message': 'No log loaded'}), 400
+    filename = getattr(log_parser_instance, 'filename', 'flight.bin') or 'flight.bin'
+    html = generate_flight_report(log_parser_instance, filename)
+    from flask import make_response
+    resp = make_response(html)
+    resp.headers['Content-Type'] = 'text/html; charset=utf-8'
+    resp.headers['Content-Disposition'] = f'inline; filename="flight_report.html"'
+    return resp
 
 
 @app.route('/api/magfit', methods=['GET'])

@@ -28,6 +28,9 @@
             <div id="copilotBadge" class="copilot-badge" style="display:none;" title="Click to toggle co-pilot mode. Shift+click for auto mode.">
                <i class="fas fa-robot"></i> CO-PILOT
             </div>
+            <button class="panel-toggle-btn" id="themeToggleBtn">
+               <i class="fas fa-sun"></i>
+            </button>
             <button class="panel-toggle-btn" id="toggleSidebar" title="Toggle sidebar">
                <i class="fas fa-bars"></i>
             </button>
@@ -703,15 +706,20 @@
             <div class="tab-content tab-panel tab-panel-dark" id="logs-tab" style="display: none;">
 
                <!-- Sub-tab bar -->
-               <div class="subtab-bar">
-                  <button class="subtab-btn active" data-subtab="logs-timeline">
-                     <i class="fas fa-chart-line"></i> Timeline
-                  </button>
-                  <button class="subtab-btn" data-subtab="logs-spectrum">
-                     <i class="fas fa-wave-square"></i> Spectrum (FFT)
-                  </button>
-                  <button class="subtab-btn" data-subtab="logs-ai-analyst">
-                     <i class="fas fa-robot"></i> AI Analyst
+               <div class="subtab-bar" style="display:flex;justify-content:space-between;align-items:center;">
+                  <div style="display:flex;">
+                     <button class="subtab-btn active" data-subtab="logs-timeline">
+                        <i class="fas fa-chart-line"></i> Timeline
+                     </button>
+                     <button class="subtab-btn" data-subtab="logs-spectrum">
+                        <i class="fas fa-wave-square"></i> Spectrum (FFT)
+                     </button>
+                     <button class="subtab-btn" data-subtab="logs-ai-analyst">
+                        <i class="fas fa-robot"></i> AI Analyst
+                     </button>
+                  </div>
+                  <button id="exportReportBtn" class="btn btn-sm btn-ghost" title="Export flight report as HTML" style="display:none;">
+                     <i class="fas fa-file-export"></i> Export Report
                   </button>
                </div>
 
@@ -1372,6 +1380,19 @@
                   <button class="drone-osd-config-btn" id="dvOsdConfigBtn" title="Configure OSD fields">
                      <i class="fas fa-cog"></i> OSD
                   </button>
+
+                  <!-- Gamepad panel -->
+                  <div class="gp-bar" id="gpBar">
+                     <span class="gp-icon">🎮</span>
+                     <span class="gp-name" id="gpName">No gamepad</span>
+                     <label class="gp-toggle-label">
+                        <input type="checkbox" id="gpEnable"> Override RC
+                     </label>
+                     <span class="gp-axis-label">Roll</span><span class="gp-axis-val" id="gpRoll">--</span>
+                     <span class="gp-axis-label">Pitch</span><span class="gp-axis-val" id="gpPitch">--</span>
+                     <span class="gp-axis-label">Thr</span><span class="gp-axis-val" id="gpThr">--</span>
+                     <span class="gp-axis-label">Yaw</span><span class="gp-axis-val" id="gpYaw">--</span>
+                  </div>
 
                   <!-- Video source config bar (visible in both modes) -->
                   <div class="dv-src-bar" id="dvSrcBar">

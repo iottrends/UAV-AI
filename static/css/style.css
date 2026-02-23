@@ -72,7 +72,37 @@
   --accent:       #3b82f6;
   --accent-hover: #2563eb;
   --accent-glow:  rgba(59, 130, 246, 0.25);
+
+  /* ── Shorthand aliases ── */
+  --border: var(--border-default);
 }
+
+/* ── Light theme overrides ──────────────────────────────────── */
+[data-theme="light"] {
+  --surface-base:   #f0f4f8;
+  --surface-1:      #ffffff;
+  --surface-2:      #f8fafc;
+  --surface-3:      #e9f0f7;
+  --surface-raised: #dde8f2;
+
+  --border-subtle:  rgba(0, 0, 0, 0.08);
+  --border-default: #c8d6e5;
+  --border-strong:  #a0b4c8;
+  --border:         #c8d6e5;
+
+  --text-primary:   #1e293b;
+  --text-secondary: #475569;
+  --text-dim:       #64748b;
+
+  --accent:       #2563eb;
+  --accent-hover: #1d4ed8;
+}
+[data-theme="light"] body          { background-color: #f0f4f8; color: #1e293b; }
+[data-theme="light"] header        { background-color: #1e3a5f; }
+[data-theme="light"] .sidebar      { background-color: #1e3a5f; }
+[data-theme="light"] .chat-container { background-color: #ffffff; border-left: 1px solid #c8d6e5; }
+[data-theme="light"] .card         { background-color: #ffffff; border-color: #c8d6e5; }
+[data-theme="light"] .tab-content  { background-color: #f8fafc; }
 
 * {
   margin: 0;
@@ -1396,6 +1426,47 @@ padding: 0.5rem;
     object-fit: contain;
     border-radius: 4px;
     background: #000;
+}
+
+/* ── Gamepad bar ─────────────────────────────────────── */
+.gp-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 620px;
+    padding: 0.4rem 0.6rem;
+    background: var(--surface-2);
+    border-radius: var(--radius-control);
+    border: 1px solid var(--border);
+    font-size: var(--text-xs);
+}
+.gp-icon { font-size: 1rem; }
+.gp-name {
+    flex: 1;
+    min-width: 80px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+}
+.gp-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+.gp-axis-label { color: var(--text-dim); }
+.gp-axis-val {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    min-width: 3.5ch;
+    text-align: right;
 }
 
 /* ── Video source config bar ─────────────────────────── */

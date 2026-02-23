@@ -996,3 +996,147 @@ setInterval(fetchFirmwareInfo, 5000);
 
 // Call it once on load
 fetchFirmwareInfo();
+
+// ── F.2 Gamepad / Joystick RC Override ─────────────────────────────────────
+(function initGamepad() {
+   var _enabled   = false;
+   var _loopId    = null;
+   var _DEADZONE  = 0.08;
+   var _CENTRE    = 1500;
+   var _HALF      = 500;   // ±500 µs from centre
+
+   // Standard mapping: axes[0]=RollRight, axes[1]=PitchDown, axes[2]=YawRight, axes[3]=ThrDown
+   // (varies by gamepad — user can re-map via UI in future)
+   var _AXIS_MAP = { roll: 0, pitch: 1, yaw: 2, thr: 3 };
+
+   function _applyDeadzone(v) {
+      return Math.abs(v) < _DEADZONE ? 0 : v;
+   }
+
+   function _axisToPwm(v) {
+      return Math.round(_CENTRE + _applyDeadzone(v) * _HALF);
+   }
+
+   function _thrToPwm(v) {
+      // Throttle axis is typically inverted (-1=up=full, +1=down=idle)
+      var norm = (-v + 1) / 2;   // 0..1, 0=idle, 1=full
+      return Math.round(1000 + norm * 1000);
+   }
+
+   function _poll() {
+      var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      var pad  = null;
+      for (var i = 0; i < pads.length; i++) {
+         if (pads[i] && pads[i].connected) { pad = pads[i]; break; }
+      }
+      if (!pad) { _updateUI(null); return; }
+
+      _updateName(pad.id);
+
+      var axes = pad.axes;
+      var roll  = axes[_AXIS_MAP.roll]  || 0;
+      var pitch = axes[_AXIS_MAP.pitch] || 0;
+      var yaw   = axes[_AXIS_MAP.yaw]   || 0;
+      var thr   = axes[_AXIS_MAP.thr]   || 0;
+
+      var ch = [
+         _axisToPwm(roll),    // CH1 Roll
+         _axisToPwm(pitch),   // CH2 Pitch
+         _thrToPwm(thr),      // CH3 Throttle
+         _axisToPwm(yaw),     // CH4 Yaw
+         0, 0, 0, 0
+      ];
+
+      _updateUI({ roll: ch[0], pitch: ch[1], thr: ch[2], yaw: ch[3] });
+
+      if (_enabled && window._app.socket) {
+         window._app.socket.emit('rc_override', { channels: ch });
+      }
+   }
+
+   function _updateName(id) {
+      var el = document.getElementById('gpName');
+      if (el) el.textContent = id ? id.substring(0, 40) : 'No gamepad';
+   }
+
+   function _updateUI(vals) {
+      if (!vals) {
+         ['gpRoll','gpPitch','gpThr','gpYaw'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = '--';
+         });
+         return;
+      }
+      var map = { gpRoll: vals.roll, gpPitch: vals.pitch, gpThr: vals.thr, gpYaw: vals.yaw };
+      for (var id in map) {
+         var el = document.getElementById(id);
+         if (el) el.textContent = map[id];
+      }
+   }
+
+   // Enable / disable toggle
+   document.addEventListener('DOMContentLoaded', function() {
+      var cb = document.getElementById('gpEnable');
+      if (cb) {
+         cb.addEventListener('change', function() {
+            _enabled = cb.checked;
+            if (!_enabled && window._app.socket) {
+               // Release all channels
+               window._app.socket.emit('rc_override', { channels: [0,0,0,0,0,0,0,0] });
+            }
+         });
+      }
+   });
+
+   // Gamepad connect/disconnect events
+   window.addEventListener('gamepadconnected', function(e) {
+      _updateName(e.gamepad.id);
+      if (!_loopId) _loopId = setInterval(_poll, 50);
+   });
+   window.addEventListener('gamepaddisconnected', function() {
+      _updateName(null);
+      _enabled = false;
+      var cb = document.getElementById('gpEnable');
+      if (cb) cb.checked = false;
+   });
+
+   // Always poll — some browsers need polling to detect gamepads
+   setInterval(_poll, 50);
+})();
+
+// ── Theme Toggle ─────────────────────────────────────────────────────────────
+(function initTheme() {
+   var STORAGE_KEY = 'uav-ai-theme';
+
+   function applyTheme(theme) {
+      if (theme === 'light') {
+         document.documentElement.setAttribute('data-theme', 'light');
+      } else {
+         document.documentElement.removeAttribute('data-theme');
+      }
+   }
+
+   // Restore saved theme on load
+   var saved = localStorage.getItem(STORAGE_KEY) || 'dark';
+   applyTheme(saved);
+
+   document.addEventListener('DOMContentLoaded', function() {
+      var btn = document.getElementById('themeToggleBtn');
+      if (!btn) return;
+      btn.title = 'Toggle light / dark theme';
+      // Set icon to match current theme
+      btn.innerHTML = saved === 'light'
+         ? '<i class="fas fa-moon"></i>'
+         : '<i class="fas fa-sun"></i>';
+
+      btn.addEventListener('click', function() {
+         var current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+         var next    = current === 'light' ? 'dark' : 'light';
+         applyTheme(next);
+         localStorage.setItem(STORAGE_KEY, next);
+         btn.innerHTML = next === 'light'
+            ? '<i class="fas fa-moon"></i>'
+            : '<i class="fas fa-sun"></i>';
+      });
+   });
+})();

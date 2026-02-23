@@ -626,6 +626,29 @@ class MavlinkHandler:
     def parse_blackbox_log(self, log_filename, log_id):
         """Parse black-box log (override in subclass)."""
         pass
+
+    def send_rc_override(self, channels: list) -> bool:
+        """
+        Send RC_CHANNELS_OVERRIDE to the flight controller.
+
+        channels : list of 8 PWM values (µs, typically 1000-2000).
+                   Use 0 for channels you don't want to override.
+        Returns True on success.
+        """
+        if not self.is_connected or not self.mav_conn:
+            return False
+        try:
+            ch = (list(channels) + [0] * 8)[:8]
+            self.mav_conn.mav.rc_channels_override_send(
+                self.mav_conn.target_system,
+                self.mav_conn.target_component,
+                int(ch[0]), int(ch[1]), int(ch[2]), int(ch[3]),
+                int(ch[4]), int(ch[5]), int(ch[6]), int(ch[7]),
+            )
+            return True
+        except Exception as e:
+            mavlink_logger.error(f"RC override send error: {e}")
+            return False
 #####################################################################################
     def reboot_to_bootloader(self):
         """Send MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN with param1=3 to stay in bootloader."""

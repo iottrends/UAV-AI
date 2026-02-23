@@ -210,6 +210,8 @@ document.addEventListener('DOMContentLoaded', function() {
          if (data.status === 'success') {
             window._app.logLoaded = true;
             showStatus(data.message);
+            var exportBtn = document.getElementById('exportReportBtn');
+            if (exportBtn) exportBtn.style.display = '';
             clearCharts();
             renderDefaultCharts(data.summary.message_types);
 
@@ -831,6 +833,14 @@ document.addEventListener('DOMContentLoaded', function() {
          } finally {
             fetchLogsButton.disabled = false;
          }
+      });
+   }
+
+   // Export Report button
+   var exportBtn = document.getElementById('exportReportBtn');
+   if (exportBtn) {
+      exportBtn.addEventListener('click', function() {
+         window.open('/api/log_report', '_blank');
       });
    }
 });
