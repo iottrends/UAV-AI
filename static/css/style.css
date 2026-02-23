@@ -2658,6 +2658,80 @@ padding: 0.5rem;
    font-weight: 600;
 }
 
+/* ── Proactive JARVIS Alert Toasts (D.1) ─────────────────────────── */
+#jarvisAlertContainer {
+   position: fixed;
+   top: 1rem;
+   right: 1rem;
+   z-index: 9999;
+   display: flex;
+   flex-direction: column;
+   gap: 0.5rem;
+   pointer-events: none;
+   max-width: 340px;
+}
+.jarvis-toast {
+   pointer-events: all;
+   display: flex;
+   align-items: flex-start;
+   gap: 0.6rem;
+   padding: 0.7rem 0.85rem;
+   border-radius: var(--radius-control);
+   border-left: 3px solid transparent;
+   background: var(--surface-raised);
+   box-shadow: 0 4px 16px rgb(0 0 0 / 0.45);
+   animation: toast-in 0.22s ease;
+   transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.jarvis-toast.dismissing {
+   opacity: 0;
+   transform: translateX(30px);
+}
+.jarvis-toast.severity-critical { border-left-color: var(--danger-color); }
+.jarvis-toast.severity-warning  { border-left-color: var(--warning-color); }
+.jarvis-toast.severity-info     { border-left-color: var(--accent); }
+
+.jarvis-toast-icon {
+   font-size: 1.1rem;
+   flex-shrink: 0;
+   margin-top: 1px;
+}
+.jarvis-toast.severity-critical .jarvis-toast-icon { color: var(--danger-color); }
+.jarvis-toast.severity-warning  .jarvis-toast-icon { color: var(--warning-color); }
+.jarvis-toast.severity-info     .jarvis-toast-icon { color: var(--accent); }
+
+.jarvis-toast-body { flex: 1; min-width: 0; }
+.jarvis-toast-title {
+   font-size: var(--text-sm);
+   font-weight: 600;
+   color: var(--text-primary);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.jarvis-toast-msg {
+   font-size: var(--text-xs);
+   color: var(--text-dim);
+   margin-top: 2px;
+   line-height: 1.4;
+}
+.jarvis-toast-close {
+   background: none;
+   border: none;
+   color: var(--text-dim);
+   cursor: pointer;
+   font-size: 0.9rem;
+   padding: 0;
+   line-height: 1;
+   flex-shrink: 0;
+}
+.jarvis-toast-close:hover { color: var(--text-primary); }
+
+@keyframes toast-in {
+   from { opacity: 0; transform: translateX(30px); }
+   to   { opacity: 1; transform: translateX(0); }
+}
+
 /* ══════════════════════════════════════════════════════════════════════ */
 
 @media (max-width: 768px) {

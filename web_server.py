@@ -67,6 +67,190 @@ telemetry_thread = None
 server_thread = None
 
 # Status tracking variables
+# ── Proactive JARVIS alert engine state ──────────────────────────────
+_alert_cooldowns   = {}   # alert_id → last fired timestamp
+_last_statustext   = ''   # last STATUSTEXT text processed
+_last_flight_mode  = None # last known flight mode number
+
+
+def _can_fire_alert(alert_id, cooldown_s):
+    """Return True (and record fire time) if cooldown has elapsed."""
+    now = time.time()
+    if now - _alert_cooldowns.get(alert_id, 0) >= cooldown_s:
+        _alert_cooldowns[alert_id] = now
+        return True
+    return False
+
+
+def _emit_alert(alert_id, severity, title, message, action=None):
+    """Broadcast a proactive JARVIS alert to all connected clients."""
+    socketio.emit('jarvis_alert', {
+        'id':        alert_id,
+        'severity':  severity,          # 'critical' | 'warning' | 'info'
+        'title':     title,
+        'message':   message,
+        'action':    action,            # {'label': str, 'tab': str, 'subtab': str} or None
+        'timestamp': time.time(),
+    })
+
+
+def check_proactive_alerts():
+    """
+    Called every 2 Hz from the telemetry loop.
+    Monitors key telemetry values and emits jarvis_alert events when
+    thresholds are crossed.  All alerts are rule-based — no LLM call.
+    """
+    global _last_statustext, _last_flight_mode
+
+    if not validator or not validator.hardware_validated:
+        return
+
+    buf = mavlink_buffer   # already snapshotted this cycle
+
+    # ── 1. Battery ───────────────────────────────────────────────────
+    sys_msg = buf.get("SYS_STATUS") or buf.get("BATTERY_STATUS")
+    if sys_msg:
+        volt  = (sys_msg.get("voltage_battery", 0) or
+                 (sys_msg.get("voltages", [0])[0])) / 1000.0
+        curr  = (sys_msg.get("current_battery", 0)) / 100.0   # cA → A
+        rem   = sys_msg.get("battery_remaining", -1)           # percent
+
+        params = validator.categorized_params
+        batt_p = params.get("Battery", {})
+        crit_v = batt_p.get("BATT_CRT_VOLT", 10.0)
+        low_v  = batt_p.get("BATT_LOW_VOLT",  10.5)
+
+        if volt > 2.0:   # ignore zero/disconnected readings
+            # Estimate remaining time from current draw
+            est_min = ''
+            if curr > 0.5 and rem > 0:
+                # Simple linear estimate: (remaining% / 100) * capacity_mah / current_mA * 60
+                cap = batt_p.get("BATT_CAPACITY", 3300)
+                est_s = (rem / 100.0) * cap / (curr * 1000 / 3600)
+                est_min = f' ~{int(est_s/60)} min remaining.'
+
+            if volt < crit_v and _can_fire_alert('battery_critical', 60):
+                _emit_alert(
+                    'battery_critical', 'critical',
+                    'Battery Critical',
+                    f'{volt:.1f}V ({rem}%).{est_min} RTL recommended immediately.',
+                    action={'label': 'Ask JARVIS', 'tab': 'chat'}
+                )
+            elif volt < low_v and _can_fire_alert('battery_low', 120):
+                _emit_alert(
+                    'battery_low', 'warning',
+                    'Battery Low',
+                    f'{volt:.1f}V ({rem}%).{est_min} Plan your return.',
+                )
+
+    # ── 2. GPS ───────────────────────────────────────────────────────
+    gps_msg = buf.get("GPS_RAW_INT")
+    if gps_msg:
+        fix  = gps_msg.get("fix_type", 0)
+        sats = gps_msg.get("satellites_visible", 0)
+
+        if fix < 3 and _can_fire_alert('gps_lost', 30):
+            _emit_alert(
+                'gps_lost', 'critical',
+                'GPS Fix Lost',
+                f'Fix type {fix} ({sats} sats). Avoid LOITER / AUTO / RTL. '
+                'Switch to STABILIZE or ALTHOLD.',
+            )
+        elif fix >= 3 and sats < 8 and _can_fire_alert('gps_weak', 60):
+            _emit_alert(
+                'gps_weak', 'warning',
+                'GPS Signal Weak',
+                f'Only {sats} satellites visible. Autonomous modes may be unreliable.',
+            )
+
+    # ── 3. Vibration (VIBRATION MAVLink message, 1 Hz from ArduPilot) ─
+    vib_msg = buf.get("VIBRATION")
+    if vib_msg:
+        vx = vib_msg.get("vibration_x", 0)
+        vy = vib_msg.get("vibration_y", 0)
+        vz = vib_msg.get("vibration_z", 0)
+        peak = max(abs(vx), abs(vy), abs(vz))
+        axis = ['X','Y','Z'][[abs(vx), abs(vy), abs(vz)].index(peak)]
+
+        if peak > 30 and _can_fire_alert('vibration_high', 60):
+            _emit_alert(
+                'vibration_high', 'warning',
+                'High Vibration Detected',
+                f'{axis}-axis: {peak:.1f} m/s². Check propellers and motor mounts. '
+                'Land when safe.',
+                action={'label': 'View Spectrum', 'tab': 'logs',
+                        'subtab': 'logs-spectrum'}
+            )
+
+    # ── 4. STATUSTEXT keywords ────────────────────────────────────────
+    st_msg = buf.get("STATUSTEXT")
+    if st_msg:
+        txt = (st_msg.get("text") or '').strip()
+        if txt and txt != _last_statustext:
+            _last_statustext = txt
+            txt_lo = txt.lower()
+
+            if ('ekf' in txt_lo or 'ekf2' in txt_lo) and _can_fire_alert('ekf_bad', 30):
+                _emit_alert(
+                    'ekf_bad', 'critical',
+                    'EKF Health Degraded',
+                    f'FC reports: "{txt}". Land as soon as safe.',
+                )
+            elif 'compass' in txt_lo and _can_fire_alert('compass_err', 60):
+                _emit_alert(
+                    'compass_err', 'warning',
+                    'Compass Error',
+                    f'FC reports: "{txt}". Run MAGFit after landing.',
+                    action={'label': 'Open MAGFit', 'tab': 'calibration'}
+                )
+            elif ('prearm' in txt_lo or 'pre-arm' in txt_lo) and _can_fire_alert('prearm_fail', 15):
+                _emit_alert(
+                    'prearm_fail', 'warning',
+                    'Pre-Arm Check Failed',
+                    txt,
+                )
+            elif any(k in txt_lo for k in ('failsafe', 'fail safe', 'rtl', 'land')) \
+                    and _can_fire_alert('failsafe', 20):
+                _emit_alert(
+                    'failsafe', 'critical',
+                    'Failsafe Triggered',
+                    f'FC reports: "{txt}".',
+                )
+            elif any(k in txt_lo for k in ('motor', 'esc', 'prop')) \
+                    and _can_fire_alert('motor_warn', 60):
+                _emit_alert(
+                    'motor_warn', 'warning',
+                    'Motor / ESC Warning',
+                    txt,
+                )
+
+    # ── 5. RC Signal ─────────────────────────────────────────────────
+    rc_msg = buf.get("RC_CHANNELS")
+    if rc_msg:
+        rssi = rc_msg.get("rssi", 255)
+        # ArduPilot: rssi=0 means no RC signal, 255 = unknown/not reported
+        if rssi == 0 and _can_fire_alert('rc_lost', 30):
+            _emit_alert(
+                'rc_lost', 'critical',
+                'RC Signal Lost',
+                'No RC input detected. Vehicle may trigger RC failsafe.',
+            )
+
+    # ── 6. Flight mode change ─────────────────────────────────────────
+    hb_msg = buf.get("HEARTBEAT")
+    if hb_msg:
+        mode_now = hb_msg.get("custom_mode")
+        if _last_flight_mode is not None and mode_now != _last_flight_mode:
+            if _can_fire_alert('mode_change', 5):
+                _emit_alert(
+                    'mode_change', 'info',
+                    'Flight Mode Changed',
+                    f'Mode changed from {_last_flight_mode} → {mode_now}.',
+                )
+        _last_flight_mode = mode_now
+
+
+# ─────────────────────────────────────────────────────────────────────
 last_system_health = {
     "score": 0,
     "critical_issues": 0,
@@ -2798,6 +2982,7 @@ def update_system_health():
             "score": health_score,
             "critical_issues": critical_issues,
             "readiness": readiness,
+            "is_connected": bool(validator and validator.is_connected),
             "armed": is_armed,
             "copilot_active": copilot_active,
             "battery": {
@@ -2967,6 +3152,9 @@ def telemetry_update_loop():
 
                 # Full health computation + broadcast
                 update_system_health()
+
+                # Proactive JARVIS alerts (rule-based, no LLM)
+                check_proactive_alerts()
 
                 # No flush here — _process_message owns the flush trigger.
                 # It writes 100 messages as a batch then clears the deque.

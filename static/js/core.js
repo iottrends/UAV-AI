@@ -235,6 +235,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // Listen for system status updates
       socket.on('system_status', function(data) {
+         // Sync connection ribbon for late-joining clients (e.g. second browser)
+         if (data.is_connected !== undefined) {
+            window._app.updateConnectionStatus(data.is_connected);
+         }
+
          updateDashboard(data);
 
          // Call all registered hooks
@@ -266,6 +271,11 @@ document.addEventListener('DOMContentLoaded', function() {
       // heavyweight system_status (2 Hz) payload.
       socket.on('attitude', function(data) {
          window._app.systemStatusHooks.forEach(function(fn) { fn(data); });
+      });
+
+      // Proactive JARVIS alert toasts (D.1)
+      socket.on('jarvis_alert', function(data) {
+         showJarvisAlert(data);
       });
 
       // Listen for parameter progress updates
@@ -721,6 +731,61 @@ document.addEventListener('DOMContentLoaded', function() {
       });
    }
 });
+
+// ── Proactive JARVIS Alert Toasts (D.1) ─────────────────────────────
+var _alertTimers = {};
+
+function showJarvisAlert(alert) {
+   var container = document.getElementById('jarvisAlertContainer');
+   if (!container) return;
+
+   var icons = { critical: '🔴', warning: '⚠️', info: 'ℹ️' };
+   var icon = icons[alert.severity] || 'ℹ️';
+
+   var toast = document.createElement('div');
+   toast.className = 'jarvis-toast severity-' + (alert.severity || 'info');
+   toast.dataset.alertId = alert.id;
+
+   toast.innerHTML =
+      '<span class="jarvis-toast-icon">' + icon + '</span>' +
+      '<div class="jarvis-toast-body">' +
+         '<div class="jarvis-toast-title">' + _escHtml(alert.title) + '</div>' +
+         '<div class="jarvis-toast-msg">' + _escHtml(alert.message) + '</div>' +
+      '</div>' +
+      '<button class="jarvis-toast-close" title="Dismiss">✕</button>';
+
+   toast.querySelector('.jarvis-toast-close').addEventListener('click', function() {
+      _dismissToast(toast);
+   });
+
+   container.appendChild(toast);
+
+   // Also inject into JARVIS chat as an AI message
+   var chatText = '<strong>[JARVIS Alert]</strong> <em>' + _escHtml(alert.title) + '</em> — ' + _escHtml(alert.message);
+   if (window._app && window._app.addMessage) {
+      window._app.addMessage({ text: chatText, time: window._app.getCurrentTime() }, false);
+   }
+
+   // Auto-dismiss: critical stays 12s, warning 8s, info 5s
+   var ttl = { critical: 12000, warning: 8000, info: 5000 };
+   var delay = ttl[alert.severity] || 6000;
+   if (_alertTimers[alert.id]) clearTimeout(_alertTimers[alert.id]);
+   _alertTimers[alert.id] = setTimeout(function() { _dismissToast(toast); }, delay);
+}
+
+function _dismissToast(toast) {
+   if (!toast || !toast.parentNode) return;
+   toast.classList.add('dismissing');
+   setTimeout(function() {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+   }, 320);
+}
+
+function _escHtml(str) {
+   var d = document.createElement('div');
+   d.appendChild(document.createTextNode(str || ''));
+   return d.innerHTML;
+}
 
 // Function to fetch firmware information
 function fetchFirmwareInfo() {
