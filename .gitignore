@@ -7,3 +7,6 @@ winenv/
 .env
 dist/
 build/
+chat_history.json
+cost_estimation.md
+cost_estimation.txt
