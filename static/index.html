@@ -490,6 +490,22 @@
 
                <!-- Sub-tab: Parameters (existing table, unchanged) -->
                <div class="subtab-panel" id="tuning-parameters">
+
+                  <!-- Category chips -->
+                  <div class="param-chips" id="paramChips">
+                     <button class="param-chip active" data-chip="all">All</button>
+                     <button class="param-chip" data-chip="pid">PID</button>
+                     <button class="param-chip" data-chip="failsafe">Failsafe</button>
+                     <button class="param-chip" data-chip="motors">Motors</button>
+                     <button class="param-chip" data-chip="gps">GPS / Nav</button>
+                     <button class="param-chip" data-chip="rc">RC / Modes</button>
+                     <button class="param-chip" data-chip="battery">Battery</button>
+                     <button class="param-chip" data-chip="filters">Filters</button>
+                     <button class="param-chip" data-chip="sensors">Sensors</button>
+                     <button class="param-chip" data-chip="ekf">EKF</button>
+                     <button class="param-chip" data-chip="comms">Comms</button>
+                  </div>
+
                   <div class="flex-between u-mb-2">
                      <div class="flex-row">
                         <input type="text" id="paramSearch" placeholder="Search parameters..." class="form-control" style="width:220px;">
@@ -498,7 +514,7 @@
                         </button>
                      </div>
                      <div class="flex-row">
-                        <select id="categoryFilter" class="form-control" style="width:auto;">
+                        <select id="categoryFilter" class="form-control" style="display:none;">
                            <option value="All Categories">All Categories</option>
                            <option value="System">System</option>
                            <option value="GPS">GPS</option>

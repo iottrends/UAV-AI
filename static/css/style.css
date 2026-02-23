@@ -1662,6 +1662,36 @@ padding: 0.5rem;
 .subtab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
 .subtab-panel { width: 100%; }
 
+/* ── Parameter category chips ──────────────────────────── */
+.param-chips {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 0.35rem;
+   margin-bottom: 0.75rem;
+}
+.param-chip {
+   padding: 0.22rem 0.75rem;
+   border: 1px solid var(--border);
+   border-radius: var(--radius-pill);
+   background: var(--surface-3);
+   color: var(--text-dim);
+   font-size: var(--text-xs);
+   font-weight: 500;
+   cursor: pointer;
+   transition: background 0.15s, color 0.15s, border-color 0.15s;
+   white-space: nowrap;
+}
+.param-chip:hover {
+   background: var(--surface-raised);
+   color: var(--text-primary);
+   border-color: var(--accent);
+}
+.param-chip.active {
+   background: var(--accent);
+   color: #fff;
+   border-color: var(--accent);
+}
+
 /* ===== Log flight summary chips ===== */
 .log-summary-chips {
    display: flex;

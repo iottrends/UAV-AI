@@ -4,6 +4,37 @@ document.addEventListener('DOMContentLoaded', function() {
    var allParameters = {};
    var modifiedParameters = {};
 
+   // ── Category chip state ───────────────────────────────────────────────
+   var activeChip = 'all';
+
+   // Semantic chip → backend category names mapping
+   var CHIP_MAP = {
+      all:      null,   // null = no category restriction
+      pid:      ['Control'],
+      failsafe: ['Safety'],
+      motors:   ['Motors', 'Servos', 'RPM'],
+      gps:      ['GPS', 'Navigation'],
+      rc:       ['RC', 'Pilot', 'Flight Modes'],
+      battery:  ['Battery'],
+      filters:  'SPECIAL_FILTERS',   // handled below via param-name keywords
+      sensors:  ['IMU', 'Compass', 'Barometer', 'RangeFinder'],
+      ekf:      ['EKF', 'AHRS'],
+      comms:    ['Serial', 'Streaming', 'Logging', 'Notifications', 'Scheduler'],
+   };
+
+   // Keywords used for the "Filters" chip — matches param names containing any of these
+   var FILTER_KEYWORDS = ['FLTD', 'FLTE', 'FLTT', 'NOTCH', 'HNTCH', 'INS_GYRO_FILTER', 'INS_ACCEL_FILTER'];
+
+   // Wire chip buttons
+   document.querySelectorAll('#paramChips .param-chip').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+         document.querySelectorAll('#paramChips .param-chip').forEach(function(b) { b.classList.remove('active'); });
+         btn.classList.add('active');
+         activeChip = btn.getAttribute('data-chip');
+         displayParameters();
+      });
+   });
+
    // ---- Sub-tab switching for Tuning tab ----
    document.querySelectorAll('#parameters-tab .subtab-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -57,28 +88,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
       tableBody.innerHTML = '';
 
-      var categoryFilter = document.getElementById('categoryFilter').value;
-      var searchTerm = document.getElementById('paramSearch').value.toLowerCase();
+      var searchTerm = document.getElementById('paramSearch').value.toLowerCase().trim();
+      var chipCategories = CHIP_MAP[activeChip];  // null | string[] | 'SPECIAL_FILTERS'
 
       var filteredParams = {};
 
-      if (categoryFilter === 'All Categories') {
-         for (var category in allParameters) {
-            filteredParams[category] = {};
-            for (var param in allParameters[category]) {
-               if (param.toLowerCase().includes(searchTerm)) {
-                  filteredParams[category][param] = allParameters[category][param];
-               }
-            }
+      for (var category in allParameters) {
+         // 1. Category gate — skip if chip restricts to other categories
+         if (chipCategories !== null && chipCategories !== 'SPECIAL_FILTERS') {
+            if (chipCategories.indexOf(category) === -1) continue;
          }
-      } else {
-         if (allParameters[categoryFilter]) {
-            filteredParams[categoryFilter] = {};
-            for (var param2 in allParameters[categoryFilter]) {
-               if (param2.toLowerCase().includes(searchTerm)) {
-                  filteredParams[categoryFilter][param2] = allParameters[categoryFilter][param2];
+
+         filteredParams[category] = {};
+         for (var param in allParameters[category]) {
+            // 2. Search term gate
+            if (searchTerm && !param.toLowerCase().includes(searchTerm)) continue;
+
+            // 3. Special "Filters" chip — only keep params whose name contains a filter keyword
+            if (chipCategories === 'SPECIAL_FILTERS') {
+               var matchesFilter = false;
+               for (var ki = 0; ki < FILTER_KEYWORDS.length; ki++) {
+                  if (param.toUpperCase().indexOf(FILTER_KEYWORDS[ki]) !== -1) {
+                     matchesFilter = true; break;
+                  }
                }
+               if (!matchesFilter) continue;
             }
+
+            filteredParams[category][param] = allParameters[category][param];
          }
       }
 
