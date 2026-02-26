@@ -10,12 +10,22 @@ from pymavlink import DFReader
 
 # Assuming MavlinkHandler is defined elsewhere
 from Mavlink_rx_handler import MavlinkHandler
+from drone_state import DroneState
+from flight_phase import FlightPhaseDetector
+from safety_engine import SafetyEngine
+from anomaly_detector import AnomalyDetector
 
 
 class DroneValidator(MavlinkHandler):
     def __init__(self):
         super().__init__()  # Initializes params_dict = {} from MavlinkHandler
         self.hardware_validated = False
+        self.drone_state    = DroneState()           # canonical real-time state
+        self.phase_detector = FlightPhaseDetector()  # situational awareness
+        self.safety_engine    = SafetyEngine(          # guardian authority layer
+            command_fn=self.send_mavlink_command_from_json,
+        )
+        self.anomaly_detector = AnomalyDetector()    # trend analysis
         # Fixed typo: categorized_param -> categorized_params
         self.categorized_params = {
             "System": {},
@@ -160,6 +170,14 @@ class DroneValidator(MavlinkHandler):
                 self.categorized_params["Miscellaneous"][param] = value
 
         drone_logger.info(f"Categorized Parameters: {self.categorized_params}")
+
+    def snapshot_rx_queue(self):
+        """Extend base snapshot to refresh DroneState, FlightPhase, Safety, and Anomalies."""
+        super().snapshot_rx_queue()
+        self.drone_state.update_from_ctx(self.ai_mavlink_ctx)
+        self.phase_detector.update(self.drone_state)
+        self.safety_engine.tick(self.drone_state, self.phase_detector)
+        self.anomaly_detector.tick(self.drone_state, self.phase_detector)
 
     def on_params_received(self):
         """Override to perform validation when parameters are received."""

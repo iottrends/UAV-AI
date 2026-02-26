@@ -42,6 +42,8 @@ jarvis_module = None  # Will hold the JARVIS module
 llm_ai_module = None  # Will hold the llm_ai_v5 module
 stt_module = None # Will hold the STT recorder instance
 telemetry_thread = None  # Will hold the telemetry update thread
+orchestrator = None  # Will hold the Orchestrator instance
+voice_copilot = None  # Will hold the VoiceCopilot instance
 connected_clients = set()  # Track connected WebSocket clients
 mavlink_buffer = {}  # dict keyed by message type → latest msg of each type
 log_parser_instance = None  # Will hold the current LogParser instance
@@ -1803,6 +1805,8 @@ def handle_copilot_toggle(data):
         copilot_user_override = bool(enabled)
         copilot_active = copilot_user_override
     logger.info(f"Co-pilot toggle: override={copilot_user_override}, active={copilot_active}")
+    if voice_copilot:
+        voice_copilot.set_copilot_active(copilot_active)
 
 
 @socketio.on('get_providers')
@@ -1928,6 +1932,19 @@ def delete_api_key():
     return jsonify({'status': 'success', 'message': f'{provider} key removed'})
 
 
+@socketio.on('cancel_rtl')
+def handle_cancel_rtl(_data=None):
+    """Cancel an active Safety Engine RTL countdown (UI button or voice 'cancel')."""
+    if validator and hasattr(validator, 'safety_engine'):
+        cancelled = validator.safety_engine.cancel_rtl_countdown()
+        emit('chat_response', {
+            'source': 'safety',
+            'response': 'RTL countdown cancelled.' if cancelled else 'No active RTL countdown.',
+        })
+    else:
+        emit('chat_response', {'source': 'safety', 'error': 'Safety engine not available.'})
+
+
 @socketio.on('chat_message')
 def handle_chat_message(data):
     """Handle chat messages from clients.
@@ -1953,6 +1970,17 @@ def handle_chat_message(data):
         return
 
     logger.info(f"Query from {client_id}: {query}")
+
+    # --- Safety Engine cancel interception — highest priority, zero latency ---
+    if drone_available and hasattr(validator, 'safety_engine'):
+        _q = query.strip().lower()
+        if _q in ('cancel', 'abort', 'cancel rtl', 'abort rtl'):
+            cancelled = validator.safety_engine.cancel_rtl_countdown()
+            emit('chat_response', {
+                'source': 'safety',
+                'response': 'RTL countdown cancelled.' if cancelled else 'No active RTL countdown.',
+            }, room=client_id)
+            return
 
     # --- Co-pilot fast-path: instant command matching, no AI round-trip ---
     if copilot_active and drone_available:
@@ -2017,7 +2045,12 @@ def handle_chat_message(data):
             import time as _time
             _jarvis_start = _time.time()
             print(f">>> JARVIS [{provider}] query sent: \"{query}\"")
-            jarvis_response = jarvis_module.ask_jarvis(query, validator.categorized_params, validator.ai_mavlink_ctx, provider=provider)
+            _route = orchestrator.route_to_jarvis if orchestrator else None
+            jarvis_response = (
+                _route(query, provider=provider)
+                if _route else
+                jarvis_module.ask_jarvis(query, validator.categorized_params, validator.ai_mavlink_ctx, provider=provider)
+            )
             _jarvis_elapsed = _time.time() - _jarvis_start
             print(f"<<< JARVIS [{provider}] response received in {_jarvis_elapsed:.2f}s")
             print(jarvis_response)
@@ -2107,6 +2140,7 @@ def handle_voice_audio_blob(data):
     """
     Path B: receive audio recorded in the browser (MediaRecorder blob).
     data = { 'audio': '<base64>', 'mime_type': 'audio/webm' }
+    Routes through VoiceCopilot when available (STT → routing → TTS).
     """
     client_id = request.sid
     stt_logger.info(f"Received browser audio blob from {client_id}")
@@ -2124,46 +2158,63 @@ def handle_voice_audio_blob(data):
 
     emit('voice_status', {'status': 'processing'}, room=client_id)
 
-    def _transcribe_and_respond():
+    def _room_emit(response_data):
+        socketio.emit('voice_response', response_data, room=client_id)
+
+    def _process():
         try:
             audio_bytes = base64.b64decode(audio_b64)
         except Exception as e:
             socketio.emit('voice_response', {'error': f'Invalid audio data: {e}'}, room=client_id)
             return
 
-        transcript, err = stt_module.transcribe_audio_bytes(audio_bytes, mime_type)
+        if voice_copilot:
+            voice_copilot.process_audio_blob(
+                audio_bytes, mime_type, client_id, _room_emit,
+                provider=current_provider,
+            )
+        else:
+            # Fallback: inline STT + process_voice_command
+            transcript, err = stt_module.transcribe_audio_bytes(audio_bytes, mime_type)
+            if err:
+                socketio.emit('voice_response', {'error': err}, room=client_id)
+                return
+            if not transcript:
+                socketio.emit('voice_response', {'message': 'No speech detected'}, room=client_id)
+                return
+            socketio.emit('voice_status', {'status': 'idle', 'transcript': transcript}, room=client_id)
+            process_voice_command(client_id, transcript)
 
-        if err:
-            socketio.emit('voice_response', {'error': err}, room=client_id)
-            return
-        if not transcript:
-            socketio.emit('voice_response', {'message': 'No speech detected'}, room=client_id)
-            return
-
-        # Echo the transcript back so the UI can show what was heard
-        socketio.emit('voice_status', {'status': 'idle', 'transcript': transcript}, room=client_id)
-        process_voice_command(client_id, transcript)
-
-    threading.Thread(target=_transcribe_and_respond, daemon=True).start()
+    threading.Thread(target=_process, daemon=True).start()
 
 def process_voice_command(client_id, query):
-    """Processes a transcribed voice command through JARVIS or co-pilot fast-path."""
+    """Processes a transcribed voice command through VoiceCopilot (or inline fallback)."""
     if not validator or not validator.hardware_validated:
         socketio.emit('voice_response', {"error": "Drone not connected or not validated"}, room=client_id)
         return
-    
+
     if not query:
         socketio.emit('voice_response', {"error": "Empty command"}, room=client_id)
         return
 
     logger.info(f"Voice command from {client_id}: {query}")
 
-    # --- Co-pilot fast-path for voice commands ---
+    def _room_emit(response_data):
+        socketio.emit('voice_response', response_data, room=client_id)
+
+    # ── VoiceCopilot path (preferred) ────────────────────────────────────
+    if voice_copilot:
+        voice_copilot.process_text_command(
+            query, client_id, _room_emit, provider=current_provider
+        )
+        return
+
+    # ── Inline fallback (VoiceCopilot not initialised) ───────────────────
     if copilot_active:
         result = copilot.try_fast_command(query, mavlink_buffer)
         if result:
             if result.get('fix_command'):
-                fix_cmd = result['fix_command']
+                fix_cmd      = result['fix_command']
                 command_name = fix_cmd.get('command', 'unknown')
                 logger.info(f"Co-pilot (voice) executing: {command_name}")
                 if validator.send_mavlink_command_from_json(fix_cmd):
@@ -2185,41 +2236,34 @@ def process_voice_command(client_id, query):
                 }, room=client_id)
             return
 
-    # --- Fall through to JARVIS for complex voice commands ---
     try:
         import time as _time
         _jarvis_start = _time.time()
         print(f">>> JARVIS [{current_provider}] voice query sent: \"{query}\"")
-        jarvis_response = jarvis_module.ask_jarvis(query, validator.categorized_params, validator.ai_mavlink_ctx, provider=current_provider)
+        _route = orchestrator.route_to_jarvis if orchestrator else None
+        jarvis_response = (
+            _route(query, provider=current_provider)
+            if _route else
+            jarvis_module.ask_jarvis(query, validator.categorized_params, validator.ai_mavlink_ctx, provider=current_provider)
+        )
         _jarvis_elapsed = _time.time() - _jarvis_start
         print(f"<<< JARVIS [{current_provider}] voice response received in {_jarvis_elapsed:.2f}s")
         logger.info(f"JARVIS response to voice command: {jarvis_response}")
-        
-        socketio.emit('voice_response', {
-            "source": "jarvis",
-            "response": jarvis_response
-        }, room=client_id)
 
-        if jarvis_response and 'fix_command' in jarvis_response and jarvis_response['fix_command']:
-            fix_command_raw = jarvis_response['fix_command']
-            # Normalize to a list
-            commands = fix_command_raw if isinstance(fix_command_raw, list) else [fix_command_raw]
-            for fix_command_json in commands:
-                logger.info(f"Attempting to execute fix command from JARVIS: {fix_command_json}")
-                try:
-                    if isinstance(fix_command_json, dict):
-                        command_name = fix_command_json.get('command', 'unknown')
-                        if validator.send_mavlink_command_from_json(fix_command_json):
-                            socketio.emit('voice_response', {'message': f"Command '{command_name}' initiated and acknowledged by drone."}, room=client_id)
-                        else:
-                            socketio.emit('voice_response', {'error': f"Command '{command_name}' failed to be acknowledged by drone or timed out."}, room=client_id)
-                            break  # Stop executing remaining commands if one fails
+        socketio.emit('voice_response', {"source": "jarvis", "response": jarvis_response}, room=client_id)
+
+        if jarvis_response and jarvis_response.get('fix_command'):
+            commands = jarvis_response['fix_command']
+            if not isinstance(commands, list):
+                commands = [commands]
+            for fix_cmd in commands:
+                if isinstance(fix_cmd, dict):
+                    name = fix_cmd.get('command', 'unknown')
+                    if validator.send_mavlink_command_from_json(fix_cmd):
+                        socketio.emit('voice_response', {'message': f"Command '{name}' acknowledged."}, room=client_id)
                     else:
-                        logger.error(f"Invalid fix_command format from JARVIS: {fix_command_json}")
-                        socketio.emit('voice_response', {'error': f"Invalid command format: {fix_command_json}"}, room=client_id)
-                except Exception as e:
-                    logger.error(f"Error sending MAVLink command: {e}")
-                    socketio.emit('voice_response', {'error': f"Error sending command: {e}"}, room=client_id)
+                        socketio.emit('voice_response', {'error': f"Command '{name}' failed."}, room=client_id)
+                        break
 
     except Exception as e:
         logger.error(f"Error processing voice command with JARVIS: {str(e)}")
@@ -2876,10 +2920,13 @@ def update_system_health():
 
         # Auto-toggle co-pilot mode based on armed state
         global copilot_active
+        _prev_copilot = copilot_active
         if copilot_user_override is not None:
             copilot_active = copilot_user_override
         else:
             copilot_active = is_armed
+        if voice_copilot and copilot_active != _prev_copilot:
+            voice_copilot.set_copilot_active(copilot_active)
 
         # Extract ESC telemetry from ESC_TELEMETRY_1_TO_4 (real hardware)
         # or fall back to SERVO_OUTPUT_RAW (SITL / no ESC telemetry)
@@ -3288,6 +3335,10 @@ def telemetry_update_loop():
                 # Proactive JARVIS alerts (rule-based, no LLM)
                 check_proactive_alerts()
 
+                # Orchestrator proactive tick (LLM advisories for emergency/anomaly)
+                if orchestrator:
+                    orchestrator.proactive_tick()
+
                 # No flush here — _process_message owns the flush trigger.
                 # It writes 100 messages as a batch then clears the deque.
                 # Calling flush_rx_queue() every 500ms would prevent the
@@ -3307,8 +3358,8 @@ def telemetry_update_loop():
 #########################################################################
 def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=False, loggers=None, stt_recorder=None):
     """Start the Flask+SocketIO server in a new thread"""
-    global validator, jarvis_module, llm_ai_module, telemetry_thread, logger, stt_module
-    
+    global validator, jarvis_module, llm_ai_module, telemetry_thread, logger, stt_module, orchestrator
+
     # Use provided logger if available
     if loggers and 'web_server' in loggers:
         logger = loggers['web_server']
@@ -3317,6 +3368,64 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
     validator = validator_instance
     jarvis_module = jarvis
     stt_module = stt_recorder
+
+    # Wire SafetyEngine alert output to the web_server's emit function
+    if hasattr(validator, 'safety_engine'):
+        validator.safety_engine.set_alert_fn(_emit_alert)
+
+    # Wire AnomalyDetector output — convert Anomaly dataclass → jarvis_alert event
+    if hasattr(validator, 'anomaly_detector'):
+        def _on_anomaly(anomaly):
+            severity = anomaly.severity if anomaly.active else 'info'
+            title    = anomaly.title if anomaly.active else f"Resolved: {anomaly.title}"
+            _emit_alert(anomaly.anomaly_id, severity, title, anomaly.description)
+        validator.anomaly_detector.set_anomaly_fn(_on_anomaly)
+
+    # Create Orchestrator — central brain API that enriches LLM queries with
+    # live DroneState / FlightPhase / Anomaly context and handles proactive advisories
+    try:
+        from orchestrator import Orchestrator
+
+        def _orch_emit(event, data):
+            """Orchestrator emit — broadcast + forward proactive advisories to VoiceCopilot."""
+            socketio.emit(event, data)
+            if event == 'proactive_advisory' and voice_copilot:
+                voice_copilot.announce_proactive_advisory(data.get('message', ''))
+
+        orchestrator = Orchestrator(
+            validator=validator,
+            jarvis_mod=jarvis_module,
+            emit_fn=_orch_emit,
+        )
+        logger.info("Orchestrator initialized")
+    except Exception as _orch_err:
+        logger.warning(f"Orchestrator init failed (falling back to direct ask_jarvis): {_orch_err}")
+
+    # Create VoiceCopilot — voice I/O pipeline + proactive TTS announcements
+    try:
+        from voice_copilot import VoiceCopilot
+        import copilot as _copilot_mod
+
+        def _alert_with_tts(alert_id, severity, title, message, action=None):
+            """Safety alert chain: emit to UI + speak via TTS."""
+            _emit_alert(alert_id, severity, title, message, action)
+            if voice_copilot:
+                voice_copilot.announce_safety_alert(alert_id, severity, title, message)
+
+        # Re-wire SafetyEngine to the combined alert+TTS chain
+        if hasattr(validator, 'safety_engine'):
+            validator.safety_engine.set_alert_fn(_alert_with_tts)
+
+        voice_copilot = VoiceCopilot(
+            validator=validator,
+            orchestrator=orchestrator,
+            stt_module=stt_module,
+            emit_fn=lambda event, data: socketio.emit(event, data),
+            copilot_mod=_copilot_mod,
+        )
+        logger.info("VoiceCopilot initialized")
+    except Exception as _vc_err:
+        logger.warning(f"VoiceCopilot init failed (voice path degraded): {_vc_err}")
     #llm_ai_module = llm_ai
 
     # Make sure the static directory exists

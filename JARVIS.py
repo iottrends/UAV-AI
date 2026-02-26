@@ -113,10 +113,11 @@ For MAV_CMD_DO_CHANGE_SPEED:
 """
 
 # Per-query template (only MAVLink data + query — lightweight)
+# {drone_context_section} is empty by default; Orchestrator injects a
+# "### Drone State Summary:" block here when enriched context is available.
 QUERY_TEMPLATE = """### MAVLink Messages:
 {mavlink_context}
-
-### User Query:
+{drone_context_section}### User Query:
 "{query}"
 """
 
@@ -456,7 +457,8 @@ def _trim_history():
                 break
 
 
-def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini"):
+def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini",
+               drone_context=None):
     """Process the user query using the selected AI provider with MAVLink context.
 
     Args:
@@ -465,6 +467,9 @@ def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini
         mavlink_ctx: dict keyed by msg type → latest msg dict (from snapshot).
                      Falls back to global jarvis_mav_data if not provided.
         provider: AI provider to use — "gemini", "openai", or "claude".
+        drone_context: Optional pre-built context string from Orchestrator
+                       (DroneState + FlightPhase + Anomalies summary).
+                       Injected between MAVLink messages and the user query.
     """
     global _last_seen_params, _params_sent, _conversation_history
 
@@ -491,8 +496,15 @@ def ask_jarvis(query, parameter_context=None, mavlink_ctx=None, provider="gemini
             agent_logger.info(f"JARVIS: {len(delta)} param(s) changed, sending delta")
             print(f">>> JARVIS: {len(delta)} parameter(s) changed, sending delta")
 
+    # Inject enriched drone context if provided by the Orchestrator
+    drone_ctx_section = (
+        f"### Drone State Summary:\n{drone_context}\n\n"
+        if drone_context else ""
+    )
     prompt = param_section + QUERY_TEMPLATE.format(
-        mavlink_context=mavlink_context, query=query
+        mavlink_context=mavlink_context,
+        drone_context_section=drone_ctx_section,
+        query=query,
     )
 
     # Snapshot history window before appending current turn
