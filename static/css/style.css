@@ -1428,6 +1428,45 @@ padding: 0.5rem;
     background: #000;
 }
 
+/* ── Waiting-for-video overlay ───────────────────────── */
+.dv-video-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 10, 20, 0.88);
+    border-radius: 4px;
+    z-index: 10;
+    pointer-events: none;
+}
+.dv-overlay-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+.dv-overlay-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(99, 102, 241, 0.25);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: dv-spin 0.9s linear infinite;
+}
+@keyframes dv-spin {
+    to { transform: rotate(360deg); }
+}
+.dv-overlay-text {
+    font-size: 0.9rem;
+    color: #a5b4fc;
+    letter-spacing: 0.04em;
+}
+.dv-overlay-sub {
+    font-size: 0.72rem;
+    color: #6b7280;
+}
+
 /* ── Gamepad bar ─────────────────────────────────────── */
 .gp-bar {
     display: flex;
@@ -1762,6 +1801,134 @@ padding: 0.5rem;
    color: #fff;
    border-color: var(--accent);
 }
+
+/* ── Audit chip (separated visually from category chips) ── */
+.audit-chip {
+   margin-left: auto;
+   background: transparent;
+   border-color: #6366f1;
+   color: #a5b4fc;
+}
+.audit-chip:hover, .audit-chip.active {
+   background: #6366f1;
+   color: #fff;
+   border-color: #6366f1;
+}
+
+/* ── Audit panel ─────────────────────────────────────────── */
+.audit-panel {
+   margin-bottom: 0.75rem;
+   border: 1px solid var(--border);
+   border-radius: var(--radius);
+   background: var(--surface);
+   overflow: hidden;
+}
+.audit-summary-bar {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   gap: 0.5rem;
+   padding: 0.6rem 0.9rem;
+   background: var(--surface-raised);
+   border-bottom: 1px solid var(--border);
+}
+.audit-badge {
+   padding: 0.18rem 0.6rem;
+   border-radius: var(--radius-pill);
+   font-size: 0.78rem;
+   font-weight: 600;
+   white-space: nowrap;
+}
+.audit-badge.critical   { background: rgba(239,68,68,0.15);  color: #f87171; }
+.audit-badge.warning    { background: rgba(234,179,8,0.15);  color: #facc15; }
+.audit-badge.suggestion { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+.audit-badge.passed     { background: rgba(34,197,94,0.12);  color: #4ade80; }
+.audit-close-btn {
+   margin-left: auto;
+   background: none;
+   border: none;
+   color: var(--text-muted);
+   cursor: pointer;
+   font-size: 0.9rem;
+   padding: 0.1rem 0.3rem;
+   border-radius: var(--radius);
+}
+.audit-close-btn:hover { color: var(--text-primary); }
+.audit-issues {
+   padding: 0.5rem 0.75rem;
+   display: flex;
+   flex-direction: column;
+   gap: 0.45rem;
+   max-height: 420px;
+   overflow-y: auto;
+}
+.audit-issue-card {
+   border-radius: var(--radius);
+   padding: 0.55rem 0.75rem;
+   border-left: 3px solid transparent;
+}
+.audit-critical   { background: rgba(239,68,68,0.07);  border-left-color: #ef4444; }
+.audit-warning    { background: rgba(234,179,8,0.07);  border-left-color: #eab308; }
+.audit-suggestion { background: rgba(99,102,241,0.07); border-left-color: #6366f1; }
+.audit-issue-header {
+   display: flex;
+   align-items: center;
+   gap: 0.5rem;
+   flex-wrap: wrap;
+}
+.audit-sev-icon    { font-size: 0.9rem; flex-shrink: 0; }
+.audit-issue-title { font-weight: 600; font-size: 0.83rem; color: var(--text-primary); flex: 1; }
+.audit-issue-detail {
+   font-size: 0.78rem;
+   color: var(--text-muted);
+   margin-top: 0.25rem;
+   line-height: 1.45;
+}
+.audit-params {
+   margin-top: 0.3rem;
+   display: flex;
+   flex-wrap: wrap;
+   gap: 0.25rem;
+}
+.audit-param-tag {
+   font-size: 0.72rem;
+   background: var(--surface-raised);
+   border: 1px solid var(--border);
+   border-radius: 3px;
+   padding: 0.05rem 0.35rem;
+   color: var(--text-secondary);
+   font-family: monospace;
+}
+.audit-fix-btn {
+   margin-left: auto;
+   padding: 0.18rem 0.65rem;
+   font-size: 0.75rem;
+   font-weight: 600;
+   background: var(--accent);
+   color: #fff;
+   border: none;
+   border-radius: var(--radius-pill);
+   cursor: pointer;
+   white-space: nowrap;
+   transition: opacity 0.15s;
+}
+.audit-fix-btn:hover   { opacity: 0.85; }
+.audit-fix-btn:disabled{ opacity: 0.5; cursor: default; }
+.audit-fix-btn.applied { background: #16a34a; }
+.audit-action-hint {
+   margin-left: auto;
+   font-size: 0.72rem;
+   color: var(--text-muted);
+   font-style: italic;
+   white-space: nowrap;
+}
+.audit-all-passed {
+   padding: 1rem;
+   text-align: center;
+   color: #4ade80;
+   font-size: 0.85rem;
+}
+.audit-error { color: #f87171; font-size: 0.82rem; }
 
 /* ===== Log flight summary chips ===== */
 .log-summary-chips {

@@ -25,9 +25,10 @@ document.addEventListener('DOMContentLoaded', function() {
    // Keywords used for the "Filters" chip — matches param names containing any of these
    var FILTER_KEYWORDS = ['FLTD', 'FLTE', 'FLTT', 'NOTCH', 'HNTCH', 'INS_GYRO_FILTER', 'INS_ACCEL_FILTER'];
 
-   // Wire chip buttons
+   // Wire chip buttons — skip buttons without data-chip (e.g. the Audit button)
    document.querySelectorAll('#paramChips .param-chip').forEach(function(btn) {
       btn.addEventListener('click', function() {
+         if (!btn.hasAttribute('data-chip')) return;
          document.querySelectorAll('#paramChips .param-chip').forEach(function(b) { b.classList.remove('active'); });
          btn.classList.add('active');
          activeChip = btn.getAttribute('data-chip');
@@ -837,6 +838,174 @@ document.addEventListener('DOMContentLoaded', function() {
    }
 
    // Ask JARVIS button for Filter Visualizer
+   // ── Param Audit ───────────────────────────────────────────────────────────
+
+   var _auditVisible = false;
+
+   var SEV_ICON  = { critical: '🔴', warning: '🟠', suggestion: '🟡' };
+   var SEV_CLASS = { critical: 'audit-critical', warning: 'audit-warning', suggestion: 'audit-suggestion' };
+
+   function runAudit() {
+      var btn = document.getElementById('runAuditBtn');
+      var panel = document.getElementById('auditPanel');
+      if (!panel) return;
+
+      // Toggle off if already visible
+      if (_auditVisible) {
+         panel.style.display = 'none';
+         _auditVisible = false;
+         if (btn) btn.classList.remove('active');
+         return;
+      }
+
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning…'; }
+
+      fetch('/api/param_audit')
+         .then(function(r) { return r.json(); })
+         .then(function(data) {
+            if (data.error) {
+               renderAuditError(data.error);
+            } else {
+               renderAuditReport(data);
+            }
+            panel.style.display = 'block';
+            _auditVisible = true;
+            if (btn) btn.classList.add('active');
+         })
+         .catch(function(e) {
+            renderAuditError(e.message || 'Network error');
+            panel.style.display = 'block';
+            _auditVisible = true;
+         })
+         .finally(function() {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-stethoscope"></i> Audit'; }
+         });
+   }
+
+   function renderAuditError(msg) {
+      var summary = document.getElementById('auditSummary');
+      var issues  = document.getElementById('auditIssues');
+      if (summary) summary.innerHTML = '<span class="audit-error">⚠ ' + msg + '</span>';
+      if (issues)  issues.innerHTML  = '';
+   }
+
+   function renderAuditReport(report) {
+      var s = report.summary || {};
+      var summaryEl = document.getElementById('auditSummary');
+      var issuesEl  = document.getElementById('auditIssues');
+      if (!summaryEl || !issuesEl) return;
+
+      // Summary bar
+      summaryEl.innerHTML =
+         '<div class="audit-summary-bar">' +
+            (s.critical   ? '<span class="audit-badge critical">🔴 ' + s.critical   + ' Critical</span>'   : '') +
+            (s.warning    ? '<span class="audit-badge warning">🟠 '  + s.warning    + ' Warnings</span>'   : '') +
+            (s.suggestion ? '<span class="audit-badge suggestion">🟡 '+ s.suggestion + ' Suggestions</span>': '') +
+            '<span class="audit-badge passed">✅ ' + (s.passed || 0) + ' Passed</span>' +
+            '<button class="audit-close-btn" id="auditCloseBtn" title="Close audit">✕</button>' +
+         '</div>';
+
+      var closeBtn = document.getElementById('auditCloseBtn');
+      if (closeBtn) {
+         closeBtn.addEventListener('click', function() {
+            var panel = document.getElementById('auditPanel');
+            if (panel) panel.style.display = 'none';
+            _auditVisible = false;
+            var auditBtn = document.getElementById('runAuditBtn');
+            if (auditBtn) auditBtn.classList.remove('active');
+         });
+      }
+
+      // No issues
+      if (!report.issues || report.issues.length === 0) {
+         issuesEl.innerHTML = '<div class="audit-all-passed">All ' + (s.total || 0) + ' checks passed — configuration looks good.</div>';
+         return;
+      }
+
+      // Issue cards
+      var html = '';
+      report.issues.forEach(function(issue) {
+         var sev   = issue.severity || 'warning';
+         var icon  = SEV_ICON[sev]  || '🟡';
+         var cls   = SEV_CLASS[sev] || 'audit-warning';
+         var fixBtnHtml = '';
+         if (issue.fix && Object.keys(issue.fix).length > 0) {
+            fixBtnHtml = '<button class="audit-fix-btn" data-fix=\'' +
+               JSON.stringify(issue.fix).replace(/'/g, '&#39;') +
+               '\'>Apply Fix</button>';
+         } else if (issue.action) {
+            fixBtnHtml = '<span class="audit-action-hint">' + _esc(issue.action) + '</span>';
+         }
+         var paramsHtml = '';
+         if (issue.params_involved && issue.params_involved.length) {
+            paramsHtml = '<div class="audit-params">' +
+               issue.params_involved.map(function(p) {
+                  return '<code class="audit-param-tag">' + _esc(p) + '</code>';
+               }).join(' ') +
+            '</div>';
+         }
+         html +=
+            '<div class="audit-issue-card ' + cls + '">' +
+               '<div class="audit-issue-header">' +
+                  '<span class="audit-sev-icon">' + icon + '</span>' +
+                  '<span class="audit-issue-title">' + _esc(issue.title) + '</span>' +
+                  fixBtnHtml +
+               '</div>' +
+               '<div class="audit-issue-detail">' + _esc(issue.detail) + '</div>' +
+               paramsHtml +
+            '</div>';
+      });
+      issuesEl.innerHTML = html;
+
+      // Wire Apply Fix buttons
+      issuesEl.querySelectorAll('.audit-fix-btn').forEach(function(btn) {
+         btn.addEventListener('click', function() {
+            var fix = {};
+            try { fix = JSON.parse(btn.getAttribute('data-fix')); } catch(e) { return; }
+            applyAuditFix(fix, btn);
+         });
+      });
+   }
+
+   function applyAuditFix(fixDict, btn) {
+      if (!fixDict || !Object.keys(fixDict).length) return;
+      btn.disabled = true;
+      btn.textContent = 'Applying…';
+      fetch('/api/parameters', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(fixDict),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+         if (data.status === 'success' || data.updated) {
+            btn.textContent = '✓ Applied';
+            btn.classList.add('applied');
+            // Refresh param table to reflect the change
+            fetchParameters();
+         } else {
+            btn.textContent = '✕ Failed';
+            btn.disabled = false;
+         }
+      })
+      .catch(function() {
+         btn.textContent = '✕ Error';
+         btn.disabled = false;
+      });
+   }
+
+   function _esc(str) {
+      return String(str || '')
+         .replace(/&/g, '&amp;')
+         .replace(/</g, '&lt;')
+         .replace(/>/g, '&gt;')
+         .replace(/"/g, '&quot;');
+   }
+
+   var auditBtn = document.getElementById('runAuditBtn');
+   if (auditBtn) auditBtn.addEventListener('click', runAudit);
+
+   // ── Filter Visualizer / JARVIS button (existing) ──────────────────────────
    var filterAskJarvis = document.getElementById('filterVizAskJarvis');
    if (filterAskJarvis) {
       filterAskJarvis.addEventListener('click', function() {

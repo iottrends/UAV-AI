@@ -494,7 +494,7 @@
                <!-- Sub-tab: Parameters (existing table, unchanged) -->
                <div class="subtab-panel" id="tuning-parameters">
 
-                  <!-- Category chips -->
+                  <!-- Category chips + Audit button -->
                   <div class="param-chips" id="paramChips">
                      <button class="param-chip active" data-chip="all">All</button>
                      <button class="param-chip" data-chip="pid">PID</button>
@@ -507,6 +507,15 @@
                      <button class="param-chip" data-chip="sensors">Sensors</button>
                      <button class="param-chip" data-chip="ekf">EKF</button>
                      <button class="param-chip" data-chip="comms">Comms</button>
+                     <button class="param-chip audit-chip" id="runAuditBtn" title="Run configuration audit">
+                        <i class="fas fa-stethoscope"></i> Audit
+                     </button>
+                  </div>
+
+                  <!-- Audit results panel (hidden until audit is run) -->
+                  <div id="auditPanel" class="audit-panel" style="display:none;">
+                     <div class="audit-summary" id="auditSummary"></div>
+                     <div class="audit-issues" id="auditIssues"></div>
                   </div>
 
                   <div class="flex-between u-mb-2">
@@ -1337,8 +1346,20 @@
                      </div>
                      <div class="drone-canvas-wrapper" id="dvCanvasWrapper">
                         <div id="dv3dContainer"></div>
-                        <!-- Video feed img — src set by JS when video mode is active -->
+                        <!-- Low-latency H.264 via MSE (UDP/wfb-ng sources) -->
+                        <video id="dvVideoPlayer" class="dv-video-feed"
+                               muted playsinline autoplay
+                               style="display:none; width:100%; height:100%; object-fit:contain;"></video>
+                        <!-- MJPEG fallback (USB/RTSP sources or non-MSE browsers) -->
                         <img id="dvVideoFeed" class="dv-video-feed" alt="Video feed" style="display:none;">
+                        <!-- Waiting overlay — shown while LL stream is connecting -->
+                        <div id="dvVideoOverlay" class="dv-video-overlay" style="display:none;">
+                           <div class="dv-overlay-inner">
+                              <div class="dv-overlay-spinner"></div>
+                              <div class="dv-overlay-text">Waiting for video&hellip;</div>
+                              <div class="dv-overlay-sub" id="dvOverlaySub"></div>
+                           </div>
+                        </div>
                      </div>
                      <div class="drone-altitude-panel">
                         <div class="drone-altitude-label">V/S</div>

@@ -526,105 +526,220 @@
     }
 
     // ===== Video feed / source config =====
-    var _videoMode     = false;
-    var _statusPollId  = null;
+    var _videoMode    = false;
+    var _statusPollId = null;
+    var _currentMode  = 'mjpeg';   // 'll' | 'mjpeg'
+    var _llAbort      = null;      // AbortController for LL fetch
+    var _llLiveTimer  = null;      // setInterval for live-edge catch-up
 
-    function initVideo() {
-        var btn3d      = document.getElementById('dvBtn3d');
-        var btnVideo   = document.getElementById('dvBtnVideo');
-        var container3d = document.getElementById('dv3dContainer');
-        var videoImg   = document.getElementById('dvVideoFeed');
-        var srcInput   = document.getElementById('dvSrcInput');
-        var srcStart   = document.getElementById('dvSrcStart');
-        var srcStop    = document.getElementById('dvSrcStop');
-        var srcStatus  = document.getElementById('dvSrcStatus');
+    // MSE codec strings to try in preference order (H.264 variants from OpenIPC)
+    var _MSE_CODECS = [
+        'video/mp4; codecs="avc1.640028"',   // High Profile L4.0
+        'video/mp4; codecs="avc1.4D4028"',   // Main Profile L4.0
+        'video/mp4; codecs="avc1.42E028"',   // Baseline L4.0
+        'video/mp4; codecs="avc1.42001E"',   // Baseline L3.0
+    ];
 
-        if (!btn3d || !btnVideo) return;
-
-        // Preset buttons fill the input
-        var presets = document.querySelectorAll('.dv-preset-btn');
-        presets.forEach(function(b) {
-            b.addEventListener('click', function() {
-                if (srcInput) srcInput.value = b.getAttribute('data-src');
-            });
-        });
-
-        // Start button
-        if (srcStart) {
-            srcStart.addEventListener('click', function() {
-                var src = srcInput ? srcInput.value.trim() : '';
-                if (!src) return;
-                fetch('/api/video_source', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source: src }),
-                }).then(function() {
-                    // Auto-switch to video view
-                    setView('video');
-                    startStatusPoll();
-                });
-            });
+    function _mseCodec() {
+        if (!('MediaSource' in window)) return null;
+        for (var i = 0; i < _MSE_CODECS.length; i++) {
+            if (MediaSource.isTypeSupported(_MSE_CODECS[i])) return _MSE_CODECS[i];
         }
-
-        // Stop button
-        if (srcStop) {
-            srcStop.addEventListener('click', function() {
-                fetch('/api/video_source', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source: '' }),
-                }).then(function() {
-                    stopStatusPoll();
-                    if (srcStatus) { srcStatus.textContent = 'Stopped'; srcStatus.className = 'dv-src-status'; }
-                    if (videoImg)  { videoImg.src = ''; }
-                });
-            });
-        }
-
-        // Toggle buttons
-        btn3d.addEventListener('click', function() { setView('3d'); });
-        btnVideo.addEventListener('click', function() {
-            setView('video');
-            // Re-attach src in case it was cleared
-            if (videoImg && !videoImg.src.includes('/api/video_stream')) {
-                videoImg.src = '/api/video_stream';
-            }
-            startStatusPoll();
-        });
-
-        // Restore previously running source on page load
-        fetch('/api/video_source')
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-                if (d.source) {
-                    if (srcInput) srcInput.value = d.source;
-                }
-                if (d.status === 'streaming' || d.status === 'connecting') {
-                    startStatusPoll();
-                }
-                updateStatusBadge(d, srcStatus);
-            })
-            .catch(function() {});
+        return null;
     }
 
-    function setView(mode) {
+    function _isUdpSource(src) {
+        return src && src.toLowerCase().startsWith('udp://');
+    }
+
+    // ── Overlay helpers ───────────────────────────────────────────────────
+
+    function showOverlay(subText) {
+        var ov  = document.getElementById('dvVideoOverlay');
+        var sub = document.getElementById('dvOverlaySub');
+        if (ov)  ov.style.display  = 'flex';
+        if (sub) sub.textContent   = subText || '';
+    }
+
+    function hideOverlay() {
+        var ov = document.getElementById('dvVideoOverlay');
+        if (ov) ov.style.display = 'none';
+    }
+
+    // ── Low-latency MSE stream ────────────────────────────────────────────
+
+    function startLLStream() {
+        var codec = _mseCodec();
+        var video = document.getElementById('dvVideoPlayer');
+        if (!codec || !video) return false;
+
+        stopLLStream();
+        showOverlay('udp://0.0.0.0:5600');
+
+        var ms   = new MediaSource();
+        video.src = URL.createObjectURL(ms);
+
+        var controller = new AbortController();
+        _llAbort = controller;
+
+        ms.addEventListener('sourceopen', function() {
+            var sb;
+            try {
+                sb = ms.addSourceBuffer(codec);
+            } catch(e) {
+                console.warn('MSE addSourceBuffer failed:', e);
+                stopLLStream();
+                _activateMjpeg();
+                return;
+            }
+
+            var pending   = [];
+            var appending = false;
+
+            function appendNext() {
+                if (appending || pending.length === 0 || sb.updating) return;
+                appending = true;
+                var buf = pending.shift();
+                try {
+                    sb.appendBuffer(buf);
+                } catch(e) {
+                    console.warn('MSE appendBuffer error:', e);
+                    appending = false;
+                }
+            }
+
+            sb.addEventListener('updateend', function() {
+                appending = false;
+                // Trim buffer: remove data older than 2 s behind playhead
+                if (!sb.updating && video.buffered.length > 0) {
+                    var end = video.buffered.end(0);
+                    var cur = video.currentTime;
+                    if (end - video.buffered.start(0) > 4) {
+                        try { sb.remove(video.buffered.start(0), Math.max(cur - 1, video.buffered.start(0))); }
+                        catch(e) {}
+                        return;   // wait for next updateend after remove
+                    }
+                }
+                appendNext();
+            });
+
+            sb.addEventListener('error', function(e) {
+                console.warn('MSE SourceBuffer error:', e);
+            });
+
+            // Chase the live edge every 500 ms to prevent latency accumulation
+            _llLiveTimer = setInterval(function() {
+                if (!video || video.paused || !video.buffered.length) return;
+                var liveEdge = video.buffered.end(video.buffered.length - 1);
+                if (liveEdge - video.currentTime > 0.6) {
+                    video.currentTime = Math.max(liveEdge - 0.15, 0);
+                }
+            }, 500);
+
+            // Fetch the fMP4 byte stream
+            fetch('/api/video_ll_stream', { signal: controller.signal })
+                .then(function(res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    var reader = res.body.getReader();
+                    function pump() {
+                        return reader.read().then(function(result) {
+                            if (result.done) return;
+                            // Slice to exact view — .buffer may be a larger shared
+                            // ArrayBuffer with a non-zero byteOffset, which would
+                            // feed extra bytes into MSE and corrupt the fMP4 stream.
+                            var chunk = result.value;
+                            pending.push(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+                            appendNext();
+                            return pump();
+                        });
+                    }
+                    return pump();
+                })
+                .catch(function(e) {
+                    if (e.name !== 'AbortError') {
+                        console.warn('LL stream fetch error:', e);
+                    }
+                });
+
+            video.play().catch(function(){});
+
+            // Hide overlay once video actually starts rendering frames
+            video.addEventListener('playing', hideOverlay, { once: true });
+        });
+
+        return true;
+    }
+
+    function stopLLStream() {
+        if (_llLiveTimer) { clearInterval(_llLiveTimer); _llLiveTimer = null; }
+        if (_llAbort) { _llAbort.abort(); _llAbort = null; }
+        var video = document.getElementById('dvVideoPlayer');
+        if (video) {
+            // Revoke the blob URL before clearing src to avoid memory leak
+            if (video.src && video.src.startsWith('blob:')) {
+                URL.revokeObjectURL(video.src);
+            }
+            video.src = '';
+        }
+        hideOverlay();
+    }
+
+    // ── MJPEG fallback ────────────────────────────────────────────────────
+
+    function _activateMjpeg() {
+        var img = document.getElementById('dvVideoFeed');
+        var vid = document.getElementById('dvVideoPlayer');
+        if (img) { img.style.display = 'block'; img.src = '/api/video_stream'; }
+        if (vid) { vid.style.display = 'none'; }
+    }
+
+    function _deactivateMjpeg() {
+        var img = document.getElementById('dvVideoFeed');
+        if (img) { img.style.display = 'none'; img.src = ''; }
+    }
+
+    // ── View switching ────────────────────────────────────────────────────
+
+    function setView(mode, srcOverride) {
         _videoMode = (mode === 'video');
-        var btn3d     = document.getElementById('dvBtn3d');
-        var btnVideo  = document.getElementById('dvBtnVideo');
-        var cont3d    = document.getElementById('dv3dContainer');
-        var videoImg  = document.getElementById('dvVideoFeed');
+        var btn3d   = document.getElementById('dvBtn3d');
+        var btnVideo = document.getElementById('dvBtnVideo');
+        var cont3d  = document.getElementById('dv3dContainer');
+        var vid     = document.getElementById('dvVideoPlayer');
 
         if (btn3d)    btn3d.classList.toggle('active', !_videoMode);
         if (btnVideo) btnVideo.classList.toggle('active', _videoMode);
 
         if (_videoMode) {
-            if (cont3d)   cont3d.style.display = 'none';
-            if (videoImg) { videoImg.style.display = 'block'; videoImg.src = '/api/video_stream'; }
+            if (cont3d) cont3d.style.display = 'none';
+
+            var srcInput = document.getElementById('dvSrcInput');
+            var src = srcOverride || (srcInput ? srcInput.value.trim() : '');
+
+            if (_isUdpSource(src) && _mseCodec()) {
+                // Low-latency path
+                _currentMode = 'll';
+                _deactivateMjpeg();
+                if (vid) vid.style.display = 'block';
+                startLLStream();
+            } else {
+                // MJPEG fallback
+                _currentMode = 'mjpeg';
+                stopLLStream();
+                if (vid) vid.style.display = 'none';
+                _activateMjpeg();
+            }
         } else {
-            if (cont3d)   cont3d.style.display = '';
-            if (videoImg) { videoImg.style.display = 'none'; videoImg.src = ''; }
+            // 3D view — stop video, hide overlay
+            if (cont3d) cont3d.style.display = '';
+            stopLLStream();
+            _deactivateMjpeg();
+            if (vid) vid.style.display = 'none';
+            hideOverlay();
         }
     }
+
+    // ── Status polling ────────────────────────────────────────────────────
 
     function startStatusPoll() {
         if (_statusPollId) return;
@@ -647,8 +762,9 @@
         if (!el) return;
         var s = info.status;
         if (s === 'streaming') {
-            var res = info.resolution ? info.resolution[0] + 'x' + info.resolution[1] : '';
-            el.textContent = '● ' + (info.fps || 0) + ' fps' + (res ? '  ' + res : '');
+            var suffix = info.mode === 'll' ? ' LL' : (' ' + (info.fps || 0) + ' fps');
+            var res = info.resolution ? '  ' + info.resolution[0] + 'x' + info.resolution[1] : '';
+            el.textContent = '● ' + suffix + res;
             el.className = 'dv-src-status streaming';
         } else if (s === 'connecting') {
             el.textContent = '⟳ connecting…';
@@ -660,6 +776,78 @@
             el.textContent = 'idle';
             el.className = 'dv-src-status';
         }
+    }
+
+    function initVideo() {
+        var btn3d    = document.getElementById('dvBtn3d');
+        var btnVideo = document.getElementById('dvBtnVideo');
+        var srcInput = document.getElementById('dvSrcInput');
+        var srcStart = document.getElementById('dvSrcStart');
+        var srcStop  = document.getElementById('dvSrcStop');
+        var srcStatus = document.getElementById('dvSrcStatus');
+
+        if (!btn3d || !btnVideo) return;
+
+        // Preset buttons fill the input
+        document.querySelectorAll('.dv-preset-btn').forEach(function(b) {
+            b.addEventListener('click', function() {
+                if (srcInput) srcInput.value = b.getAttribute('data-src');
+            });
+        });
+
+        // Start button — open source, auto-switch to video view
+        if (srcStart) {
+            srcStart.addEventListener('click', function() {
+                var src = srcInput ? srcInput.value.trim() : '';
+                if (!src) return;
+                fetch('/api/video_source', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source: src }),
+                }).then(function(r) { return r.json(); })
+                .then(function(d) {
+                    setView('video', src);
+                    startStatusPoll();
+                    if (srcStatus) updateStatusBadge(d, srcStatus);
+                });
+            });
+        }
+
+        // Stop button
+        if (srcStop) {
+            srcStop.addEventListener('click', function() {
+                fetch('/api/video_source', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source: '' }),
+                }).then(function() {
+                    stopLLStream();
+                    _deactivateMjpeg();
+                    stopStatusPoll();
+                    if (srcStatus) { srcStatus.textContent = 'Stopped'; srcStatus.className = 'dv-src-status'; }
+                });
+            });
+        }
+
+        // Toggle buttons
+        btn3d.addEventListener('click', function() { setView('3d'); });
+        btnVideo.addEventListener('click', function() {
+            var src = srcInput ? srcInput.value.trim() : '';
+            setView('video', src);
+            startStatusPoll();
+        });
+
+        // Restore state from server on page load
+        fetch('/api/video_source')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.source && srcInput) srcInput.value = d.source;
+                if (d.status === 'streaming' || d.status === 'connecting') {
+                    startStatusPoll();
+                }
+                updateStatusBadge(d, srcStatus);
+            })
+            .catch(function() {});
     }
 
     // ===== Init =====

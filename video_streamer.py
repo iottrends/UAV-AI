@@ -27,6 +27,9 @@ Notes
 import time
 import threading
 import logging
+import queue
+import struct
+import subprocess
 
 try:
     import cv2
@@ -255,3 +258,265 @@ class VideoStreamer:
 
 # Module-level singleton used by web_server.py
 video_streamer = VideoStreamer()
+
+
+# ---------------------------------------------------------------------------
+# LowLatencyStreamer — FFmpeg fMP4 → browser MSE  (<100 ms for UDP H.264)
+# ---------------------------------------------------------------------------
+
+class LowLatencyStreamer:
+    """
+    Low-latency H.264 video streamer for wfb-ng UDP sources.
+
+    Pipeline
+    --------
+      wfb-ng UDP:5600  →  FFmpeg (remux H.264 → fMP4, no decode)
+        →  chunked HTTP  →  browser MediaSource Extensions (MSE)
+        →  hardware H.264 decoder  →  <video>
+
+    Typical glass-to-glass latency: 50–150 ms on LAN.
+
+    FFmpeg only remuxes (copy codec); no pixel processing.  CPU cost on
+    CM4 is negligible.  The MSE init segment (ftyp + moov) is stored and
+    replayed for every new client that connects mid-stream.
+
+    Limitations
+    -----------
+    - Requires ffmpeg on PATH.
+    - Browser must support MSE + H.264 (Chrome, Firefox, Safari 14+).
+    - Falls back gracefully to MJPEG when unavailable.
+    """
+
+    _CHUNK       = 65536   # stdout read granularity (64 KB)
+    _MAX_CLIENTS = 8       # hard cap on concurrent fMP4 consumers
+    _QUEUE_MAX   = 60      # per-client frame queue depth before dropping
+
+    def __init__(self):
+        self._lock         = threading.Lock()
+        self._proc         = None
+        self._thread       = None
+        self._running      = False
+        self._init_segment = b''    # ftyp + moov bytes; sent to every new client
+        self._clients      = []     # list of queue.Queue
+        self.status        = 'idle'
+        self.source        = None
+
+    # ── Public API ────────────────────────────────────────────────────────
+
+    def open(self, udp_url: str) -> None:
+        """Start FFmpeg and begin distributing fMP4 to clients."""
+        self.stop()
+        self.source   = udp_url
+        self._running = True
+        self.status   = 'connecting'
+        self._thread  = threading.Thread(
+            target=self._run, daemon=True, name='ll-streamer'
+        )
+        self._thread.start()
+        logger.info(f"LowLatencyStreamer: opening '{udp_url}'")
+
+    def stop(self) -> None:
+        """Stop FFmpeg and drain all client queues."""
+        self._running = False
+        with self._lock:
+            proc    = self._proc
+            clients = list(self._clients)
+        if proc:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=3.0)
+        self._proc = None
+        self._thread = None
+        with self._lock:
+            self._init_segment = b''
+            for q in clients:
+                try:
+                    q.put_nowait(None)
+                except Exception:
+                    pass
+            self._clients.clear()
+        self.status = 'idle'
+        logger.info("LowLatencyStreamer: stopped")
+
+    def generate_fmp4(self):
+        """
+        Flask generator — yields raw fMP4 bytes for one HTTP client.
+
+        Sends the stored init segment (ftyp+moov) first so the browser
+        can initialise MSE, then streams live moof+mdat atoms as they arrive.
+        Removes itself from the client list on generator close / exception.
+        """
+        q = queue.Queue(maxsize=self._QUEUE_MAX)
+        with self._lock:
+            if len(self._clients) >= self._MAX_CLIENTS:
+                logger.warning("LowLatencyStreamer: max clients reached, rejecting")
+                return
+            self._clients.append(q)
+            init = self._init_segment   # snapshot under lock
+
+        try:
+            if init:
+                yield init
+            while self._running:
+                try:
+                    atom = q.get(timeout=5.0)
+                    if atom is None:    # stop sentinel
+                        break
+                    yield atom
+                except queue.Empty:
+                    continue            # keep-alive (client still connected)
+        finally:
+            with self._lock:
+                try:
+                    self._clients.remove(q)
+                except ValueError:
+                    pass
+
+    def info(self) -> dict:
+        return {
+            'source':     self.source,
+            'status':     self.status,
+            'mode':       'll',
+            'init_bytes': len(self._init_segment),
+            'clients':    len(self._clients),
+        }
+
+    # ── Background reader thread ──────────────────────────────────────────
+
+    def _run(self) -> None:
+        """Start FFmpeg subprocess and parse its fMP4 output atom by atom."""
+        src = (self.source or '').strip()
+        # Build FFmpeg-compatible UDP URL with wfb-ng-friendly options
+        if src.lower().startswith('udp://'):
+            _, rest = src.split('://', 1)
+            ff_src = (
+                f'udp://{rest}?overrun_nonfatal=1&fifo_size=50000000'
+                if '?' not in rest else src
+            )
+        else:
+            ff_src = src
+
+        cmd = [
+            'ffmpeg',
+            '-fflags',         'nobuffer',
+            '-flags',          'low_delay',
+            '-avioflags',      'direct',
+            '-probesize',      '32768',       # 32 KB — find SPS/PPS fast
+            '-analyzeduration','500000',      # 0.5 s max probe
+            '-i',              ff_src,
+            '-c:v',            'copy',        # NO decode — remux only
+            '-an',
+            '-f',              'mp4',
+            '-movflags',       'frag_keyframe+empty_moov+default_base_moof',
+            '-frag_duration',  '200000',      # 200 ms fragments → ~100 ms latency
+            'pipe:1',
+        ]
+
+        logger.info(f"LowLatencyStreamer FFmpeg: {' '.join(cmd)}")
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+            )
+        except FileNotFoundError:
+            logger.error("LowLatencyStreamer: ffmpeg not found — install ffmpeg")
+            self.status = 'error'
+            return
+
+        with self._lock:
+            self._proc = proc
+        self.status  = 'streaming'
+
+        buf        = b''
+        past_init  = False   # True after we've seen the first moof atom
+
+        try:
+            while self._running and proc.poll() is None:
+                raw = proc.stdout.read(self._CHUNK)
+                if not raw:
+                    break
+                buf += raw
+
+                # Parse complete MP4 atoms out of the accumulation buffer
+                while True:
+                    if len(buf) < 8:
+                        break
+
+                    atom_size = struct.unpack('>I', buf[:4])[0]
+                    atom_type = buf[4:8]
+
+                    if atom_size == 1:          # 64-bit extended size field
+                        if len(buf) < 16:
+                            break
+                        atom_size = struct.unpack('>Q', buf[8:16])[0]
+                    elif atom_size == 0:        # extends to end of stream
+                        atom_size = len(buf)
+
+                    if len(buf) < atom_size:
+                        break               # incomplete atom — accumulate more
+
+                    atom = buf[:atom_size]
+                    buf  = buf[atom_size:]
+
+                    if not past_init:
+                        if atom_type == b'moof':
+                            # First media fragment — init segment complete
+                            past_init = True
+                            logger.info(
+                                f"LowLatencyStreamer: init segment ready "
+                                f"({len(self._init_segment)} B), streaming fragments"
+                            )
+                            # Fall through: broadcast this moof below
+                        else:
+                            # ftyp, moov → accumulate into stored init segment
+                            with self._lock:
+                                self._init_segment += atom
+                            continue
+
+                    # ── Broadcast media atom to all connected clients ──────
+                    with self._lock:
+                        dead = []
+                        for q in self._clients:
+                            try:
+                                q.put_nowait(atom)
+                            except queue.Full:
+                                dead.append(q)
+                        for q in dead:
+                            try:
+                                self._clients.remove(q)
+                            except ValueError:
+                                pass
+                        if dead:
+                            logger.warning(
+                                f"LowLatencyStreamer: dropped {len(dead)} slow client(s)"
+                            )
+
+        except Exception as exc:
+            logger.error(f"LowLatencyStreamer reader error: {exc}")
+        finally:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            try:
+                proc.wait(timeout=2.0)
+            except Exception:
+                pass
+            self.status = 'idle'
+            with self._lock:
+                for q in self._clients:
+                    try:
+                        q.put_nowait(None)
+                    except Exception:
+                        pass
+                self._clients.clear()
+            logger.info("LowLatencyStreamer: FFmpeg process exited")
+
+
+# Module-level low-latency singleton
+ll_streamer = LowLatencyStreamer()

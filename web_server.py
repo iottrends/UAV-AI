@@ -15,7 +15,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from log_parser import LogParser
 import copilot
-from video_streamer import video_streamer
+from video_streamer import video_streamer, ll_streamer
 from report_generator import generate_flight_report
 from flask import Response
 
@@ -413,32 +413,71 @@ def test():
 
 @app.route('/api/video_stream')
 def api_video_stream():
-    """MJPEG stream — browser points an <img> src here."""
+    """MJPEG stream — browser points an <img> src here (fallback path)."""
     return Response(
         video_streamer.generate_mjpeg(),
         mimetype='multipart/x-mixed-replace; boundary=frame',
     )
 
 
+@app.route('/api/video_ll_stream')
+def api_video_ll_stream():
+    """
+    Low-latency fMP4 stream for browser MediaSource Extensions.
+
+    The browser fetches this as a chunked HTTP response and feeds the bytes
+    into a SourceBuffer.  FFmpeg remuxes UDP H.264 → fMP4 with no decode;
+    typical end-to-end latency is 50–150 ms.
+    """
+    from flask import stream_with_context
+    resp = Response(
+        stream_with_context(ll_streamer.generate_fmp4()),
+        mimetype='video/mp4',
+    )
+    resp.headers['Cache-Control']    = 'no-cache, no-store, must-revalidate'
+    resp.headers['X-Accel-Buffering'] = 'no'   # disable nginx proxy buffering
+    return resp
+
+
 @app.route('/api/video_source', methods=['GET'])
 def api_video_source_get():
     """Return current video source info and status."""
-    return jsonify(video_streamer.info())
+    info = video_streamer.info()
+    # Overlay ll_streamer status when it is the active path
+    if ll_streamer.status in ('connecting', 'streaming'):
+        info['status'] = ll_streamer.status
+        info['mode']   = 'll'
+    return jsonify(info)
 
 
 @app.route('/api/video_source', methods=['POST'])
 def api_video_source_set():
     """Open a video source or stop streaming.
+
     Body: { "source": "0" | "rtsp://..." | "udp://0.0.0.0:5600" | "" }
-    Empty source string → stop.
+    Empty source string → stop both streamers.
+
+    UDP sources automatically use the low-latency FFmpeg path (ll_streamer).
+    Other sources (USB index, RTSP, HTTP MJPEG) use the OpenCV MJPEG path.
     """
     data   = request.get_json(force=True) or {}
     source = data.get('source', '').strip()
+
+    # Stop both paths first
+    video_streamer.stop()
+    ll_streamer.stop()
+
     if not source:
-        video_streamer.stop()
         return jsonify({'status': 'stopped'})
-    video_streamer.open(source)
-    return jsonify({'status': 'opening', 'source': source})
+
+    if source.lower().startswith('udp://'):
+        # Low-latency path: FFmpeg fMP4 → MSE
+        ll_streamer.open(source)
+        return jsonify({'status': 'opening', 'source': source, 'mode': 'll'})
+    else:
+        # OpenCV MJPEG fallback (USB cam, RTSP, HTTP MJPEG)
+        video_streamer.open(source)
+        return jsonify({'status': 'opening', 'source': source, 'mode': 'mjpeg'})
 
 
 @app.route('/api/voice_capability', methods=['GET'])
@@ -491,6 +530,30 @@ def get_fc_logs():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 #############################################################################
+@app.route('/api/param_audit', methods=['GET'])
+def run_param_audit():
+    """
+    Run the parameter rule engine and return a structured audit report.
+    Instant, deterministic, no LLM cost.
+
+    Response shape:
+      { "summary": { critical, warning, suggestion, passed, total },
+        "issues":  [ { severity, category, title, detail,
+                       params_involved, fix, action }, ... ],
+        "passed_checks": [ { "check": str }, ... ] }
+    """
+    if not validator:
+        return jsonify({"error": "Backend not initialised"}), 500
+    if not getattr(validator, 'params_dict', None):
+        return jsonify({"error": "No parameters loaded from drone yet"}), 400
+    try:
+        report = validator.run_audit()
+        return jsonify(report)
+    except Exception as exc:
+        logger.error(f"Param audit error: {exc}")
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route('/api/parameters', methods=['GET', 'POST'])
 def handle_parameters():
     """API endpoint to get or update drone parameters"""

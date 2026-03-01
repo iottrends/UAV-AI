@@ -2,6 +2,8 @@ import json
 import logging
 from copy import deepcopy  # Optional, if you want to reset categorized_params later
 
+from param_rule_engine import ParamRuleEngine
+
 drone_logger = logging.getLogger('drone_validator')
 
 from pymavlink import DFReader
@@ -303,6 +305,15 @@ class DroneValidator(MavlinkHandler):
             baud = params.get(f"SERIAL{i}_BAUD", 57600)
             if protocol > 0:
                 drone_logger.info(f"🔌 SERIAL{i}: Protocol {protocol} @ {baud} baud")
+
+    def run_audit(self) -> dict:
+        """
+        Run the full parameter rule engine against the currently loaded params.
+        Returns a structured report: summary + issues + passed_checks.
+        Called from web_server.py /api/param_audit endpoint.
+        """
+        engine = ParamRuleEngine(self.params_dict, self.categorized_params)
+        return engine.run()
 
     def get_param_value(self, params, param_name, default=None):
         """Safely get a parameter value with a default if not found."""
