@@ -1,6 +1,8 @@
 # UAV-AI — AI-Powered Ground Control Station for ArduPilot
 
-> A web-based GCS that runs on a Raspberry Pi Zero 2W, accessible from any browser on any device. JARVIS — the built-in AI co-pilot — diagnoses flight issues, analyses logs, and guides tuning in plain English.
+> A Betaflight/INAV-style configurator for ArduPilot + UAV Log Viewer + a Gemini-powered ArduPilot expert — all in a browser, all on a $15 box.
+>
+> Built and maintained by [LambdaUAV](https://lambdauav.com)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
@@ -276,6 +278,13 @@ Run UAV-AI + wfb-ng (wifibroadcast) together on an RPi4/CM4 with two WiFi adapte
 | **Total** | **~$100** |
 
 Compare to Herelink ground unit: $500+.
+
+---
+
+### Option C — Pre-built Kit
+
+If you'd rather not assemble this yourself, LambdaUAV sells pre-flashed kits at [lambdauav.com/shop](https://lambdauav.com/shop).
+Same software. No configuration needed. Ready in 5 minutes.
 
 ---
 

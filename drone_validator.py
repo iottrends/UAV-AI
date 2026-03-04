@@ -1,10 +1,12 @@
 import json
 import logging
+import threading
+import time
 from copy import deepcopy  # Optional, if you want to reset categorized_params later
 
 drone_logger = logging.getLogger('drone_validator')
 
-from pymavlink import DFReader
+from pymavlink import DFReader, mavutil
 
 # from pymavlink.mavwp import DFReader
 
@@ -46,6 +48,7 @@ class DroneValidator(MavlinkHandler):
             "Miscellaneous": {}
         }
         self.blackbox_logs = {}  # Declared here
+        self.flash_info = {}    # Populated by STORAGE_INFORMATION response
         drone_logger.info("DroneValidator initialized, awaiting parameters")
 
     def categorize_params(self, params):
@@ -167,6 +170,62 @@ class DroneValidator(MavlinkHandler):
         self.param_done = 1
         self.categorize_params(self.params_dict)
         self.validate_hardware()
+        self.fetch_flash_info()
+
+    def fetch_flash_info(self):
+        """Request STORAGE_INFORMATION from FC after params are 100% done.
+        Only proceeds on ArduPilot 4.0+. The actual MAVLink send goes through
+        xmit_mavlink (TX queue). This thread only handles retry timing/polling."""
+        def _fetch():
+            # Parse major version from firmware_data already received
+            fw_ver = self.firmware_data.get("firmware_version", "")
+            major = 0
+            if fw_ver:
+                try:
+                    major = int(fw_ver.split(".")[0])
+                except (ValueError, IndexError):
+                    major = 0
+
+            if 0 < major < 4:
+                drone_logger.warning(
+                    f"⚠️ Flash info skipped: ArduPilot {major}.x does not support "
+                    "MAV_CMD_REQUEST_MESSAGE for STORAGE_INFORMATION (requires 4.0+)"
+                )
+                return
+
+            if major == 0:
+                drone_logger.info(
+                    "⚠️ Firmware version unknown (firmware_data not yet populated); "
+                    "attempting STORAGE_INFORMATION request anyway"
+                )
+
+            time.sleep(1)  # let FC settle after the param download burst
+
+            for attempt in range(1, 4):
+                if not self.is_connected:
+                    return
+                self.xmit_mavlink(
+                    "STORAGE_INFO_REQUEST",
+                    lambda: self.mav_conn.mav.command_long_send(
+                        self.target_system, self.target_component,
+                        mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
+                        0, 261, 0, 0, 0, 0, 0, 0
+                    )
+                )
+                drone_logger.info(f"💾 Flash info request sent (attempt {attempt}/3)")
+
+                # Poll up to 3s — _process_message writes to self.flash_info on arrival
+                for _ in range(30):
+                    if self.flash_info:
+                        drone_logger.info(f"✅ Flash info received: {self.flash_info}")
+                        return
+                    time.sleep(0.1)
+
+                drone_logger.warning(f"⚠️ No STORAGE_INFORMATION after attempt {attempt}/3")
+
+            drone_logger.warning("❌ Flash info unavailable after 3 attempts")
+
+        threading.Thread(target=_fetch, daemon=True, name="flash-info-fetch").start()
 
     def validate_hardware(self):
         """Validate hardware components based on parameters."""
