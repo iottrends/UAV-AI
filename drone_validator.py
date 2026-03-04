@@ -188,6 +188,27 @@ class DroneValidator(MavlinkHandler):
         self.categorize_params(self.params_dict)
         self.validate_hardware()
 
+    def _process_parameter(self, msg):
+        """Override to keep categorized_params in sync after initial download."""
+        # Check before super() clears _pending_param_updates so we know if
+        # this PARAM_VALUE is an echo for a PARAM_SET we sent.
+        was_pending = msg.param_id in self._pending_param_updates
+        super()._process_parameter(msg)
+
+        # Only sync after the initial full download is complete.
+        if not self.param_done:
+            return
+
+        param_id = msg.param_id
+        param_value = msg.param_value
+
+        for cat_params in self.categorized_params.values():
+            if param_id in cat_params:
+                cat_params[param_id] = param_value
+                if was_pending:
+                    print(f"✅ PARAM ACK: {param_id} = {param_value}")
+                break
+
     def validate_hardware(self):
         """Validate hardware components based on parameters."""
         drone_logger.info("🔍 Starting hardware validation...")

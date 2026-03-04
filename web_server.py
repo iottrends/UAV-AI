@@ -574,60 +574,24 @@ def handle_parameters():
             logger.info(f"Updating parameters: {data}")
             
             try:
-                # Send MAVLink messages to update parameters on the flight controller
+                # Send MAVLink PARAM_SET for each param.
+                # update_parameter() already blocks until the FC echoes PARAM_VALUE
+                # (or times out after 5 s), so no secondary polling loop is needed.
                 for param_name, value in data.items():
-                    print(f"Updating parameter {param_name} to {value}")
+                    logger.info(f"Updating parameter {param_name} to {value}")
                     if not validator.update_parameter(param_name, value):
-                        raise ValueError(f"Failed to update parameter {param_name}")
-                
-                print("Wait for and verify parameter updates")
-                start_time = time.time()
-                timeout = 2  # timeout to 2 seconds
-                verified_params = {}
-                last_mismatch = None
-                
-                while time.time() - start_time < timeout:
-                    # Check if all parameters have been updated in params_dict
-                    verified_params = {
-                        param: validator.params_dict.get(param)
-                        for param in data.keys()
-                    }
-                    
-                    # Compare values with tolerance for floating point numbers
-                    mismatches = [
-                        param for param, value in data.items()
-                        if not (
-                            verified_params.get(param) is not None and
-                            abs(float(verified_params[param]) - float(value)) < 0.0001
+                        raise ValueError(
+                            f"No PARAM_VALUE echo for {param_name} — "
+                            "FC not connected or parameter rejected"
                         )
-                    ]
-                    
-                    if not mismatches:
-                        return jsonify({
-                            "status": "success",
-                            "message": "Parameters updated successfully",
-                            "updated": list(data.keys())
-                        })
-                    
-                    # Track last mismatch for better error reporting
-                    if mismatches != last_mismatch:
-                        logger.info(f"Waiting for parameters to update: {mismatches}")
-                        last_mismatch = mismatches
-                    
-                    time.sleep(0.1)
-                
-                # If we get here, timeout occurred
-                failed_updates_details = []
-                for param in mismatches:
-                    expected = data[param]
-                    actual = verified_params.get(param, "Not Received")
-                    failed_updates_details.append(f"{param}: Expected {expected}, Actual {actual}")
-                
-                raise TimeoutError(
-                    f"Timeout waiting for parameter updates. "
-                    f"The following parameters did not update as expected: {'; '.join(failed_updates_details)}. "
-                    f"Last verified values for all parameters: {verified_params}"
-                )
+
+                # categorized_params is kept in sync automatically by
+                # DroneValidator._process_parameter when the PARAM_VALUE echo arrives.
+                return jsonify({
+                    "status": "success",
+                    "message": "Parameters updated successfully",
+                    "updated": list(data.keys())
+                })
             except Exception as e:
                 logger.error(f"Error updating parameters: {str(e)}")
                 return jsonify({
