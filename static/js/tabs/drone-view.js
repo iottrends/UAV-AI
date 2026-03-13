@@ -509,6 +509,7 @@
                 lastOsdUpdateTs = now;
             }
             startAnimation();
+            if (_mapPipVisible || _mapExpanded) updateCesium(data);
         }
     }
 
@@ -707,6 +708,9 @@
             });
         }
 
+        // Map (Cesium) controls
+        initMapControls();
+
         // Lazy-init 3D on first tab visit
         var menuItems = document.querySelectorAll('.menu-item[data-tab]');
         menuItems.forEach(function(item) {
@@ -716,6 +720,408 @@
                 }
             });
         });
+    }
+
+    // ===== CesiumJS 3D globe (lazy-init on first Map button click) =====
+    var _cesiumViewer      = null;
+    var _cesiumPipViewer   = null;  // viewer instance (shared, mounted in either container)
+    var _droneEntity       = null;
+    var _homeEntity        = null;
+    var _pathEntity        = null;
+    var _flightCoords      = [];    // Cesium.Cartesian3 array
+    var _homeSet           = false;
+    var _mapExpanded       = false;
+    var _mapPipVisible     = false;
+    var _airspaceEntities  = {};    // icao24 → Cesium Entity
+    var _airspacePollTimer = null;
+    var _airspaceVisible   = false;
+
+    function initCesium(callback) {
+        if (_cesiumPipViewer) {
+            if (callback) callback();
+            return;
+        }
+        if (typeof Cesium === 'undefined') {
+            console.warn('CesiumJS not loaded');
+            return;
+        }
+
+        // Fetch API keys from server
+        fetch('/api/map/config')
+            .then(function(r) { return r.json(); })
+            .then(function(cfg) {
+                Cesium.Ion.defaultAccessToken = cfg.cesium_token || '';
+
+                // PiP is created in the dedicated inner div
+                var container = document.getElementById('dvCesiumPipInner');
+                if (!container) return;
+
+                var viewer = new Cesium.Viewer(container, {
+                    animation: false,
+                    baseLayerPicker: false,
+                    fullscreenButton: false,
+                    geocoder: false,
+                    homeButton: false,
+                    infoBox: false,
+                    navigationHelpButton: false,
+                    sceneModePicker: false,
+                    timeline: false,
+                    selectionIndicator: false,
+                    skyBox: false,
+                });
+                viewer.scene.globe.enableLighting = false;
+
+                // Try Google Photorealistic 3D Tiles
+                if (cfg.google_tiles_key) {
+                    Cesium.createGooglePhotorealistic3DTileset({
+                        key: cfg.google_tiles_key,
+                    }).then(function(tileset) {
+                        viewer.scene.primitives.add(tileset);
+                        // Hide default globe terrain when tiles load
+                        viewer.scene.globe.show = false;
+                    }).catch(function(e) {
+                        console.warn('Google 3D Tiles unavailable, using OSM fallback:', e);
+                    });
+                }
+
+                // Drone entity — orange chevron-style billboard
+                _droneEntity = viewer.entities.add({
+                    show: false,
+                    position: Cesium.Cartesian3.fromDegrees(0, 0, 0),
+                    billboard: {
+                        image: _buildDroneIcon(),
+                        width: 36, height: 36,
+                        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                        alignedAxis: Cesium.Cartesian3.UNIT_Z,
+                    },
+                    label: {
+                        text: 'UAV',
+                        font: '11px sans-serif',
+                        fillColor: Cesium.Color.WHITE,
+                        pixelOffset: new Cesium.Cartesian2(0, -26),
+                        showBackground: true,
+                        backgroundColor: new Cesium.Color(0, 0, 0, 0.5),
+                    },
+                });
+
+                // Home entity — green pin
+                _homeEntity = viewer.entities.add({
+                    show: false,
+                    position: Cesium.Cartesian3.fromDegrees(0, 0, 0),
+                    billboard: {
+                        image: _buildHomeIcon(),
+                        width: 28, height: 28,
+                        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                    },
+                    label: {
+                        text: 'HOME',
+                        font: '10px sans-serif',
+                        fillColor: Cesium.Color.LIME,
+                        pixelOffset: new Cesium.Cartesian2(0, -30),
+                        showBackground: true,
+                        backgroundColor: new Cesium.Color(0, 0, 0, 0.5),
+                    },
+                });
+
+                // Flight path polyline
+                _flightCoords = [];
+                _pathEntity = viewer.entities.add({
+                    polyline: {
+                        positions: new Cesium.CallbackProperty(function() {
+                            return _flightCoords.length >= 2 ? _flightCoords : undefined;
+                        }, false),
+                        width: 2,
+                        material: new Cesium.PolylineGlowMaterialProperty({
+                            glowPower: 0.2,
+                            color: Cesium.Color.CYAN,
+                        }),
+                        clampToGround: false,
+                    },
+                });
+
+                _cesiumPipViewer = viewer;
+                if (callback) callback();
+            })
+            .catch(function(e) { console.warn('map/config fetch failed:', e); });
+    }
+
+    // Build drone icon as a data URL (canvas arrow)
+    function _buildDroneIcon() {
+        var c = document.createElement('canvas');
+        c.width = 48; c.height = 48;
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.moveTo(24, 4);
+        ctx.lineTo(36, 42);
+        ctx.lineTo(24, 34);
+        ctx.lineTo(12, 42);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        return c.toDataURL();
+    }
+
+    // Build home icon as a data URL (canvas house)
+    function _buildHomeIcon() {
+        var c = document.createElement('canvas');
+        c.width = 40; c.height = 40;
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        // House shape
+        ctx.moveTo(20, 4);
+        ctx.lineTo(36, 18);
+        ctx.lineTo(30, 18);
+        ctx.lineTo(30, 36);
+        ctx.lineTo(10, 36);
+        ctx.lineTo(10, 18);
+        ctx.lineTo(4, 18);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        return c.toDataURL();
+    }
+
+    function updateCesium(data) {
+        if (!_cesiumPipViewer) return;
+        if (!data.gps || data.gps.fix_type < 3) return;
+
+        var lat = data.gps.lat;
+        var lon = data.gps.lon;
+        var alt = (data.altitude !== undefined) ? data.altitude : 0;
+        if (!lat || !lon) return;
+
+        var pos = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
+
+        // Compute orientation from heading
+        var headingRad = ((data.heading || 0) * Math.PI) / 180;
+        var hpr = new Cesium.HeadingPitchRoll(headingRad, 0, 0);
+        var orientation = Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
+
+        _droneEntity.show = true;
+        _droneEntity.position.setValue(pos);
+        _droneEntity.orientation = orientation;
+
+        // Append to flight path (skip if too close to last point)
+        if (_flightCoords.length === 0 ||
+            Cesium.Cartesian3.distance(pos, _flightCoords[_flightCoords.length - 1]) > 1) {
+            _flightCoords.push(pos.clone());
+        }
+
+        // Set home on first valid fix
+        if (!_homeSet) {
+            _homeSet = true;
+            _homeEntity.show = true;
+            _homeEntity.position.setValue(pos);
+        }
+
+        // Camera: in PiP mode lock a close follow, in full mode track entity
+        if (_mapExpanded) {
+            _cesiumPipViewer.trackedEntity = _droneEntity;
+        } else {
+            _cesiumPipViewer.trackedEntity = undefined;
+            var offset = new Cesium.HeadingPitchRange(
+                headingRad,
+                Cesium.Math.toRadians(-35),
+                300
+            );
+            _cesiumPipViewer.camera.lookAt(pos, offset);
+        }
+    }
+
+    function setMapMode(expanded) {
+        _mapExpanded = expanded;
+        var cesiumPip = document.getElementById('dvCesiumPip');
+        var videoPip  = document.getElementById('dvVideoPip');
+        var videoImg  = document.getElementById('dvVideoFeed');
+        var pipFeed   = document.getElementById('dvVideoPipFeed');
+        var expandBtn = document.getElementById('dvMapExpandBtn');
+
+        if (expanded) {
+            // Map primary: cesium fills canvas, video goes into PiP top-left
+            if (cesiumPip) {
+                cesiumPip.style.display = '';
+                cesiumPip.classList.add('map-fullscreen');
+            }
+            if (videoPip) videoPip.style.display = '';
+            if (pipFeed && !pipFeed.src.includes('/api/video_stream')) {
+                pipFeed.src = '/api/video_stream';
+            }
+            if (videoImg) { videoImg.style.display = 'none'; videoImg.src = ''; }
+            if (expandBtn) { expandBtn.textContent = '\u2921'; expandBtn.title = 'Collapse map'; }
+        } else {
+            // Video primary: cesium in small PiP, main video visible
+            if (cesiumPip) {
+                cesiumPip.style.display = '';
+                cesiumPip.classList.remove('map-fullscreen');
+            }
+            if (videoPip) videoPip.style.display = 'none';
+            if (pipFeed) pipFeed.src = '';
+            if (videoImg) { videoImg.style.display = 'block'; videoImg.src = '/api/video_stream'; }
+            if (expandBtn) { expandBtn.textContent = '\u2922'; expandBtn.title = 'Expand map'; }
+        }
+
+        // Notify Cesium to resize after CSS transition
+        if (_cesiumPipViewer) {
+            setTimeout(function() { _cesiumPipViewer.resize(); }, 80);
+        }
+    }
+
+    function pollAirspace() {
+        if (!_cesiumPipViewer || !_airspaceVisible) return;
+        fetch('/api/airspace')
+            .then(function(r) { return r.json(); })
+            .then(function(states) {
+                if (!Array.isArray(states)) return;
+                var seen = {};
+                states.forEach(function(s) {
+                    // OpenSky state vector: [icao24, callsign, origin_country, ...]
+                    // indices: 0=icao24, 1=callsign, 5=lon, 6=lat, 7=baro_alt, 10=true_track
+                    var icao = s[0];
+                    var call = (s[1] || icao).trim();
+                    var lon  = s[5];
+                    var lat  = s[6];
+                    var alt  = s[7] || 0;
+                    var hdg  = s[10] || 0;
+                    if (lon === null || lat === null) return;
+                    seen[icao] = true;
+
+                    var pos = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
+                    if (_airspaceEntities[icao]) {
+                        _airspaceEntities[icao].position.setValue(pos);
+                    } else {
+                        _airspaceEntities[icao] = _cesiumPipViewer.entities.add({
+                            position: pos,
+                            billboard: {
+                                image: _buildPlaneIcon(),
+                                width: 24, height: 24,
+                                rotation: Cesium.Math.toRadians(-hdg),
+                                alignedAxis: Cesium.Cartesian3.UNIT_Z,
+                                color: Cesium.Color.WHITE,
+                            },
+                            label: {
+                                text: call,
+                                font: '9px sans-serif',
+                                fillColor: Cesium.Color.WHITE,
+                                pixelOffset: new Cesium.Cartesian2(0, -18),
+                                showBackground: true,
+                                backgroundColor: new Cesium.Color(0, 0, 0, 0.45),
+                                translucencyByDistance: new Cesium.NearFarScalar(1e3, 1.0, 5e5, 0.0),
+                            },
+                        });
+                    }
+                });
+
+                // Remove stale entities
+                for (var icao in _airspaceEntities) {
+                    if (!seen[icao]) {
+                        _cesiumPipViewer.entities.remove(_airspaceEntities[icao]);
+                        delete _airspaceEntities[icao];
+                    }
+                }
+            })
+            .catch(function() {}); // fail silently
+    }
+
+    function _buildPlaneIcon() {
+        var c = document.createElement('canvas');
+        c.width = 32; c.height = 32;
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        // Simple aircraft shape
+        ctx.beginPath();
+        ctx.moveTo(16, 2);
+        ctx.lineTo(19, 12);
+        ctx.lineTo(30, 16);
+        ctx.lineTo(19, 20);
+        ctx.lineTo(16, 30);
+        ctx.lineTo(13, 20);
+        ctx.lineTo(2, 16);
+        ctx.lineTo(13, 12);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        return c.toDataURL();
+    }
+
+    function startAirspacePoll() {
+        if (_airspacePollTimer) return;
+        pollAirspace();
+        _airspacePollTimer = setInterval(pollAirspace, 15000);
+    }
+
+    function stopAirspacePoll() {
+        if (_airspacePollTimer) { clearInterval(_airspacePollTimer); _airspacePollTimer = null; }
+        // Remove all airspace entities
+        if (_cesiumPipViewer) {
+            for (var icao in _airspaceEntities) {
+                _cesiumPipViewer.entities.remove(_airspaceEntities[icao]);
+            }
+        }
+        _airspaceEntities = {};
+    }
+
+    function initMapControls() {
+        var btnMap      = document.getElementById('dvBtnMap');
+        var expandBtn   = document.getElementById('dvMapExpandBtn');
+        var adsb        = document.getElementById('dvAirspaceToggle');
+        var adsbLabel   = document.getElementById('dvAirspaceLabel');
+        var btn3d       = document.getElementById('dvBtn3d');
+        var btnVideo    = document.getElementById('dvBtnVideo');
+
+        if (!btnMap) return;
+
+        btnMap.addEventListener('click', function() {
+            if (_mapPipVisible || _mapExpanded) {
+                // Toggle off — go back to whatever was active
+                _mapPipVisible = false;
+                _mapExpanded   = false;
+                var cesiumPip  = document.getElementById('dvCesiumPip');
+                var cesiumCont = document.getElementById('dvCesiumContainer');
+                var videoPip   = document.getElementById('dvVideoPip');
+                if (cesiumPip) cesiumPip.style.display = 'none';
+                if (cesiumCont) cesiumCont.style.display = 'none';
+                if (videoPip) videoPip.style.display = 'none';
+                if (adsbLabel) adsbLabel.style.display = 'none';
+                stopAirspacePoll();
+                btnMap.classList.remove('active');
+            } else {
+                // Show map PiP — lazy-init Cesium first
+                _mapPipVisible = true;
+                btnMap.classList.add('active');
+                if (adsbLabel) adsbLabel.style.display = '';
+                initCesium(function() {
+                    setMapMode(false);  // video primary, cesium PiP
+                    if (_airspaceVisible) startAirspacePoll();
+                    if (lastStatusData) updateCesium(lastStatusData);
+                });
+            }
+        });
+
+        if (expandBtn) {
+            expandBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (!_cesiumPipViewer) return;
+                setMapMode(!_mapExpanded);
+            });
+        }
+
+        if (adsb) {
+            adsb.addEventListener('change', function() {
+                _airspaceVisible = adsb.checked;
+                if (_airspaceVisible && (_mapPipVisible || _mapExpanded)) {
+                    startAirspacePoll();
+                } else {
+                    stopAirspacePoll();
+                }
+            });
+        }
     }
 
     if (document.readyState === 'loading') {

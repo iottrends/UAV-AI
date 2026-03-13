@@ -439,6 +439,54 @@ def api_video_source_set():
     return jsonify({'status': 'opening', 'source': source})
 
 
+import requests as _req
+
+_airspace_cache = {"data": [], "ts": 0}
+
+
+@app.route('/api/map/config')
+def map_config():
+    """Serve Cesium Ion token + Google Maps API key to the frontend."""
+    return jsonify({
+        "cesium_token": os.getenv("CESIUM_TOKEN", ""),
+        "google_tiles_key": os.getenv("GOOGLE_TILES_KEY", ""),
+    })
+
+
+@app.route('/api/airspace')
+def airspace_proxy():
+    """Proxy OpenSky Network civil ADS-B traffic around the drone position.
+    Caches for 15 s to respect rate limits and avoid hammering the API.
+    """
+    global _airspace_cache
+    now = time.time()
+    if now - _airspace_cache["ts"] < 15:
+        return jsonify(_airspace_cache["data"])
+
+    # Get current drone GPS position from telemetry buffer
+    gps_msg = mavlink_buffer.get("GPS_RAW_INT")
+    lat = (gps_msg.get("lat", 0) / 1e7) if gps_msg else 0.0
+    lon = (gps_msg.get("lon", 0) / 1e7) if gps_msg else 0.0
+
+    # Fall back to a 1° bbox around 0,0 if no GPS (returns mostly nothing)
+    try:
+        r = _req.get(
+            "https://opensky-network.org/api/states/all",
+            params={
+                "lamin": lat - 1, "lomin": lon - 1,
+                "lamax": lat + 1, "lomax": lon + 1,
+            },
+            timeout=5,
+        )
+        states = r.json().get("states", []) if r.ok else []
+        _airspace_cache["data"] = states
+        _airspace_cache["ts"] = now
+    except Exception:
+        pass  # return cached (possibly empty) data on error
+
+    return jsonify(_airspace_cache["data"])
+
+
 @app.route('/api/voice_capability', methods=['GET'])
 def get_voice_capability():
     """Tell the browser which voice paths are available."""

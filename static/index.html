@@ -12,6 +12,9 @@
       <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+   <!-- CesiumJS 3D globe -->
+   <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+   <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
    </head>
    <body>
       <!-- Proactive JARVIS alert toasts -->
@@ -1327,10 +1330,14 @@
                      <div class="drone-heading-display">HDG <span id="dvHeading">0</span>&deg;</div>
                      <div class="drone-hud-badge drone-armed-badge disarmed" id="dvArmedBadge">DISARMED</div>
                   </div>
-                  <!-- View toggle: 3D Model ↔ Video Feed -->
+                  <!-- View toggle: 3D Model ↔ Video Feed ↔ Map -->
                   <div class="dv-view-toggle">
                      <button class="dv-view-btn active" id="dvBtn3d">3D View</button>
                      <button class="dv-view-btn" id="dvBtnVideo">Video Feed</button>
+                     <button class="dv-view-btn" id="dvBtnMap">&#127760; Map</button>
+                     <label class="dv-airspace-label" id="dvAirspaceLabel" style="display:none;">
+                        <input type="checkbox" id="dvAirspaceToggle"> ADS-B
+                     </label>
                   </div>
 
                   <!-- Main area: altitude | canvas | climb -->
@@ -1344,6 +1351,17 @@
                         <div id="dv3dContainer"></div>
                         <!-- Video feed img — src set by JS when video mode is active -->
                         <img id="dvVideoFeed" class="dv-video-feed" alt="Video feed" style="display:none;">
+                        <!-- CesiumJS full-screen container (Map primary mode) -->
+                        <div id="dvCesiumContainer"></div>
+                        <!-- Cesium PiP (bottom-right over video) -->
+                        <div id="dvCesiumPip">
+                           <div id="dvCesiumPipInner" style="width:100%;height:100%;"></div>
+                           <button class="map-expand-btn" id="dvMapExpandBtn" title="Expand map">&#x2922;</button>
+                        </div>
+                        <!-- Video PiP (top-left over Cesium in map-primary mode) -->
+                        <div id="dvVideoPip">
+                           <img id="dvVideoPipFeed" class="dv-video-feed" alt="Video PiP" style="width:100%;height:100%;object-fit:cover;">
+                        </div>
                      </div>
                      <div class="drone-altitude-panel">
                         <div class="drone-altitude-label">V/S</div>

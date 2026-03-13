@@ -1685,6 +1685,61 @@ padding: 0.5rem;
     accent-color: #22c55e;
 }
 
+/* ===== Cesium / Map PiP Overlay ===== */
+#dvCesiumContainer {
+    position: absolute; inset: 0;
+    z-index: 10; display: none;
+}
+#dvCesiumPip {
+    position: absolute;
+    bottom: 0.75rem; right: 0.75rem;
+    width: 300px; height: 220px;
+    border-radius: 8px; overflow: hidden;
+    z-index: 20;
+    border: 1px solid rgba(255,255,255,0.15);
+    display: none;
+}
+#dvCesiumPipInner { width: 100%; height: 100%; }
+#dvCesiumPip.map-fullscreen {
+    inset: 0;
+    width: auto; height: auto;
+    bottom: 0; right: 0;
+    top: 0; left: 0;
+    border-radius: 0;
+    border: none;
+}
+#dvVideoPip {
+    position: absolute;
+    top: 0.75rem; left: 0.75rem;
+    width: 240px; height: 160px;
+    border-radius: 8px; overflow: hidden;
+    z-index: 21;
+    border: 1px solid rgba(255,255,255,0.15);
+    display: none;
+}
+.map-expand-btn {
+    position: absolute;
+    bottom: 0.3rem; right: 0.3rem;
+    z-index: 30;
+    background: rgba(0,0,0,0.55);
+    border: none; color: #fff;
+    border-radius: 4px; cursor: pointer;
+    font-size: 0.75rem; padding: 2px 6px;
+}
+.map-expand-btn:hover { background: rgba(255,255,255,0.2); }
+.dv-airspace-label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: var(--text-xs);
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0 0.4rem;
+}
+/* Strip Cesium default chrome to match dark UI */
+.cesium-widget-credits { display: none !important; }
+.cesium-viewer-toolbar { display: none !important; }
+
 /* ===== Log Analysis Tab ===== */
 .log-upload-area {
    background: #1a1a2e;
