@@ -54,6 +54,11 @@ class MavlinkHandler:
         self._state = ConnectionState.DISCONNECTED
         self._state_lock = threading.Lock()
 
+        # Last connection params — used by _reconnect()
+        self._last_conn_type = None   # 'serial' | 'udp' | 'ws'
+        self._last_port      = None
+        self._last_baud      = None
+
         self.param_count = 0
         self.param_progress = 0  # Track parameter download progress percentage
         self.target_system = None
@@ -103,18 +108,27 @@ class MavlinkHandler:
                 mavlink_logger.info(f"Connecting via UDP: {port_name}")
                 self.mav_conn = mavutil.mavlink_connection(port_name, dialect="ardupilotmega")
                 connected_state = ConnectionState.CONNECTED_UDP
+                self._last_conn_type = 'udp'
+                self._last_port = port_name
+                self._last_baud = baudrate
             elif port_name.startswith("ws://") or port_name.startswith("wss://"):
                 mavlink_logger.info(f"Connecting via WebSocket: {port_name}")
                 ws_url = "wsserver:" + port_name[5:]
                 self.mav_conn = mavutil.mavlink_connection(ws_url, dialect="ardupilotmega")
                 self.ws_uri = ws_url
                 connected_state = ConnectionState.CONNECTED_WS
+                self._last_conn_type = 'ws'
+                self._last_port = ws_url
+                self._last_baud = baudrate
             else:
                 # Serial / COM port
                 device = f"COM{port_name}" if port_name.isdigit() else port_name
                 mavlink_logger.info(f"🔌 Connecting to {device} at {baudrate} baud...")
                 self.mav_conn = mavutil.mavlink_connection(device, baud=baudrate)
                 connected_state = ConnectionState.CONNECTED_SERIAL
+                self._last_conn_type = 'serial'
+                self._last_port = device
+                self._last_baud = baudrate
 
             # Wait for heartbeat
             mavlink_logger.info("⏳ Waiting for heartbeat...")
@@ -421,6 +435,7 @@ class MavlinkHandler:
         CONNECTED_SERIAL: 3s  — cable is either there or not
         CONNECTED_UDP:   10s  — tolerant of WiFi/RF packet loss
         CONNECTED_WS:     5s
+        On timeout: transitions to RECONNECTING and starts reconnect thread.
         """
         while self.is_connected:
             timeout = _HEARTBEAT_TIMEOUT.get(self._state, 5)
@@ -431,7 +446,105 @@ class MavlinkHandler:
                     )
                     self.heartbeat_timeout_flag = True
                     self._transition(ConnectionState.RECONNECTING)
+                    threading.Thread(
+                        target=self._reconnect,
+                        daemon=True,
+                        name="mavlink-reconnect"
+                    ).start()
+                    return  # hand off to reconnect thread
             time.sleep(1)
+
+    # Retry schedule: (delay_seconds,) per attempt
+    _RETRY_DELAYS_SERIAL = (2, 3, 5, 10)   # 4 attempts, then ERROR
+    _RETRY_DELAYS_UDP    = (2, 3, 5, 10, 10)  # 5 attempts, then ERROR
+
+    def _reconnect(self):
+        """Attempt to re-establish the MAVLink link after a heartbeat timeout.
+
+        Uses an exponential-ish backoff schedule that differs per connection type:
+          Serial: 4 attempts (2s, 3s, 5s, 10s gaps) — re-opens the serial port
+          UDP:    5 attempts (2s, 3s, 5s, 10s, 10s) — re-binds the socket
+        On exhaustion → transitions to ERROR and notifies UI with a hint.
+        """
+        # Determine which retry schedule and error hint to use
+        if self._state in (ConnectionState.RECONNECTING, ConnectionState.CONNECTED_SERIAL) \
+                and self._last_conn_type == 'serial':
+            delays = self._RETRY_DELAYS_SERIAL
+            error_hint = "Cable disconnected? Check USB connection."
+        else:
+            delays = self._RETRY_DELAYS_UDP
+            error_hint = "Check WiFi / ELRS backpack connection."
+
+        port     = self._last_port
+        baudrate = self._last_baud
+
+        for attempt, delay in enumerate(delays, start=1):
+            total = len(delays)
+            mavlink_logger.info(
+                f"🔄 Reconnect attempt {attempt}/{total} — waiting {delay}s..."
+            )
+            # Notify UI of attempt number
+            if self.socketio:
+                try:
+                    self.socketio.emit('connection_state', {
+                        'state': 'RECONNECTING',
+                        'connected': False,
+                        'attempt': attempt,
+                        'total': total,
+                    })
+                except Exception:
+                    pass
+
+            time.sleep(delay)
+
+            # Try to re-open the connection
+            try:
+                if self.mav_conn:
+                    try:
+                        self.mav_conn.close()
+                    except Exception:
+                        pass
+                    self.mav_conn = None
+
+                self.mav_conn = mavutil.mavlink_connection(
+                    port, baud=baudrate, dialect="ardupilotmega"
+                )
+                self.mav_conn.wait_heartbeat(timeout=5)
+                self.last_heartbeat = time.time()
+                self.heartbeat_timeout_flag = False
+                self.target_system    = self.mav_conn.target_system
+                self.target_component = self.mav_conn.target_component
+
+                # Back to the appropriate connected state
+                conn_state = (
+                    ConnectionState.CONNECTED_SERIAL
+                    if self._last_conn_type == 'serial'
+                    else ConnectionState.CONNECTED_UDP
+                )
+                self._transition(conn_state)
+                mavlink_logger.info(f"✅ Reconnected on attempt {attempt}")
+
+                # Restart background threads
+                threading.Thread(target=self._check_heartbeat_timeout, daemon=True).start()
+                threading.Thread(target=self._timesync_loop, daemon=True).start()
+                threading.Thread(target=self._message_loop, daemon=True).start()
+                return
+
+            except Exception as e:
+                mavlink_logger.warning(f"Reconnect attempt {attempt} failed: {e}")
+
+        # All attempts exhausted
+        mavlink_logger.error(f"❌ Reconnect failed after {len(delays)} attempts. {error_hint}")
+        self._transition(ConnectionState.ERROR)
+        if self.socketio:
+            try:
+                self.socketio.emit('connection_state', {
+                    'state': 'ERROR',
+                    'connected': False,
+                    'hint': error_hint,
+                })
+            except Exception:
+                pass
 
 ############################################################################################
     def _timesync_loop(self):
