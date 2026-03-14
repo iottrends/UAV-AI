@@ -5,6 +5,7 @@ import sys
 import serial
 import os
 import json
+import queue
 from pymavlink import mavutil
 import JARVIS
 from collections import deque
@@ -62,6 +63,7 @@ class MavlinkHandler:
         self._byte_rate = 0.0      # bytes/sec
 
         self._traffic_file = None  # mavlink_rxtx_log file handle
+        self._tx_queue = queue.Queue()  # serialized outgoing MAVLink messages
 
     def connect(self, port_name, baudrate):
         """Establish connection to flight controller."""
@@ -104,6 +106,9 @@ class MavlinkHandler:
             # Start TIMESYNC loop for latency measurement
             threading.Thread(target=self._timesync_loop, daemon=True).start()
 
+            # Start TX serialization loop
+            threading.Thread(target=self._tx_loop, daemon=True, name="mavlink-tx").start()
+
             return True
 
         except Exception as e:
@@ -126,6 +131,31 @@ class MavlinkHandler:
 
         threading.Thread(target=self._message_loop, daemon=True).start()
         return True
+###########################################################################################
+    def xmit_mavlink(self, name, fn):
+        """Enqueue an outgoing MAVLink message.
+        Appends name to tx_mav_msg for traffic logging and puts the send
+        callable onto _tx_queue for the dedicated TX thread to execute."""
+        self.tx_mav_msg.append(name)
+        if len(self.tx_mav_msg) >= 10:
+            self._write_traffic_records(
+                [{"dir": "tx", "ts": time.time(), "msg": m} for m in self.tx_mav_msg]
+            )
+            self.tx_mav_msg.clear()
+        self._tx_queue.put(fn)
+
+    def _tx_loop(self):
+        """Dedicated TX thread — pops send callables from _tx_queue and executes
+        them serially so MAVLink writes are never concurrent."""
+        while self.is_connected:
+            try:
+                fn = self._tx_queue.get(timeout=0.5)
+                fn()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                mavlink_logger.error(f"TX error: {e}")
+
 ###########################################################################################
     def _message_loop(self):
         """Main loop for receiving MAVLink messages."""
@@ -219,6 +249,18 @@ class MavlinkHandler:
 
         elif msg.get_type() == "LOG_DATA":
             self.on_log_data_received(msg.id, msg.data)
+        elif msg.get_type() == "STORAGE_INFORMATION":
+            self.flash_info = {
+                "total_mb":     round(msg.total_capacity),
+                "used_mb":      round(msg.used_capacity),
+                "available_mb": round(msg.available_capacity),
+                "storage_type": msg.type,
+            }
+            mavlink_logger.info(
+                f"💾 STORAGE_INFORMATION: total={msg.total_capacity:.1f} MiB "
+                f"used={msg.used_capacity:.1f} MiB avail={msg.available_capacity:.1f} MiB"
+            )
+
         elif msg.get_type() == "COMMAND_ACK":
             with self.command_ack_condition:
                 command_id = msg.command
@@ -290,26 +332,8 @@ class MavlinkHandler:
 
 #######################################################################
     def on_params_received(self):
-        """Called when all parameters are received. Request storage info."""
-        self.request_storage_info()
-
-    def request_storage_info(self):
-        """Request STORAGE_INFORMATION (msg 261) for flash/SD card stats."""
-        if not self.is_connected:
-            return
-        try:
-            self.mav_conn.mav.command_long_send(
-                self.target_system, self.target_component,
-                mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
-                0,   # confirmation
-                261, # STORAGE_INFORMATION message ID
-                1,   # storage_id=1 (primary storage)
-                0, 0, 0, 0, 0
-            )
-            self.tx_mav_msg.append("STORAGE_INFO_REQUEST")
-            mavlink_logger.info("⏳ Requested STORAGE_INFORMATION")
-        except Exception as e:
-            mavlink_logger.debug(f"STORAGE_INFO request error: {e}")
+        """Called when all parameters are received. Overridden by DroneValidator."""
+        pass
 ############################################################################################
     def snapshot_rx_queue(self):
         """Update ai_mavlink_ctx with the latest message of each type from
@@ -345,11 +369,11 @@ class MavlinkHandler:
     def _timesync_loop(self):
         """Send TIMESYNC requests every 1 second to measure MAVLink link latency."""
         while self.is_connected:
-            try:
-                ts1 = int(time.time() * 1e6)  # current time in microseconds
-                self.mav_conn.mav.timesync_send(0, ts1)  # tc1=0 means request
-            except Exception as e:
-                mavlink_logger.debug(f"TIMESYNC send error: {e}")
+            ts1 = int(time.time() * 1e6)
+            self.xmit_mavlink(
+                "TIMESYNC",
+                lambda ts=ts1: self.mav_conn.mav.timesync_send(0, ts)
+            )
             time.sleep(1)
 
     def get_latency_stats(self):
@@ -386,16 +410,13 @@ class MavlinkHandler:
 
         mavlink_logger.info("⏳ Requesting data stream...")
         for i in range(0, 6):
-            # Fixed: Using mav_conn instead of mav
-            self.mav_conn.mav.request_data_stream_send(
-                self.target_system,
-                self.target_component,
-                i,
-                4,  # 4 Hz
-                1  # Start
+            stream_id = i
+            self.xmit_mavlink(
+                f"DATA_STREAM_REQUEST:{stream_id}",
+                lambda sid=stream_id: self.mav_conn.mav.request_data_stream_send(
+                    self.target_system, self.target_component, sid, 4, 1
+                )
             )
-            # store tx mavlink msg
-            self.tx_mav_msg.append("DATA_STREAM_REQUEST")
         return True
 ####################################################################################
     def request_autopilot_version(self):
@@ -404,15 +425,16 @@ class MavlinkHandler:
             return False
 
         mavlink_logger.info("⏳ Requesting autopilot version...")
-        # Fixed: Using mav_conn instead of mav
-        self.mav_conn.mav.command_long_send(
-            self.target_system, self.target_component,
-            mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
-            0,  # Confirmation
-            mavutil.mavlink.MAVLINK_MSG_ID_AUTOPILOT_VERSION,
-            0, 0, 0, 0, 0, 0
+        self.xmit_mavlink(
+            "VERSION_REQUEST",
+            lambda: self.mav_conn.mav.command_long_send(
+                self.target_system, self.target_component,
+                mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
+                0,
+                mavutil.mavlink.MAVLINK_MSG_ID_AUTOPILOT_VERSION,
+                0, 0, 0, 0, 0, 0
+            )
         )
-        self.tx_mav_msg.append("VERSION_REQUEST")
         return True
 #############################################################################
     def request_parameter_list(self):
@@ -421,12 +443,12 @@ class MavlinkHandler:
             return False
 
         mavlink_logger.info("⏳ Requesting parameter list...")
-        # Fixed: Using mav_conn instead of mav
-        self.mav_conn.mav.param_request_list_send(
-            self.target_system,
-            self.target_component
+        self.xmit_mavlink(
+            "PARAM_REQUEST",
+            lambda: self.mav_conn.mav.param_request_list_send(
+                self.target_system, self.target_component
+            )
         )
-        self.tx_mav_msg.append("PARAM_REQUEST")
         return True
 #########################################################################
     def get_parameters(self):
@@ -446,17 +468,14 @@ class MavlinkHandler:
                 self._pending_param_updates[param_name] = param_value
 
             # Send parameter set command
-            self.mav_conn.mav.param_set_send(
-                self.target_system,
-                self.target_component,
-                param_name.encode('utf-8'),
-                param_value,
-                mavutil.mavlink.MAV_PARAM_TYPE_REAL32
+            self.xmit_mavlink(
+                f"PARAM_SET:{param_name}",
+                lambda pn=param_name, pv=param_value: self.mav_conn.mav.param_set_send(
+                    self.target_system, self.target_component,
+                    pn.encode('utf-8'), pv,
+                    mavutil.mavlink.MAV_PARAM_TYPE_REAL32
+                )
             )
-            self.tx_mav_msg.append(f"PARAM_SET:{param_name}")
-            if len(self.tx_mav_msg) >= 10:
-                self._write_traffic_records([{"dir": "tx", "ts": time.time(), "msg": m} for m in self.tx_mav_msg])
-                self.tx_mav_msg.clear()
 
             mavlink_logger.info(f"⏳ Sent parameter update: {param_name} = {param_value}")
 
@@ -530,17 +549,12 @@ class MavlinkHandler:
                 self.command_ack_status.pop(mavlink_command_id, None)
 
             # Send the MAV_CMD_LONG command
-            self.mav_conn.mav.command_long_send(
-                self.target_system,
-                self.target_component,
-                mavlink_command_id,
-                0,  # Confirmation: 0 = first transmission
-                *params
+            self.xmit_mavlink(
+                f"COMMAND_SENT:{command_name}",
+                lambda cid=mavlink_command_id, p=params: self.mav_conn.mav.command_long_send(
+                    self.target_system, self.target_component, cid, 0, *p
+                )
             )
-            self.tx_mav_msg.append(f"COMMAND_SENT:{command_name}")
-            if len(self.tx_mav_msg) >= 10:
-                self._write_traffic_records([{"dir": "tx", "ts": time.time(), "msg": m} for m in self.tx_mav_msg])
-                self.tx_mav_msg.clear()
             mavlink_logger.info(f"✅ Sent MAVLink command: {command_name} with params: {params}")
             print(f">>> SENT MAVLink command: {command_name} | target_sys={self.target_system} target_comp={self.target_component} | params={params}")
 
@@ -575,18 +589,16 @@ class MavlinkHandler:
         if not self.is_connected:
             return False
         mavlink_logger.info("📡 Requesting black-box log list...")
-        # Fixed: Using mav_conn instead of mav
-        self.mav_conn.mav.command_long_send(
-            self.target_system,
-            self.target_component,
-            mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
-            0,
-            mavutil.mavlink.MAVLINK_MSG_ID_LOG_ENTRY,
-            0,  # Start at 0
-            65535,  # Request all logs
-            0, 0, 0, 0
+        self.xmit_mavlink(
+            "LOG_REQUEST",
+            lambda: self.mav_conn.mav.command_long_send(
+                self.target_system, self.target_component,
+                mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
+                0,
+                mavutil.mavlink.MAVLINK_MSG_ID_LOG_ENTRY,
+                0, 65535, 0, 0, 0, 0
+            )
         )
-        self.tx_mav_msg.append("LOG_REQUEST")
         return True
 #################################################################################
     def on_log_list_received(self, log_list):
@@ -598,13 +610,12 @@ class MavlinkHandler:
             log_filename = f"{self.log_directory}/log_{log_id}.bin"
             if not os.path.exists(log_filename):
                 mavlink_logger.info(f"📡 Requesting log data for ID {log_id}...")
-                # Fixed: Using mav_conn instead of mav
-                self.mav_conn.mav.log_request_data_send(
-                    self.target_system,
-                    self.target_component,
-                    log_id,
-                    0,  # Offset
-                    0xFFFFFFFF  # Request all data
+                self.xmit_mavlink(
+                    f"LOG_DATA_REQUEST:{log_id}",
+                    lambda lid=log_id: self.mav_conn.mav.log_request_data_send(
+                        self.target_system, self.target_component,
+                        lid, 0, 0xFFFFFFFF
+                    )
                 )
 ####################################################################################
     def on_log_data_received(self, log_id, data):
@@ -639,11 +650,13 @@ class MavlinkHandler:
             return False
         try:
             ch = (list(channels) + [0] * 8)[:8]
-            self.mav_conn.mav.rc_channels_override_send(
-                self.mav_conn.target_system,
-                self.mav_conn.target_component,
-                int(ch[0]), int(ch[1]), int(ch[2]), int(ch[3]),
-                int(ch[4]), int(ch[5]), int(ch[6]), int(ch[7]),
+            self.xmit_mavlink(
+                "RC_OVERRIDE",
+                lambda c=ch: self.mav_conn.mav.rc_channels_override_send(
+                    self.mav_conn.target_system, self.mav_conn.target_component,
+                    int(c[0]), int(c[1]), int(c[2]), int(c[3]),
+                    int(c[4]), int(c[5]), int(c[6]), int(c[7]),
+                )
             )
             return True
         except Exception as e:
@@ -656,13 +669,13 @@ class MavlinkHandler:
             mavlink_logger.error("Cannot reboot FC: not connected")
             return False
         try:
-            self.mav_conn.mav.command_long_send(
-                self.target_system,
-                self.target_component,
-                mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
-                0,    # confirmation
-                1.0,  # param1 = 1 → reboot autopilot
-                0, 0, 0, 0, 0, 0
+            self.xmit_mavlink(
+                "REBOOT_FC",
+                lambda: self.mav_conn.mav.command_long_send(
+                    self.target_system, self.target_component,
+                    mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+                    0, 1.0, 0, 0, 0, 0, 0, 0
+                )
             )
             mavlink_logger.info("Sent FC reboot command (param1=1)")
             return True
@@ -677,13 +690,13 @@ class MavlinkHandler:
             mavlink_logger.error("Cannot reboot to bootloader: not connected")
             return False
         try:
-            self.mav_conn.mav.command_long_send(
-                self.target_system,
-                self.target_component,
-                mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
-                0,    # confirmation
-                3.0,  # param1 = 3 → stay in bootloader
-                0, 0, 0, 0, 0, 0
+            self.xmit_mavlink(
+                "REBOOT_TO_BOOTLOADER",
+                lambda: self.mav_conn.mav.command_long_send(
+                    self.target_system, self.target_component,
+                    mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+                    0, 3.0, 0, 0, 0, 0, 0, 0
+                )
             )
             mavlink_logger.info("Sent reboot-to-bootloader command (param1=3)")
             return True
@@ -737,11 +750,18 @@ class MavlinkHandler:
                 self.mav_conn.close()
             except:
                 pass
+        # Drain TX queue so the tx_loop exits cleanly
+        while not self._tx_queue.empty():
+            try:
+                self._tx_queue.get_nowait()
+            except queue.Empty:
+                break
         # Reset parameter state so reconnect starts fresh
         self.params_dict = {}
         self.param_count = 0
         self.param_progress = 0
         self.param_done = 0
+        self.flash_info = {}
         mavlink_logger.info("🔌 Disconnected from MAVLink")
 ######################################################################################
     def parse_firmware_info(self, msg):

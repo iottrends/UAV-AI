@@ -3079,10 +3079,9 @@ def update_system_health():
         mem_msg = mavlink_buffer.get("MEMINFO")
         if mem_msg:
             hardware_inventory["free_ram_kb"] = round(mem_msg.get("freemem", 0) / 1024)
-        storage_msg = mavlink_buffer.get("STORAGE_INFORMATION")
-        if storage_msg:
-            hardware_inventory["flash_total_mb"] = round(storage_msg.get("total_capacity", 0))
-            hardware_inventory["flash_used_mb"]  = round(storage_msg.get("used_capacity", 0))
+        if validator.flash_info:
+            hardware_inventory["flash_total_mb"] = validator.flash_info.get("total_mb")
+            hardware_inventory["flash_used_mb"]  = validator.flash_info.get("used_mb")
 
         # Extract ATTITUDE data (roll/pitch/yaw in degrees)
         attitude_msg = mavlink_buffer.get("ATTITUDE")

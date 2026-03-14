@@ -222,6 +222,36 @@ margin-top: var(--space-1);
 .nav-spacer {
 flex: 1;
 }
+.sidebar-brand {
+padding: 0.6rem var(--space-2) 0.75rem;
+border-top: 1px solid rgba(255,255,255,0.07);
+margin-top: 0.25rem;
+overflow: hidden;
+}
+.sidebar-brand a {
+font-size: 0.7rem;
+color: rgba(255,255,255,0.22);
+text-decoration: none;
+display: flex;
+align-items: center;
+gap: 0.3rem;
+white-space: nowrap;
+letter-spacing: 0.03em;
+transition: color 0.2s;
+}
+.sidebar-brand a:hover {
+color: rgba(255,255,255,0.65);
+}
+.sidebar-brand-lambda {
+color: #3b82f6;
+font-size: 0.85rem;
+font-weight: 600;
+opacity: 0.7;
+transition: opacity 0.2s;
+}
+.sidebar-brand a:hover .sidebar-brand-lambda {
+opacity: 1;
+}
 
 /* Menu items */
 .menu-item {
