@@ -2708,8 +2708,6 @@ def get_log_message_data(msg_type):
 
 def update_system_health():
     """Update system health information from validator data"""
-    global last_system_health
-
     if not validator or not validator.hardware_validated:
         return
 
@@ -3235,8 +3233,8 @@ def update_system_health():
         pf_warns = sum(1 for c in preflight_checks if c["status"] == "warn")
         overall_readiness = "NOT READY" if pf_fails > 0 else ("CAUTION" if pf_warns > 0 else "READY")
 
-        # Update system health
-        last_system_health = {
+        # Update system health in-place so _app_state.last_system_health alias stays valid
+        last_system_health.update({
             "score": health_score,
             "critical_issues": critical_issues,
             "readiness": readiness,
@@ -3287,7 +3285,7 @@ def update_system_health():
             "preflight": preflight_checks,
             "overall_readiness": overall_readiness,
             "hardware": hardware_inventory,
-        }
+        })
 
         # Add MAVLink link latency from TIMESYNC
         if hasattr(validator, 'get_latency_stats'):
