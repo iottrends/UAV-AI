@@ -145,6 +145,11 @@ width: 12px;
 height: 12px;
 border-radius: 50%;
 background-color: var(--danger-color); /* Default to red/disconnected */
+transition: background-color 0.3s;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.85); }
 }
 /* Main layout */
 .container {

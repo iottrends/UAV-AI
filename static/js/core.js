@@ -98,18 +98,47 @@ window._app = {
       return formattedText;
    },
 
-   updateConnectionStatus: function(connected) {
+   updateConnectionStatus: function(connected, stateInfo) {
       window._app.isConnected = connected;
 
       const connectionIndicator = document.getElementById('connectionIndicator');
       const connectionText = document.getElementById('connectionText');
 
+      // Determine display text + colour from stateInfo if provided
+      var text, color, pulse;
+      if (stateInfo) {
+         switch (stateInfo.state) {
+            case 'CONNECTED_SERIAL':
+               text = 'Connected (Serial)'; color = 'var(--success-color)'; pulse = false; break;
+            case 'CONNECTED_UDP':
+               text = 'Connected (UDP)'; color = 'var(--success-color)'; pulse = false; break;
+            case 'CONNECTED_WS':
+               text = 'Connected (WS)'; color = 'var(--success-color)'; pulse = false; break;
+            case 'CONNECTING':
+               text = 'Connecting…'; color = 'var(--warning-color)'; pulse = true; break;
+            case 'RECONNECTING':
+               var attempt = stateInfo.attempt ? (' ' + stateInfo.attempt + '/' + stateInfo.total) : '';
+               text = 'Reconnecting…' + attempt; color = 'var(--warning-color)'; pulse = true; break;
+            case 'ERROR':
+               text = 'Link Error'; color = 'var(--danger-color)'; pulse = false; break;
+            default:
+               text = 'Disconnected'; color = 'var(--danger-color)'; pulse = false;
+         }
+      } else {
+         text  = connected ? 'Connected' : 'Disconnected';
+         color = connected ? 'var(--success-color)' : 'var(--danger-color)';
+         pulse = false;
+      }
+
       if (connectionIndicator) {
-         connectionIndicator.style.backgroundColor = connected ? 'var(--success-color)' : 'var(--danger-color)';
+         connectionIndicator.style.backgroundColor = color;
+         connectionIndicator.style.animation = pulse ? 'pulse 1s infinite' : '';
       }
 
       if (connectionText) {
-         connectionText.textContent = connected ? 'Connected' : 'Disconnected';
+         connectionText.textContent = text;
+         connectionText.style.color = (stateInfo && (stateInfo.state === 'RECONNECTING' || stateInfo.state === 'ERROR'))
+            ? color : '';
       }
 
       // Toggle visibility of connect and disconnect buttons
@@ -232,6 +261,19 @@ document.addEventListener('DOMContentLoaded', function() {
       socket.on('disconnect', function() {
          console.log('WebSocket disconnected');
          window._app.updateConnectionStatus(false);
+      });
+
+      // MAVLink connection state machine events from server
+      socket.on('connection_state', function(data) {
+         console.log('connection_state:', data);
+         window._app.updateConnectionStatus(data.connected, data);
+
+         // Show hint toast on ERROR state
+         if (data.state === 'ERROR' && data.hint) {
+            if (window._app && window._app.showToast) {
+               window._app.showToast('Link Error', data.hint, 'error');
+            }
+         }
       });
 
       // Listen for system status updates
