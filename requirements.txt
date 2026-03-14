@@ -1,16 +1,35 @@
-numpy>=1.26.4
-pymavlink
+# Core web framework
 Flask==3.0.3
 Flask-SocketIO==5.3.6
-python-dotenv==1.0.1
-eventlet
-google-generativeai>=0.5.0
-openai
-anthropic
-pyserial==3.5
-pyaudio==0.2.14
-opencv-python-headless
 Flask-Cors==4.0.1
+python-socketio==5.16.1
+python-engineio==4.13.1
+eventlet==0.40.4
+
+# MAVLink
+pymavlink==2.4.49
+pyserial==3.5
+
+# AI providers
+google-generativeai==0.8.6
+openai==2.20.0
+anthropic==0.79.0
+
+# Numerical / CV
+numpy==2.4.2
+opencv-python-headless==4.13.0.92
+
+# Audio (requires system libs: portaudio19-dev on Linux, portaudio on macOS)
+pyaudio==0.2.14
+
+# USB / DFU flashing
+pyusb==1.3.1
+
+# Environment
+python-dotenv==1.0.1
+
+# Build (not needed at runtime — install separately for packaging)
+# pyinstaller==6.19.0
+
+# Testing (not needed at runtime)
 pytest
-pyinstaller
-pyusb
