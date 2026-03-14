@@ -36,56 +36,134 @@ app = Flask(__name__, static_folder=_resource_path('static'))
 app.config['SECRET_KEY'] = 'uav-ai-assistant-secret-key'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# Global variables to store references to backend components
-validator = None  # Will hold the DroneValidator instance
-jarvis_module = None  # Will hold the JARVIS module
-llm_ai_module = None  # Will hold the llm_ai_v5 module
-stt_module = None # Will hold the STT recorder instance
-telemetry_thread = None  # Will hold the telemetry update thread
-orchestrator = None  # Will hold the Orchestrator instance
-voice_copilot = None  # Will hold the VoiceCopilot instance
-connected_clients = set()  # Track connected WebSocket clients
-mavlink_buffer = {}  # dict keyed by message type → latest msg of each type
-log_parser_instance = None  # Will hold the current LogParser instance
 LOG_UPLOAD_DIR = os.path.join(tempfile.gettempdir(), 'uav-ai-logs')
 os.makedirs(LOG_UPLOAD_DIR, exist_ok=True)
 
-# Connection parameters storage
-connection_params = {
-    "port": None,
-    "baud": None,
-    "connect_requested": False,
-    "connect_success": False
-}
 
-# Co-pilot mode state
-copilot_active = False         # Current co-pilot mode state
-copilot_user_override = None   # None=auto, True=forced on, False=forced off
+class AppState:
+    """Thread-safe container for all shared server state.
 
-# Maintenance mode state
-maintenance_mode = False
+    Replaces the previous module-level globals. All reads/writes to shared
+    telemetry and connection data go through this class so that concurrent
+    access from the telemetry loop, request handlers, and background threads
+    is safe.
+    """
 
-# Current LLM provider (used by voice commands and as default)
-current_provider = "gemini"
+    def __init__(self):
+        self._lock = threading.RLock()
 
-# Global thread references
-telemetry_thread = None
-server_thread = None
+        # ── Backend component references ──────────────────────────────
+        self.validator       = None
+        self.jarvis_module   = None
+        self.llm_ai_module   = None
+        self.stt_module      = None
+        self.telemetry_thread = None
+        self.server_thread   = None
+        self.orchestrator    = None
+        self.voice_copilot   = None
+        self.log_parser_instance = None
+        self.connected_clients = set()
 
-# Status tracking variables
-# ── Proactive JARVIS alert engine state ──────────────────────────────
-_alert_cooldowns   = {}   # alert_id → last fired timestamp
-_last_statustext   = ''   # last STATUSTEXT text processed
-_last_flight_mode  = None # last known flight mode number
+        # ── Telemetry buffer ─────────────────────────────────────────
+        # Keyed by MAVLink message type → latest message dict
+        self.mavlink_buffer: dict = {}
+
+        # ── Connection parameters ────────────────────────────────────
+        self.connection_params = {
+            "port": None,
+            "baud": None,
+            "connect_requested": False,
+            "connect_success": False,
+        }
+
+        # ── Co-pilot / maintenance ───────────────────────────────────
+        self.copilot_active       = False
+        self.copilot_user_override = None   # None=auto, True=on, False=off
+        self.maintenance_mode     = False
+        self.current_provider     = "gemini"
+
+        # ── Proactive alert engine ───────────────────────────────────
+        self._alert_cooldowns  = {}
+        self._last_statustext  = ''
+        self._last_flight_mode = None
+
+        # ── System health snapshot ───────────────────────────────────
+        self.last_system_health = {
+            "score": 0,
+            "critical_issues": 0,
+            "readiness": "UNKNOWN",
+            "battery": {"voltage": 0, "threshold": 0, "status": "UNKNOWN"},
+            "gps":     {"fix_type": 0, "satellites": 0, "status": "UNKNOWN"},
+            "motors":  [
+                {"id": 1, "output": 1000, "status": "OK"},
+                {"id": 2, "output": 1000, "status": "OK"},
+                {"id": 3, "output": 1000, "status": "OK"},
+                {"id": 4, "output": 1000, "status": "OK"},
+            ],
+            "subsystems": [],
+            "params": {"percentage": 0, "downloaded": 0, "total": 0},
+            "latency": 0,
+        }
+
+    # ── Telemetry helpers ────────────────────────────────────────────
+
+    def get_telemetry(self, key, default=None):
+        with self._lock:
+            return self.mavlink_buffer.get(key, default)
+
+    def update_telemetry(self, key, value):
+        with self._lock:
+            self.mavlink_buffer[key] = value
+
+    def snapshot_telemetry(self):
+        """Return a shallow copy of the telemetry buffer (thread-safe)."""
+        with self._lock:
+            return dict(self.mavlink_buffer)
+
+    # ── Alert cooldown helpers ───────────────────────────────────────
+
+    def can_fire_alert(self, alert_id, cooldown_s):
+        with self._lock:
+            now = time.time()
+            if now - self._alert_cooldowns.get(alert_id, 0) >= cooldown_s:
+                self._alert_cooldowns[alert_id] = now
+                return True
+        return False
+
+
+# Single application state instance — imported by route handlers and threads
+_app_state = AppState()
+
+# ── Backward-compatible module-level aliases ─────────────────────────────────
+# These allow existing code that reads the bare global names to keep working
+# while the migration to _app_state is in progress.
+def _get_mavlink_buffer():
+    return _app_state.mavlink_buffer
+
+validator            = None   # set in start_server(); also stored in _app_state
+jarvis_module        = None
+llm_ai_module        = None
+stt_module           = None
+telemetry_thread     = None
+server_thread        = None
+connected_clients    = _app_state.connected_clients
+mavlink_buffer       = _app_state.mavlink_buffer
+connection_params    = _app_state.connection_params
+copilot_active       = False
+copilot_user_override = None
+maintenance_mode     = False
+current_provider     = "gemini"
+log_parser_instance  = None
+
+# ── Proactive JARVIS alert engine state ──────────────────────────────────────
+_alert_cooldowns   = _app_state._alert_cooldowns
+_last_statustext   = ''
+_last_flight_mode  = None
 
 
 def _can_fire_alert(alert_id, cooldown_s):
     """Return True (and record fire time) if cooldown has elapsed."""
-    now = time.time()
-    if now - _alert_cooldowns.get(alert_id, 0) >= cooldown_s:
-        _alert_cooldowns[alert_id] = now
-        return True
-    return False
+    return _app_state.can_fire_alert(alert_id, cooldown_s)
 
 
 def _emit_alert(alert_id, severity, title, message, action=None):
@@ -257,34 +335,9 @@ def check_proactive_alerts():
 
 
 # ─────────────────────────────────────────────────────────────────────
-last_system_health = {
-    "score": 0,
-    "critical_issues": 0,
-    "readiness": "UNKNOWN",
-    "battery": {
-        "voltage": 0,
-        "threshold": 0,
-        "status": "UNKNOWN"
-    },
-    "gps": {
-        "fix_type": 0,
-        "satellites": 0,
-        "status": "UNKNOWN"
-    },
-    "motors": [
-        {"id": 1, "output": 1000, "status": "OK"},
-        {"id": 2, "output": 1000, "status": "OK"},
-        {"id": 3, "output": 1000, "status": "OK"},
-        {"id": 4, "output": 1000, "status": "OK"}
-    ],
-    "subsystems": [],
-    "params": {
-        "percentage": 0,
-        "downloaded": 0,
-        "total": 0
-    },
-    "latency": 0
-}
+# Backward-compatible alias — points at the AppState-owned dict so all
+# existing code that writes last_system_health["score"] etc. still works.
+last_system_health = _app_state.last_system_health
 
 
 @app.route('/')
@@ -3390,10 +3443,13 @@ def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=Fa
     if loggers and 'web_server' in loggers:
         logger = loggers['web_server']
 
-    # Store references to backend components
+    # Store references to backend components (both legacy globals and AppState)
     validator = validator_instance
     jarvis_module = jarvis
     stt_module = stt_recorder
+    _app_state.validator     = validator_instance
+    _app_state.jarvis_module = jarvis
+    _app_state.stt_module    = stt_recorder
 
     # Wire SafetyEngine alert output to the web_server's emit function
     if hasattr(validator, 'safety_engine'):

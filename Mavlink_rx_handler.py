@@ -6,6 +6,7 @@ import serial
 import os
 import json
 import queue
+from enum import Enum, auto
 from pymavlink import mavutil
 import JARVIS
 from collections import deque
@@ -13,17 +14,46 @@ import socketio
 
 # Update: Get the mavlink logger from root when available
 mavlink_logger = logging.getLogger('mavlink')
+
+
+class ConnectionState(Enum):
+    DISCONNECTED     = auto()   # No connection attempt
+    CONNECTING       = auto()   # Attempting to connect / waiting for heartbeat
+    CONNECTED_SERIAL = auto()   # Connected via USB / COM port
+    CONNECTED_UDP    = auto()   # Connected via UDP (WiFi / ELRS backpack / wfb-ng)
+    CONNECTED_WS     = auto()   # Connected via WebSocket
+    RECONNECTING     = auto()   # Lost link, attempting to recover
+    ERROR            = auto()   # Unrecoverable error
+
+
+# Heartbeat timeout per connection type (seconds)
+_HEARTBEAT_TIMEOUT = {
+    ConnectionState.CONNECTED_SERIAL: 3,
+    ConnectionState.CONNECTED_UDP:    10,   # tolerant — UDP packet loss is normal
+    ConnectionState.CONNECTED_WS:     5,
+}
+
+# States that count as "connected" for guards like is_connected
+_CONNECTED_STATES = {
+    ConnectionState.CONNECTED_SERIAL,
+    ConnectionState.CONNECTED_UDP,
+    ConnectionState.CONNECTED_WS,
+}
 class MavlinkHandler:
     def __init__(self):
         self.mav_conn = None
         self.ws_uri = None
         self.params_dict = {}
-        self.socketio = None  
+        self.socketio = None
         mavlink_logger.info("SocketIO instance updated successfully")
         self.param_done = 0
         self.last_heartbeat = 0
         self.heartbeat_timeout_flag = False
-        self.is_connected = False
+
+        # Connection state machine
+        self._state = ConnectionState.DISCONNECTED
+        self._state_lock = threading.Lock()
+
         self.param_count = 0
         self.param_progress = 0  # Track parameter download progress percentage
         self.target_system = None
@@ -67,28 +97,26 @@ class MavlinkHandler:
 
     def connect(self, port_name, baudrate):
         """Establish connection to flight controller."""
+        self._transition(ConnectionState.CONNECTING)
         try:
             if port_name.startswith("udpin:") or port_name.startswith("udpout:") or port_name.startswith("udp:"):
                 mavlink_logger.info(f"Connecting via UDP: {port_name}")
                 self.mav_conn = mavutil.mavlink_connection(port_name, dialect="ardupilotmega")
-                mavlink_logger.info(f"✅ Connected successfully!: {port_name}")
+                connected_state = ConnectionState.CONNECTED_UDP
             elif port_name.startswith("ws://") or port_name.startswith("wss://"):
-                mavlink_logger.info(f"Connecting via websocket:{port_name}")
+                mavlink_logger.info(f"Connecting via WebSocket: {port_name}")
                 ws_url = "wsserver:" + port_name[5:]
                 self.mav_conn = mavutil.mavlink_connection(ws_url, dialect="ardupilotmega")
-                mavlink_logger.info(f"✅ Connected successfully!:{ws_url}")
                 self.ws_uri = ws_url
+                connected_state = ConnectionState.CONNECTED_WS
             else:
-            # Set the COM port
-                mavlink_logger.info(f"Connecting via COM Port")
+                # Serial / COM port
                 device = f"COM{port_name}" if port_name.isdigit() else port_name
                 mavlink_logger.info(f"🔌 Connecting to {device} at {baudrate} baud...")
-
-                # Connect to MAVLink
                 self.mav_conn = mavutil.mavlink_connection(device, baud=baudrate)
-                mavlink_logger.info("✅ Connected successfully!")
+                connected_state = ConnectionState.CONNECTED_SERIAL
 
-            # Wait for Heartbeat
+            # Wait for heartbeat
             mavlink_logger.info("⏳ Waiting for heartbeat...")
             self.mav_conn.wait_heartbeat()
             self.last_heartbeat = time.time()
@@ -97,23 +125,56 @@ class MavlinkHandler:
             # Set target info
             self.target_system = self.mav_conn.target_system
             self.target_component = self.mav_conn.target_component
-            self.is_connected = True
+
+            # Transition to the correct connected sub-state
+            self._transition(connected_state)
             self._open_traffic_log()
 
-            # Start heartbeat monitoring
+            # Start background threads
             threading.Thread(target=self._check_heartbeat_timeout, daemon=True).start()
-
-            # Start TIMESYNC loop for latency measurement
             threading.Thread(target=self._timesync_loop, daemon=True).start()
-
-            # Start TX serialization loop
             threading.Thread(target=self._tx_loop, daemon=True, name="mavlink-tx").start()
 
             return True
 
         except Exception as e:
             mavlink_logger.error(f"❌ Connection error: {e}")
+            self._transition(ConnectionState.ERROR)
             return False
+
+##############################################################################
+    @property
+    def is_connected(self):
+        """True when in any CONNECTED_* state."""
+        return self._state in _CONNECTED_STATES
+
+    @is_connected.setter
+    def is_connected(self, value):
+        """Legacy setter — kept for backward compatibility with callers that
+        still write  self.is_connected = False  (e.g. _message_loop finally).
+        Maps True → keeps current connected state, False → DISCONNECTED."""
+        if not value:
+            self._transition(ConnectionState.DISCONNECTED)
+
+    def _transition(self, new_state: ConnectionState):
+        """Move to a new ConnectionState, log the transition, and notify UI."""
+        with self._state_lock:
+            old_state = self._state
+            if old_state == new_state:
+                return
+            self._state = new_state
+
+        mavlink_logger.info(f"🔄 Connection state: {old_state.name} → {new_state.name}")
+
+        # Notify the browser so the UI can reflect the exact state
+        if self.socketio:
+            try:
+                self.socketio.emit('connection_state', {
+                    'state': new_state.name,
+                    'connected': new_state in _CONNECTED_STATES,
+                })
+            except Exception:
+                pass
 
 ##############################################################################
     def update_socketio(self, socketio_instance):
@@ -121,7 +182,7 @@ class MavlinkHandler:
         self.socketio = socketio_instance
         mavlink_logger.info("SocketIO instance updated successfully")
 
-        
+
 #############################################################################
     def start_message_loop(self):
         """Start the MAVLink message reception loop in a separate thread."""
@@ -355,14 +416,21 @@ class MavlinkHandler:
             self.rx_mav_msg.clear()
 
     def _check_heartbeat_timeout(self):
-        """Monitor for heartbeat timeouts."""
+        """Monitor for heartbeat timeouts using state-aware thresholds.
+
+        CONNECTED_SERIAL: 3s  — cable is either there or not
+        CONNECTED_UDP:   10s  — tolerant of WiFi/RF packet loss
+        CONNECTED_WS:     5s
+        """
         while self.is_connected:
-            if time.time() - self.last_heartbeat > 5:
+            timeout = _HEARTBEAT_TIMEOUT.get(self._state, 5)
+            if time.time() - self.last_heartbeat > timeout:
                 if not self.heartbeat_timeout_flag:
-                    mavlink_logger.warning("⚠️ Heartbeat timeout detected!")
+                    mavlink_logger.warning(
+                        f"⚠️ Heartbeat timeout ({timeout}s) on {self._state.name}"
+                    )
                     self.heartbeat_timeout_flag = True
-                    print(f" mavlink rx {self.tx_mav_msg}")
-                    print(f" mavlink tx {self.rx_mav_msg}")
+                    self._transition(ConnectionState.RECONNECTING)
             time.sleep(1)
 
 ############################################################################################
@@ -732,7 +800,7 @@ class MavlinkHandler:
 
     def disconnect(self):
         """Disconnect from MAVLink."""
-        self.is_connected = False
+        self._transition(ConnectionState.DISCONNECTED)
         # Clear the LKV cache so stale data doesn't survive into the next session
         self.ai_mavlink_ctx = {}
         # Flush remaining buffered messages before closing
