@@ -144,6 +144,8 @@ validator            = None   # set in start_server(); also stored in _app_state
 jarvis_module        = None
 llm_ai_module        = None
 stt_module           = None
+voice_copilot        = None
+orchestrator         = None
 telemetry_thread     = None
 server_thread        = None
 connected_clients    = _app_state.connected_clients
@@ -335,9 +337,7 @@ def check_proactive_alerts():
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Backward-compatible alias — points at the AppState-owned dict so all
-# existing code that writes last_system_health["score"] etc. still works.
-last_system_health = _app_state.last_system_health
+last_system_health = _app_state.last_system_health  # initial value from AppState
 
 
 @app.route('/')
@@ -3401,10 +3401,11 @@ def telemetry_update_loop():
         t0 = time.perf_counter()
         try:
             if validator and validator.hardware_validated and connected_clients:
-                # Snapshot and copy to shared mavlink_buffer
+                # Snapshot and update shared mavlink_buffer in-place
+                # (must not rebind the module-level name — that would break
+                #  the _app_state.mavlink_buffer alias and all readers)
                 validator.snapshot_rx_queue()
-                global mavlink_buffer
-                mavlink_buffer = validator.ai_mavlink_ctx.copy()
+                _app_state.mavlink_buffer.update(validator.ai_mavlink_ctx)
 
                 # Full health computation + broadcast
                 update_system_health()
@@ -3435,7 +3436,7 @@ def telemetry_update_loop():
 #########################################################################
 def start_server(validator_instance, jarvis, host='0.0.0.0', port=5000, debug=False, loggers=None, stt_recorder=None):
     """Start the Flask+SocketIO server in a new thread"""
-    global validator, jarvis_module, llm_ai_module, telemetry_thread, logger, stt_module, orchestrator
+    global validator, jarvis_module, llm_ai_module, telemetry_thread, logger, stt_module, orchestrator, voice_copilot
 
     # Use provided logger if available
     if loggers and 'web_server' in loggers:
