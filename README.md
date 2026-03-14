@@ -1,6 +1,12 @@
 # UAV-AI — AI-Powered Ground Control Station for ArduPilot
 
-> A web-based GCS that runs on a Raspberry Pi Zero 2W, accessible from any browser on any device. JARVIS — the built-in AI co-pilot — diagnoses flight issues, analyses logs, and guides tuning in plain English.
+> We started with a simple question: *why do I need a laptop at the field?*
+>
+> UAV-AI is a web-based GCS that runs on a Raspberry Pi or CM4 — a small box you mount on your ground station or carry in your bag. Once running, any phone, tablet, or laptop on the same network becomes a full-featured cockpit. No install. No cables. Just open a browser.
+>
+> Over time it grew into something we didn't fully plan — a Betaflight-style configurator, an AI troubleshooter, a log analyser, a tuning assistant, a voice command interface, a MAVLink co-pilot, a joystick controller, and an OSD video viewer. All in one place, all open source, all running on a $15 board.
+>
+> It is not trying to replace Mission Planner. It is trying to make the field simpler.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
@@ -115,6 +121,8 @@ Three sub-tabs inside the Tuning tab:
 - MJPEG video proxy — USB camera, RTSP, or wfb-ng H.264/UDP stream
 - Switchable 3D View / Video Feed with source preset buttons
 - Gamepad / Joystick RC override via Gamepad API (axes → RC_CHANNELS_OVERRIDE at 50Hz)
+- **Configurable OSD** — 19 selectable telemetry fields overlaid on drone view (battery, GPS, altitude, speed, attitude, RSSI, link stats). Persisted via localStorage
+- **Dark / Light theme toggle** — system-wide, persisted across sessions
 
 ### Flight Report
 - One-click HTML report from any loaded `.bin` log
@@ -145,7 +153,7 @@ Three sub-tabs inside the Tuning tab:
 | Runs on RPi Zero 2W | ✗ | ✗ | ✗ | **✓** |
 | Works with ELRS backpack | ✓ | ✓ | ✗ | **✓** |
 | Requires companion SBC | ✗ | ✗ | ✓ (mandatory) | **✗** |
-| Map / mission planning | ✓ | ✗ | ✓ | ✗ (roadmap) |
+| Map / mission planning | ✓ | ✗ | ✓ | 🔜 v3.0 (CesiumJS 3D globe + ADS-B) |
 
 UAV-AI is not a replacement for Mission Planner for complex mission planning. It is the tool you use **at the field, before and after a flight**, and the only GCS with an AI layer that understands ArduPilot.
 
@@ -237,7 +245,45 @@ Flight Controller ──ELRS RF──► ELRS Backpack (TX16S)
 
 ---
 
-### Option B — RPi4 Ground Unit with Video (Recommended for Pro Use)
+### Option B — Field Hotspot with RadioMaster Backpack (No Router Needed)
+
+The most common field setup. The RPi4/CM4 creates its own WiFi hotspot. The RadioMaster TX backpack joins the same hotspot and streams MAVLink over UDP. Your phone or tablet connects to the hotspot and opens UAV-AI in the browser — full GCS, live video, and voice commands, no laptop needed.
+
+```
+┌─────────────────────────────────────────────────────┐
+│            RPi4 / CM4  (WiFi Hotspot)               │
+│            SSID: "UAV-AI-Field"                     │
+│            IP: 192.168.4.1                          │
+└────────┬────────────────────────┬───────────────────┘
+         │ MAVLink UDP:14550      │ HTTP :5000
+         │                        │
+┌────────▼──────────┐    ┌────────▼──────────────────┐
+│ RadioMaster TX16S │    │   Phone / Tablet           │
+│ + ELRS WiFi       │    │   Browser → UAV-AI         │
+│ Backpack          │    │   ├ Live telemetry HUD      │
+│ (joins hotspot)   │    │   ├ JARVIS voice commands   │
+└───────────────────┘    │   ├ Live FPV video          │
+                         │   ├ Parameter tuning         │
+                         │   └ Proactive AI alerts      │
+                         └───────────────────────────────┘
+```
+
+**What you can do from your phone in the field:**
+- *"JARVIS, why is the vibration high?"* → instant diagnosis, no laptop
+- Watch live FPV video while monitoring telemetry OSD
+- Tune PID parameters and apply them mid-session
+- Issue MAVLink commands: arm, disarm, RTL, mode change
+- Flash firmware if you need to swap a config on-site
+
+**Setup:**
+1. Configure RPi to broadcast a WiFi hotspot on boot (`hostapd`)
+2. Set RadioMaster backpack to join the hotspot — MAVLink streams to `UDP:14550`
+3. UAV-AI starts as a systemd service on boot
+4. Connect phone to hotspot → open `http://192.168.4.1:5000`
+
+---
+
+### Option D — RPi4 Ground Unit with wfb-ng Video (Full Pro Setup)
 
 Run UAV-AI + wfb-ng (wifibroadcast) together on an RPi4/CM4 with two WiFi adapters. The RPi4 creates its own hotspot — connect a tablet and fly.
 
@@ -361,7 +407,10 @@ UAV-AI/
 | — | Light / dark theme toggle with localStorage persistence | ✅ Done |
 | — | Serial Ports: Save & Reboot (MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN) | ✅ Done |
 | — | Firmware flashing (APJ online + local, DFU/STM32, auto-bootloader entry) | ✅ Done |
-| G.1 | Basic mission planner (Leaflet map + waypoints) | 🔜 |
+| — | MAVLink TX serialization queue (eliminates race conditions) | ✅ Done |
+| G.1 | CesiumJS 3D globe + Google Photorealistic Tiles + ADS-B traffic overlay | 🔜 v3.0 |
+| G.2 | Flight path ribbon on 3D globe, drone entity with heading | 🔜 v3.0 |
+| G.3 | Mission planning — waypoints on 3D terrain | 🔜 v3.0 |
 
 ---
 
